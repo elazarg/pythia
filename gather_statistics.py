@@ -1,11 +1,6 @@
-import dis
 import os
-import compileall
 from instruction import get_instructions
 from collections import Counter
-import py_compile
-import marshal
-import importlib.util
 
 def main():
     with open('example.py') as f:

@@ -7,24 +7,33 @@ class BCode(dis.Instruction):
         return self.opname == 'BINARY_SUBSCR'
     
     @property
-    def is_jump_source(self):
-        return self.is_jump \
-            or 'RETURN' in self.opname \
+    def is_sequencer(self):
+        return 'RETURN' in self.opname \
             or 'CONTINUE' in self.opname \
-            or 'BREAK' in self.opname 
+            or 'BREAK' in self.opname \
+            or self.opname in ['JUMP_FORWARD', 'JUMP_ABSOLUTE', 'END_FINALLY']
+            
+    @property
+    def is_jump_source(self):
+        return self.is_jump or self.is_sequencer or self is OP_START\
             # or 'YIELD' in self.opname \ # yield does not interrupt the flow
             # exceptions do not count, since they can occur practically anywhere
             
     @property
     def is_jump(self):
-        return 'JUMP' in self.opname
-            
+        return self.opcode in dis.hasjrel + dis.hasjabs \
+               # or  'JUMP' in self.opname
+               
+    @property
+    def size(self):
+        return 1 if self.opcode < dis.HAVE_ARGUMENT else 3
+        
     @property
     def next_list(self):
-        if self.is_jump_source:
+        if not self.is_sequencer:
+            yield self.offset + self.size
+        if self.is_jump_source and self is not OP_START:
             yield self.argval
-        if self.is_jump or not self.is_jump_source:
-            yield self.offset + 1
         
     @property 
     def is_block_boundary(self):
@@ -39,15 +48,21 @@ def source(f):
     return inspect.getsource(f)
 
 def get_instructions(f):
-    return [BCode(*i) for i in dis.get_instructions(f)]
+    res =[OP_START] + [BCode(*i) for i in dis.get_instructions(f)]
+    # res.append(make_end(next(res[-1].next_list)))
+    return res
 
-END = BCode(opname='END', opcode=-1, arg=None, argval=None, argrepr=None, offset=-1, starts_line=float('inf'), is_jump_target=False)
+OP_START = BCode(opname='START', opcode=-1, arg=None, argval=0, argrepr=None, offset=-1, starts_line=-1, is_jump_target=False)
+
+def make_end(offset):
+    return BCode(opname='END', opcode=-2, arg=None, argval=None, argrepr=None, offset=offset, starts_line=None, is_jump_target=False)
+
 
 
 def example():
-    a = 1
-    a.y = 2
-    example(2, 3)
+    x = 1
+    for x in range(7):
+        print(x)
 
 if __name__ == '__main__':   
     for b in get_instructions(example):
