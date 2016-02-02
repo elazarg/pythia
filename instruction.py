@@ -29,10 +29,13 @@ class BCode(dis.Instruction):
         return 1 if self.opcode < dis.HAVE_ARGUMENT else 3
         
     def next_list(self):
+        if self.opname != 'FOR_ITER':
+            return [(self.offset + self.size, -1),
+                    (self.argval            , self.stack_effect())]
         res = []
         if not self.is_sequencer:
             target = self.offset + self.size
-            target_effect = self.stack_effect() if self.opname != 'FOR_ITER' else -1
+            target_effect = self.stack_effect() 
             res.append( (target, target_effect) )
         if self.is_jump_source and self is not OP_START:
             res.append( (self.argval, self.stack_effect()) )

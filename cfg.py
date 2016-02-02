@@ -14,37 +14,30 @@ TODO:
 def make_graph(blocks):
     dbs = dict((b.offset, b) for b in blocks)
     cfg = nx.DiGraph([(b.offset, dbs[j].offset, {'stack_effect': stack_effect})
-                    for b in blocks             # this ^ should be called weight to be used in alogtihms
+                    for b in blocks             # this ^ should be called weight to be used in algorithms
                     for (j, stack_effect) in b.next_list() if dbs.get(j)])
     for b in blocks:
-        cfg.node[b.offset]['block'] = b 
+        cfg.node[b.offset]['block'] = b
     return cfg
 
 def build_cfg(f):
-    #TODO: Either the algorithm is incorrect,
-    #      or the graph itself behaves less well than I have thought
-    # (and there SHOULD be a ready-made algorithm for computing the only flow possible.
-    #  I did not check whether max-flow is appropriate here)
     blocks = basic_block.prepare(f)
+    basic_block.print_blocks(blocks)
     cfg = make_graph(blocks)
     # edge_dfs() will give us edges to nodes we've already saw,
     # allowing us to validate that the stack is sensible on all paths
-    cfg.node[-1]['block'].flow_in = 0 
+    cfg.node[-1]['sin'] = 0 
     for src, dst, edge in edge_dfs(cfg):
-        dst.flow_in = src.flow_in + edge['stack_effect']
-        if dst.flow_in < dst.minimum_in_stack_depth:
-            print(dst.flow_in, '<', dst.minimum_in_stack_depth)
-        print(src.offset, '->', dst.offset, ':',
-              src.flow_in, dst.minimum_in_stack_depth)
-        basic_block.print_blocks([src])
-        basic_block.print_blocks([dst])
-        print()
+        dst['sin'] = src['sin'] + edge['stack_effect']
+        assert dst['sin'] >= 0
     return cfg
 
 
 def edge_dfs(g, start=-1):
-    return ( (g.node[src]['block'], g.node[dst]['block'], g.edge[src][dst])
-             for src, dst in nx.edge_dfs(g, -1))
+    return ( ( g.node[src_id],
+               g.node[dst_id],
+               g.edge[src_id][dst_id]  )
+             for src_id, dst_id in nx.edge_dfs(g, -1))
     
 def draw(g: nx.DiGraph):
     import matplotlib.pyplot as plt
