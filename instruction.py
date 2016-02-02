@@ -28,22 +28,29 @@ class BCode(dis.Instruction):
     def size(self):
         return 1 if self.opcode < dis.HAVE_ARGUMENT else 3
         
-    @property
     def next_list(self):
+        res = []
         if not self.is_sequencer:
-            yield self.offset + self.size
+            target = self.offset + self.size
+            target_effect = self.stack_effect() if self.opname != 'FOR_ITER' else -1
+            res.append( (target, target_effect) )
         if self.is_jump_source and self is not OP_START:
-            yield self.argval
-        
+            res.append( (self.argval, self.stack_effect()) )
+        return res
+    
     @property 
     def is_block_boundary(self):
         return self.is_jump_source or self.is_jump_target
-                
-    @property
+             
     def stack_effect(self):
-        return dis.stack_effect(self.opcode, self.arg)
+        res = dis.stack_effect(self.opcode, self.arg) if self is not OP_START else 0
+        #print(res)
+        return res
      
-
+    @property
+    def is_for_iter(self):
+        return self.opname == 'FOR_ITER'
+    
 def source(f):
     return inspect.getsource(f)
 

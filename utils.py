@@ -1,7 +1,9 @@
 
-def partition(lst, before, after):
+def false(x): return False
+
+def partition(iterable, before=false, after=false):
     current = []
-    for c in lst:
+    for c in iterable:
         if current and before(c):
             yield tuple(current)
             current = []
@@ -12,19 +14,29 @@ def partition(lst, before, after):
     if current:
         yield tuple(current)
 
+
 def test():
-    x = list(partition([1, 2, 3, 4, 5, 6], before=lambda x: x == 1, after=lambda x: x == 6))
+    def eq(y):
+        return lambda x: x == y
+    x = list(partition([1, 2, 3, 4, 5, 6], before=eq(1), after=eq(6)))
     assert x == [ (1, 2, 3, 4, 5, 6) ]
     
-    x = list(partition([1, 2, 3, 4, 5, 6], before=lambda x: x == 3, after=lambda x: x == 3))
+    x = list(partition([1, 2, 3, 4, 5, 6], before=eq(3), after=eq(3)))
     assert x == [(1, 2), (3,), (4, 5, 6)]
 
-    x = list(partition([1, 2, 3, 4, 5, 6], before=lambda x: x == 3, after=lambda x: x == 4))
+    x = list(partition([1, 2, 3, 4, 5, 6], before=eq(3), after=eq(4)))
     assert x == [(1, 2), (3, 4), (5, 6)]
     
-    x = list(partition([1, 2, 3, 4, 5, 6], before=lambda x: False, after=lambda x: False))
+    x = list(partition([1, 2, 3, 4, 5, 6], after=eq(4)))
+    assert x == [ (1, 2, 3, 4), (5, 6) ]
+
+    x = list(partition([1, 2, 3, 4, 5, 6], before=eq(4)))
+    assert x == [ (1, 2, 3), (4, 5, 6) ]
+    
+    x = list(partition([1, 2, 3, 4, 5, 6]))
     assert x == [ (1, 2, 3, 4, 5, 6) ]
     print('test done')
+
 
 if __name__ == '__main__':
     test()
