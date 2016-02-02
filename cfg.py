@@ -5,10 +5,8 @@ import basic_block
 '''
 "roadmap": we need to reason about the depth of the stack in the CFG.
 TODO:
-1. add weights on the edges, taken from BasicBlock.next_list
-2. compute and keep the absolute depth of the stack at each point using edge_dfs() as below
-3. ???
-4. profit
+1. ???
+2. profit
 '''
 
 def make_graph(blocks):
@@ -20,24 +18,25 @@ def make_graph(blocks):
         cfg.node[b.offset]['block'] = b
     return cfg
 
+def accumulate_stack_depth(cfg):
+    # edge_dfs() will give us edges to nodes we've already saw,
+    # allowing us to validate that the stack is sensible on all paths
+    cfg.node[-1]['sin'] = 0 
+    for src, dst in nx.edge_dfs(cfg, -1):
+        se = cfg.edge[src][dst]['stack_effect']
+        dst_in = cfg.node[dst]['sin'] = cfg.node[src]['sin'] + se
+        print(dst_in, cfg.node[dst]['block'])
+        #print('{} : [{}]+{} = {} at {}'.format(dst, src, se, cfg.node[dst]['sin'], cfg.node[dst]['block']))
+        assert dst_in >= 0
+
+ 
 def build_cfg(f):
     blocks = basic_block.prepare(f)
     basic_block.print_blocks(blocks)
     cfg = make_graph(blocks)
-    # edge_dfs() will give us edges to nodes we've already saw,
-    # allowing us to validate that the stack is sensible on all paths
-    cfg.node[-1]['sin'] = 0 
-    for src, dst, edge in edge_dfs(cfg):
-        dst['sin'] = src['sin'] + edge['stack_effect']
-        assert dst['sin'] >= 0
+    accumulate_stack_depth(cfg)
     return cfg
 
-
-def edge_dfs(g, start=-1):
-    return ( ( g.node[src_id],
-               g.node[dst_id],
-               g.edge[src_id][dst_id]  )
-             for src_id, dst_id in nx.edge_dfs(g, -1))
     
 def draw(g: nx.DiGraph):
     import matplotlib.pyplot as plt

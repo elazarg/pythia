@@ -1,11 +1,6 @@
 import dis, inspect
 
-class BCode(dis.Instruction):
-    
-    @property
-    def is_subscr(self):
-        return self.opname == 'BINARY_SUBSCR'
-    
+class BCode(dis.Instruction):    
     @property
     def is_sequencer(self):
         return 'RETURN' in self.opname \
@@ -15,9 +10,9 @@ class BCode(dis.Instruction):
             
     @property
     def is_jump_source(self):
-        return self.is_jump or self.is_sequencer or self is OP_START\
-            # or 'YIELD' in self.opname \ # yield does not interrupt the flow
-            # exceptions do not count, since they can occur practically anywhere
+        return self.is_jump or self.is_sequencer or self is OP_START
+        # yield does not interrupt the flow
+        # exceptions do not count, since they can occur practically anywhere
             
     @property
     def is_jump(self):
@@ -29,14 +24,13 @@ class BCode(dis.Instruction):
         return 1 if self.opcode < dis.HAVE_ARGUMENT else 3
         
     def next_list(self):
-        if self.opname != 'FOR_ITER':
-            return [(self.offset + self.size, -1),
-                    (self.argval            , self.stack_effect())]
+        next_offset = self.offset + self.size
+        if self.opname == 'FOR_ITER':
+            return [(next_offset, self.stack_effect()),
+                    (self.argval, -1)]
         res = []
         if not self.is_sequencer:
-            target = self.offset + self.size
-            target_effect = self.stack_effect() 
-            res.append( (target, target_effect) )
+            res.append( (next_offset, self.stack_effect() ) )
         if self.is_jump_source and self is not OP_START:
             res.append( (self.argval, self.stack_effect()) )
         return res
@@ -46,9 +40,8 @@ class BCode(dis.Instruction):
         return self.is_jump_source or self.is_jump_target
              
     def stack_effect(self):
-        res = dis.stack_effect(self.opcode, self.arg) if self is not OP_START else 0
-        #print(res)
-        return res
+        if self is OP_START: return 0
+        return dis.stack_effect(self.opcode, self.arg) 
      
     @property
     def is_for_iter(self):
