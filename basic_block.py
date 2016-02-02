@@ -14,7 +14,7 @@ class BasicBlock(list):
         self.stack_effect = stack_effect_acc[-1]
         
         "it's there so we can make sure that the stack size is never negative"
-        self.minimum_input_stack_len = max(0, -min(stack_effect_acc))
+        self.minimum_in_stack_depth = max(0, -min(stack_effect_acc))
     
     @property
     def offset(self):
@@ -58,7 +58,7 @@ def prepare(f: 'e.g. function'):
 
 def print_blocks(blocks: List[BasicBlock]):
     for block in blocks:
-        print(block.offset, ':',  block.minimum_input_stack_len,
+        print(block.offset, ':',
               block.next_list(), end=' <- ')
         print(*['({0.opname}, {0.argval}, {0.offset})'.format(x)
                 for x in block])
