@@ -45,24 +45,34 @@ class BCode(dis.Instruction):
         '''not exact.
         see https://github.com/python/cpython/blob/master/Python/compile.c#L860'''
         if self is OP_START: return 0
+        if self.opname == 'BREAK_LOOP' and self.argrepr.startswith('FOR'):
+            return -1
         return dis.stack_effect(self.opcode, self.arg) 
      
     @property
     def is_for_iter(self):
         return self.opname == 'FOR_ITER'
-    
+
 def source(f):
     return inspect.getsource(f)
 
 def update_break_instruction(bcodes):
+    '''BREAK_LOOP is problematic, since it does not contain the target
+    and since the stack effect depends on whether it is inside FOR or not
+    the right way to fix it is from inside the graph, but for most purposes
+    running over the code will suffice.'''
     s = []
     for i, r in enumerate(bcodes):
         if r.opname =='SETUP_LOOP':
-            s.append(r)
+            s.append( [r, 'WHILE'] )
         if r.opname == 'POP_BLOCK':
             s.pop()
+        if r.opname == 'FOR_ITER':
+            s[-1][-1] = 'FOR'
         if r.opname == 'BREAK_LOOP':
-            bcodes[i] = BCode(*(*r[:3], s[-1].argval, *r[4:])) 
+            to =  s[-1][0].argval
+            bcodes[i] = BCode(*(*r[:3], to, '{} to {}'.format(s[-1][-1], to), *r[5:])) 
+    assert not s
 
 def get_instructions(f):
     res =[OP_START] + [BCode(*i) for i in dis.get_instructions(f)]

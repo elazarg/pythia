@@ -1,8 +1,8 @@
 from itertools import accumulate
 from typing import List  # :)  
 
-import instruction as ins
-from instruction import BCode
+import bcode
+from bcode import BCode
 import operator as op
 import utils 
 
@@ -58,14 +58,14 @@ def split_to_basic_blocks(bs: List[BCode]) -> List[BasicBlock]:
 
 
 def prepare(f: 'e.g. function'):
-    return split_to_basic_blocks(ins.get_instructions(f))
+    return split_to_basic_blocks(bcode.get_instructions(f))
 
 
 def print_blocks(blocks: List[BasicBlock]):
     for block in blocks:
         print(block.offset, ':',
               block.next_list(), end=' <- ')
-        print(*['({0.opname}, {0.argval}, {0.offset})'.format(x)
+        print(*['({0.offset}:{0.opname}({0.argval}), )'.format(x)
                 for x in block])
 
 def test():
