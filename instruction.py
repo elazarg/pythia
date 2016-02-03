@@ -16,14 +16,16 @@ class BCode(dis.Instruction):
             
     @property
     def is_jump(self):
-        return self.opcode in dis.hasjrel + dis.hasjabs \
-               # or  'JUMP' in self.opname
+        return self.opcode in dis.hasjrel + dis.hasjabs
                
     @property
     def size(self):
         return 1 if self.opcode < dis.HAVE_ARGUMENT else 3
         
     def next_list(self):
+        # semantics of BREAK is too complicated, in the presence of `else`
+        #assert self.opname != 'BREAK_LOOP'
+         
         next_offset = self.offset + self.size
         if self.opname == 'FOR_ITER':
             return [(next_offset, self.stack_effect()),
@@ -40,6 +42,8 @@ class BCode(dis.Instruction):
         return self.is_jump_source or self.is_jump_target
              
     def stack_effect(self):
+        '''not exact.
+        see https://github.com/python/cpython/blob/master/Python/compile.c#L860'''
         if self is OP_START: return 0
         return dis.stack_effect(self.opcode, self.arg) 
      
@@ -50,8 +54,19 @@ class BCode(dis.Instruction):
 def source(f):
     return inspect.getsource(f)
 
+def update_break_instruction(bcodes):
+    s = []
+    for i, r in enumerate(bcodes):
+        if r.opname =='SETUP_LOOP':
+            s.append(r)
+        if r.opname == 'POP_BLOCK':
+            s.pop()
+        if r.opname == 'BREAK_LOOP':
+            bcodes[i] = BCode(*(*r[:3], s[-1].argval, *r[4:])) 
+
 def get_instructions(f):
     res =[OP_START] + [BCode(*i) for i in dis.get_instructions(f)]
+    update_break_instruction(res)
     # res.append(make_end(next(res[-1].next_list)))
     return res
 
@@ -66,6 +81,9 @@ def example():
     x = 1
     for x in range(7):
         print(x)
+        break
+    else:
+        len([])
 
 if __name__ == '__main__':   
     for b in get_instructions(example):

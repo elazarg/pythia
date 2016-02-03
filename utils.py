@@ -35,6 +35,12 @@ def test():
     
     x = list(partition([1, 2, 3, 4, 5, 6]))
     assert x == [ (1, 2, 3, 4, 5, 6) ]
+    
+    x = list(partition([], before=eq(1), after=eq(6)))
+    assert x == [ ]
+
+    x = list(partition([3], before=eq(1), after=eq(6)))
+    assert x == [ (3,) ]
     print('test done')
 
 

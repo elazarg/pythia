@@ -1,13 +1,6 @@
-import utils
 import networkx as nx
 import basic_block
 
-'''
-"roadmap": we need to reason about the depth of the stack in the CFG.
-TODO:
-1. ???
-2. profit
-'''
 
 def make_graph(blocks):
     dbs = dict((b.offset, b) for b in blocks)
@@ -18,15 +11,14 @@ def make_graph(blocks):
         cfg.node[b.offset]['block'] = b
     return cfg
 
+
 def accumulate_stack_depth(cfg):
     # edge_dfs() will give us edges to nodes we've already saw,
     # allowing us to validate that the stack is sensible on all paths
-    cfg.node[-1]['sin'] = 0 
+    cfg.node[-1]['block'].depth_in = 0 
     for src, dst in nx.edge_dfs(cfg, -1):
         se = cfg.edge[src][dst]['stack_effect']
-        dst_in = cfg.node[dst]['sin'] = cfg.node[src]['sin'] + se
-        print(dst_in, cfg.node[dst]['block'])
-        #print('{} : [{}]+{} = {} at {}'.format(dst, src, se, cfg.node[dst]['sin'], cfg.node[dst]['block']))
+        dst_in = cfg.node[dst]['block'].depth_in  = cfg.node[src]['block'].depth_in + se
         assert dst_in >= 0
 
  
@@ -45,7 +37,14 @@ def draw(g: nx.DiGraph):
 
    
 def test():
-    cfg = build_cfg(utils.partition)
+    import utils
+    def example(x):
+        while True: 
+            break
+        else:
+            print(1)
+        example(5 if x else x+x)
+    cfg = build_cfg(example)
     #draw(cfg)
 
 
