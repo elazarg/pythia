@@ -3,12 +3,12 @@ def false(x): return False
 
 def partition(iterable, before=false, after=false):
     current = []
-    for c in iterable:
-        if current and before(c):
+    for x in iterable:
+        if current and before(x):
             yield tuple(current)
             current = []
-        current.append(c)
-        if after(c):
+        current.append(x)
+        if after(x):
             yield tuple(current)
             current = []
     if current:

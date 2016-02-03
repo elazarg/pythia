@@ -99,6 +99,24 @@ if __name__ == '__main__':
     for b in get_instructions(example):
         print(b)
 
+BIN_TO_OP = {
+'BINARY_POWER':    '**', 
+'BINARY_MULTIPLY':    '*', 
+'BINARY_MATRIX_MULTIPLY':    '@', 
+'BINARY_FLOOR_DIVIDE':    '//', 
+'BINARY_TRUE_DIVIDE':    '/', 
+'BINARY_MODULO':    '%', 
+'BINARY_ADD':    '+', 
+'BINARY_SUBTRACT': '-', 
+'BINARY_SUBSCR':   '[]',
+'BINARY_LSHIFT':    '<<' ,
+'BINARY_RSHIFT':    '>>', 
+'BINARY_AND':    '&', 
+'BINARY_XOR':    '^', 
+'BINARY_OR':    '|', 
+}
+
+
 ''' 
 <0>
 POP_TOP
