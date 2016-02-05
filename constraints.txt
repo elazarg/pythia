@@ -1,5 +1,44 @@
+//collection of declarations of constraints
 //based on actual interpreter at ceval.c:
 //https://github.com/python/cpython/blob/bd45440231c50783554e97901731b93814a952a4/Python/ceval.c#L1357-L3455
+//mapping to operations can be found here:
+//https://github.com/python/cpython/blob/16f526e7cb0b5d81de47f513ad112cda61574331/Objects/typeobject.c#L6463-L664
+
+
+constraint: hasattr(obj, name)
+constraint: can_apply(obj, name, params)
+semantics: res <- getattr(obj, name)(params)
+
+
+def getattr(obj, name):
+	return obj.__dict__[name]
+	or bound type(obj).__dict__[name]
+	or type(obj).__dict__[name]
+	or bound x.__dict__[name] for x in mro(type(obj))
+
+constraint hasattr(obj, name):
+	lookup(obj, name) succeeds
+	
+constraint hash(obj):
+	if __hash__ and __eq__ undefined:
+		returns id() or somthing similar s.t. x == y -> (x is y and hash(x) == hash(y))
+	if only __eq__ defined:
+		hash return None; unhashable
+		using hash will raise TypeError
+		to retain super().__hash__, it should be done explicitly
+	if __hash__ defined:
+		it should not raise TypeError, since isinstance(obj, collections.Hashable)
+		should return integer (will be truncated to Py_ssize_t, usually word size)
+	
+	all sorts of constraints: https://docs.python.org/3/reference/datamodel.html#object.__hash__
+	
+constraint bool(obj):
+	if defined, __bool__ must return False or True
+	if defined, __len__() != 0
+	if both undefined, always True
+
+
+
 NOP
 
 LOAD_FAST : GETLOCAL(oparg)
@@ -123,7 +162,7 @@ JUMP_ABSOLUTE: Correct
 GET_ITER: PyObject_GetIter(TOP)
 GET_YIELD_FROM_ITER: PyObject_GetIter(TOP)
 
-FOR_ITER: before: [iter]; after: [iter, iter()] *or* []; swallowes StopIteration
+FOR_ITER: before: [iter]; after: [iter, iter()] *or* []; swallows StopIteration
 
 BREAK_LOOP: Correct
 CONTINUE_LOOP: Correct
