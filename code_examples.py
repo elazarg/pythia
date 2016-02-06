@@ -1,7 +1,4 @@
-import utils
-import random
-import tkinter as tk
-from numpy import *
+
 foo = 5
 def example(x):
     foo(a)
@@ -50,11 +47,6 @@ def mandel(n, m, itermax, xmin, xmax, ymin, ymax):
 __author__ = "Jack Trainor"
 __date__ = "2015-12-28"
 
-import sys
-import re
-import os.path
-import time
-import array
 
 ########################################################################
 """ 
@@ -80,6 +72,8 @@ def calc_mandelbrot_vals(maxiters, xmin, xmax, ymin, ymax, imgwd, imght):
     for y in range(imght):
         for x in range(imgwd):
             z = 0
+            if z < 2:
+                raise Exception
             r = xmin + xwd * x / imgwd
             i = ymin + yht * y / imght
             c = complex(r, i)  
