@@ -16,26 +16,27 @@ def accumulate_stack_depth(cfg):
         cfg.node[dst]['depth_in'] = dst_in
         assert dst_in_prev in [None, dst_in]
         assert dst_in >= 0
-    import tac
-    for b in cfg.nodes():
-        d = cfg.node[b]
-        d['ins'] = tac.make_TAC(d['ins'], d.get('depth_in'))
+
 
 def cfg_to_basic_blocks(cfg):
     '''Finds basic blocks in the graph - contracting chains
-    there's nothing special about cfg in particular.
+    there's (almost) nothing special about cfg in particular.
     '''
     from itertools import chain
     #partition() is not complete since it does not hangle JUMP_FORWARD etc.
     starts = set(chain( (n for n in cfg if cfg.in_degree(n) != 1),
                  chain.from_iterable(cfg.successors_iter(n) for n in cfg
                                      if cfg.out_degree(n) > 1)))
+    import tac    
     blocks = nx.DiGraph()
     for n in starts:
         label = n
         block = []
         while True:
-            block.append(cfg.node[n]['ins'])
+            bcode = cfg.node[n]['ins']
+            r = tac.make_TAC(bcode.opname, bcode.argval, bcode.stack_effect(),
+                             cfg.node[n].get('depth_in'))
+            block.extend(r)
             if cfg.out_degree(n) != 1:
                 break
             next_n = next(cfg.successors_iter(n))
@@ -50,6 +51,7 @@ def cfg_to_basic_blocks(cfg):
         print(n, ':', blocks[n]['block'])
     return blocks
 
+
 def make_graph(f):
     dbs = dict(bcode.get_instructions(f))
     cfg = nx.DiGraph([(b.offset, dbs[j].offset, {'stack_effect': stack_effect})
@@ -63,7 +65,7 @@ def make_graph(f):
 
 def print_graph(cfg):
     for b in sorted(cfg.node):
-        print(b, ':', cfg.node[b].get('depth_in', 'DEAD CODE'), ' <- ', cfg.node[b]['ins'])
+        print(b, ':', cfg[b].get('depth_in', 'DEAD CODE'), ' <- ', cfg[b]['block'])
 
 
 def draw(g: nx.DiGraph):
@@ -71,11 +73,13 @@ def draw(g: nx.DiGraph):
     nx.draw_networkx(g, with_labels=True)
     plt.show()
 
+
 def test():
     import code_examples
     import cfg
     cfg = cfg.make_graph(code_examples.CreatePlasmaCube)
     print_graph(cfg)
+
     
 if __name__ == '__main__':   
     test()

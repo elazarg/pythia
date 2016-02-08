@@ -18,6 +18,10 @@ def example(x):
         print(7)
     example(5 if x else x + x)
 
+def simple(z):    
+    x = 5 + z
+    y = x
+    return y
 
 def mandel(n, m, itermax, xmin, xmax, ymin, ymax):
     global c
@@ -122,10 +126,10 @@ def get_mb_corename(maxiters, xmin, xmax, ymin, ymax, imgwd, imght):
 
 def extract_mb_filename(filename):
     maxiters = xmin = xmax = ymin = ymax = imgwd = imght = ""
-    filename_re = re.compile("mb_(.+)_wd_(.+)_ht_(.+)_xa_(.+)_xb_(.+)_ya_(.+)_yb_(.+)_.*")
+    filename_re = re.compile("bla bla bla")
     match = filename_re.match(filename)
     if match:
-        maxiters = int(match.group(1))
+        maxiters = -int(match.group(1))
         imgwd = int(match.group(2))
         imght = int(match.group(3))
         xmin = float(match.group(4))
