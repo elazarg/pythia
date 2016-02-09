@@ -1,27 +1,23 @@
-import tac, itertools as it
-import utils
 
 def print_block(n, block):
     print(n, ':')
     for ins in block:
-        cmd = ins.fmt.format(**ins._asdict())
-        print(cmd, '\t\t', '' and ins)
+        print(ins.format())
 
 def test():
     import code_examples
     import cfg
-    cfg = cfg.make_graph(code_examples.main)
-    # import tac
-    # tac.print_3addr(cfg)
+    cfg = cfg.make_graph(code_examples.putvoxel)
     for n in sorted(cfg.node):
         print('analyzed:')
         block = cfg[n]['block']
         print(single_block_uses(block))
         print_block(n, block)
-        single_block_constant_prpagation_update(block)
         print('push up:')
-        block = list(single_block_kills(block))
-        block.reverse()
+        single_block_constant_prpagation_update(block)
+        block = list(single_block_kills(block)); block.reverse()
+        single_block_constant_prpagation_update(block)
+        block = list(single_block_kills(block)); block.reverse()
         print_block(n, block)
 
 
@@ -36,37 +32,32 @@ def undef(kills, gens):
     return [('_' if v in kills else v) for v in gens]
 
 
-def _filter_killed(ins, kills, gens, new_kills):
+def _filter_killed(ins, kills, new_kills):
     #moved here only because it is a transformation and not an analysis
-    if isinstance(ins, tac.Del)\
-        or isinstance(ins, tac.Assign) and kills.issuperset(ins.gens):
+    if ins.is_del or ins.is_assign and set(ins.gens).issubset(kills):
         return
-    diff = kills - new_kills
-    if diff:
-        yield tac.delete(*diff)
-    yield ins._replace(gens=undef(kills, gens))
+    yield ins._replace(gens=undef(kills, ins.gens),
+                       kills=kills-new_kills)
 
 def single_block_kills(block, kills=frozenset()):
+    'kills: the set of names that will no longer be used'
     for ins in reversed(block):
-        gens = ins.gens
-        ins_kills = getattr(ins, 'kills', ins.gens)
-        new_kills = kills.union(ins_kills).difference(ins.uses)
-        yield from _filter_killed(ins, kills, gens, new_kills)
+        new_kills = kills.union(ins.kills).difference(ins.uses)
+        yield from _filter_killed(ins, kills, kills.difference(ins.uses))
         kills = new_kills
 
 
 def single_block_gens(block, inb=frozenset()):
     gens = set()
     for ins in block:
-        gens.difference_update(getattr(ins, 'kills', ()))
+        gens.difference_update(ins.kills)
         gens.update(ins.gens)
     return [x for x in gens if is_extended_identifier(x)]
 
 def single_block_constant_prpagation_update(block):
-    from tac import Assign
     cons_map = {}
     for i, ins in enumerate(block):
-        if isinstance(ins, Assign) and len(ins.gens) == len(ins.uses) == 1:    
+        if ins.is_assign and len(ins.gens) == len(ins.uses) == 1:    
             [lhs], [rhs] = ins.gens, ins.uses
             if rhs in cons_map:
                 rhs = cons_map[rhs]

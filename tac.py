@@ -1,5 +1,7 @@
 from collections import namedtuple
 import itertools as it
+from enum import Enum
+
 # TAC is an instruction that knows where it stands :)
 # i.e, it knows the current stack depth
 # I call the stack depth 'tos', although it usually means "the value at the top of the stack"
@@ -12,7 +14,7 @@ def test():
 
 
 def var(x):
-    return chr(ord('α') + x)
+    return chr(ord('α') + x-1)
 
 
 def print_3addr(cfg):
@@ -22,70 +24,93 @@ def print_3addr(cfg):
             cmd = ins.fmt.format(**ins._asdict())
             print(n, ':\t', cmd , '\t\t', '' and ins)
 
-Tac = namedtuple('Tac', ('gens', 'uses', 'fmt'))
-NOP = Tac(gens=(), uses=(), fmt='NOP')
+class OP(Enum):
+    NOP = 0
+    ASSIGN = 1
+    IMPORT = 2
+    BINARY = 3
+    INPLACE = 4
+    CALL = 5
+    JUMP = 6
+    FOR = 7
+    RET = 8
+    RAISE = 9
+    YIELD = 10
+    DEL = 11
+    
+# Tac is most of the interface of this module:
+    
+fields = ('opcode', 'fmt', 'gens', 'uses', 'kills', 
+          'is_id', 'op', 'target',
+          'func', 'args', 'kwargs' )
 
-class Ret(Tac): pass
-class Raise(Tac): pass
-class Yield(Tac): pass
+class Tac(namedtuple('Tac', fields)):
+    @property
+    def is_assign(self):
+        return self.opcode == OP.ASSIGN 
 
-Del = namedtuple('Del', Tac._fields + ('kills',))
+    @property
+    def is_del(self):
+        return self.opcode == OP.DEL 
+    
+    def format(self):
+        return self.fmt.format(**self._asdict()) \
+            # +  ' \t\t -- kills: {}'.format(self.kills) 
 
-Assign = namedtuple('Assign', Tac._fields + ('is_id',))
-Import = namedtuple('Import', Tac._fields)
+def tac(opcode, *, fmt, gens=(), uses=(), kills=(), is_id=False, op=None,
+        target=None, func=None, args=(), kwargs=()):
+    assert isinstance(opcode, OP)
+    assert isinstance(fmt, str)
+    return Tac(opcode, fmt=fmt, gens=gens, uses=uses, kills=kills or gens, is_id=is_id,
+               op=op, target=target, func=func, args=args, kwargs=kwargs)
 
-Binary = namedtuple('Binary', Tac._fields + ('op',))
-Inplace = namedtuple('Inplace', Tac._fields + ('op',))
-Call = namedtuple('Call', Tac._fields + ('func', 'args', 'kwargs',))
-
-Jump = namedtuple('Jump', Tac._fields + ('target',))
-For = namedtuple('For', Tac._fields + ('target',))
-
+NOP = tac(OP.NOP, fmt='NOP')
 
 def delete(*vs):
-    return Del(kills=set(vs), gens=(), uses=(), fmt='DEL {kills}')
+    return tac(OP.DEL, kills=set(vs),
+               fmt='DEL {kills}')
 
 def unary(lhs, op):
     return call(lhs, '{}.{}'.format(lhs, op))
 
 def assign(lhs, rhs, is_id=True):
-    return Assign(gens=[lhs], uses=[rhs], is_id=is_id,
+    return tac(OP.ASSIGN, gens=[lhs], uses=[rhs], is_id=is_id,
                   fmt='{gens[0]} = {uses[0]}')
 
 def assign_attr(lhs, rhs, attr, is_id=True):
-    return Assign(gens=[lhs], uses=[rhs], is_id=is_id,
+    return tac(OP.ASSIGN, gens=[lhs], uses=[rhs], is_id=is_id,
                   fmt='{gens[0]} = {uses[0]}.'+attr)
 
 def mulassign(*lhs, rhs, is_id=True):
-    return Assign(gens=lhs, uses=[rhs], is_id=is_id,
+    return tac(OP.ASSIGN, gens=lhs, uses=[rhs], is_id=is_id,
                   fmt=', '.join('gens[' + i + ']' for i in range(lhs)) + ' = {uses[0]}')
 
 def binary(lhs, left, op, right):
     # note that operators are not *exactly* like attribute access, since it is never an attribute
-    return Binary(gens=[lhs], uses=(left, right), op=op,
+    return tac(OP.BINARY, gens=[lhs], uses=(left, right), op=op,
                fmt='{gens[0]} = {uses[0]} {op} {uses[1]}')
 
 def inplace(lhs, op, rhs):
-    return Inplace(gens=(), uses=(lhs, rhs), op=op,
+    return tac(OP.INPLACE, uses=(lhs, rhs), op=op,
                fmt='{uses[0]} {op}= {uses[1]}')
 
 def call(lhs, f, args=(), kwargs=()):
     fmt_args = ', '.join('{uses[' + str(x) + ']}' for x in range(1, len(args) + 1))
     fmt_kwargs = ', '.join('{uses[' + str(x) + ']:uses[' + str(x + 1) + ']:}' for x in range(len(args) + 1, len(args) + 1 + (len(kwargs) // 2), 2))
-    return Call(gens=[lhs], uses=[f, *args, *kwargs], func=f, args=args, kwargs=kwargs,
+    return tac(OP.CALL, gens=[lhs], uses=[f, *args, *kwargs], func=f, args=args, kwargs=kwargs,
                 fmt='{gens[0]} = {uses[0]}(' + fmt_args + ')' + \
                      (('(kw=' + fmt_kwargs + ')') if kwargs else ''))
 
 def foreach(lhs, iterator, val):
-    return For(gens=[lhs], uses=[iterator], target=val,
+    return tac(OP.FOR, gens=[lhs], uses=[iterator], target=val,
                fmt='{gens[0]} = next({uses[0]}) HANDLE: GOTO {target}')
 
 def include(lhs, modname):
-    return Import(gens=[lhs], uses=(),
+    return tac(OP.IMPORT, gens=[lhs],
                   fmt='{gens[0]} = IMPORT ' + modname)
 
 def include1(lhs, feature, modname):
-    return Import(gens=[lhs], uses=(),
+    return tac(OP.IMPORT, gens=[lhs],
                 fmt=('{gens[0]} = FROM ' + modname + ' IMPORT ' + feature))
 
 
@@ -115,11 +140,11 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
     elif name == 'INPLACE':
         return [inplace(var(out), var(tos), op)]
     elif name == 'JUMP':
-        return [Jump(uses=[True], target=val,
+        return [tac(OP.JUMP, uses=[True], target=val,
                    fmt='IF {uses[0]} GOTO {target}')]
     elif name.startswith('POP_JUMP_IF_'):
         res = [call(var(tos), 'not', var(tos))] if name.endswith('FALSE') else [] 
-        return res + [Jump(uses=[var(tos)], target=val,
+        return res + [tac(OP.JUMP, uses=[var(tos)], target=val,
                     fmt='IF {uses[0]} GOTO {target}')]
     elif name == 'POP_TOP':
         return [] # will be completed by make_TAC
@@ -144,9 +169,9 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
         return [assign(var(out), var(tos - 2)),
                 assign(var(out + 1), var(tos - 1))]
     elif name == 'RETURN_VALUE':
-        return [Ret(gens=(), uses=[var(tos)], fmt='RETURN {uses[0]}')]
+        return [tac(OP.RET, uses=[var(tos)], fmt='RETURN {uses[0]}')]
     elif name == 'YIELD_VALUE':
-        return [Yield(gens=[var(out)], uses=[var(tos)],
+        return [tac(OP.YIELD, gens=[var(out)], uses=[var(tos)],
                 fmt='YIELD {uses[0]}')]
     elif name == 'FOR_ITER':
         return [foreach(var(out), var(tos), val)]
@@ -175,7 +200,7 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
     elif name == 'SETUP_LOOP':
         return [NOP]
     elif name == 'RAISE_VARARGS':
-        return [Raise(gens=(), uses=[var(tos)], fmt='RAISE {uses[0]}')]
+        return [tac(OP.RAISE, gens=(), uses=[var(tos)], fmt='RAISE {uses[0]}')]
     elif name == 'UNPACK_SEQUENCE':
         seq = [var(tos + i) for i in reversed(range(val))]
         return [mulassign(*seq, rhs=var(tos))]
