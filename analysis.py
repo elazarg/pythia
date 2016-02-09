@@ -1,4 +1,4 @@
-
+# TODO: full graph constant/copy propagation
 def print_block(n, block):
     print(n, ':')
     for ins in block:
@@ -7,13 +7,12 @@ def print_block(n, block):
 def test():
     import code_examples
     import cfg
-    cfg = cfg.make_graph(code_examples.putvoxel)
+    cfg = cfg.make_graph(code_examples.RenderScene)
     for n in sorted(cfg.node):
-        print('analyzed:')
         block = cfg[n]['block']
-        print(single_block_uses(block))
-        print_block(n, block)
-        print('push up:')
+        #print('uses:', single_block_uses(block))
+        #print_block(n, block)
+        #print('push up:')
         single_block_constant_prpagation_update(block)
         block = list(single_block_kills(block)); block.reverse()
         single_block_constant_prpagation_update(block)
@@ -54,6 +53,7 @@ def single_block_gens(block, inb=frozenset()):
         gens.update(ins.gens)
     return [x for x in gens if is_extended_identifier(x)]
 
+
 def single_block_constant_prpagation_update(block):
     cons_map = {}
     for i, ins in enumerate(block):
@@ -70,10 +70,10 @@ def single_block_constant_prpagation_update(block):
                     del cons_map[v]
 
 
-def chaotic(g:'graph', s:'node', lattice, yota, f):
+def chaotic(g:'graph', s:'node', lattice, f):
     entry = {v: lattice.BOT
              for v in g.nodes()}
-    entry[s] = lattice.yota
+    entry[s] = lattice.EMPTYSET
     wl = set([s])
     while wl:
         u = wl.pop()
@@ -83,7 +83,7 @@ def chaotic(g:'graph', s:'node', lattice, yota, f):
             if new != entry[v]:
                 entry[v] = new
                 wl.add(v)
-                
+
 def is_extended_identifier(name):
     return name.replace('.', '').isidentifier()
 

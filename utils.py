@@ -22,6 +22,20 @@ class ComplementSet:
     def difference_update(self, other):
         return self.set.update(other)
 
+
+import networkx as nx
+
+def reverse_weights(g:nx.DiGraph, weight='weight'):
+    g = g.reverse()
+    for s, t in g.edges_iter():
+        e = g[s][t]
+        e[weight] = -e[weight]
+    return g
+
+def copy_to_bidirectional(g:nx.DiGraph, weight='weight'):
+    return nx.compose(g, reverse_weights(g))
+
+
 def false(x): return False
 
 def partition(iterable, before=false, after=false):

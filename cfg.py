@@ -1,21 +1,18 @@
 import networkx as nx
 import bcode
+import utils
 
 
-def accumulate_stack_depth(cfg):
-    # edge_dfs() will give us edges to nodes we've already saw,
-    # allowing us to validate that the stack is sensible on all paths.
-    # Technically, we should find "leaders" - including first instruction in dead code
-    # it means that we should "predict" what the starting flow for such leaders is...
-    # I think it complicates matters, and there is no simple solution that will keep the loop invariant.
-    cfg.node[0]['depth_in'] = 0 
-    for src, dst in nx.edge_dfs(cfg, 0):
-        stack_effect = cfg.edge[src][dst]['stack_effect']
-        dst_in_prev = cfg.node[dst].get('depth_in')
-        dst_in = cfg.node[src]['depth_in'] + stack_effect
-        cfg.node[dst]['depth_in'] = dst_in
-        assert dst_in_prev in [None, dst_in]
-        assert dst_in >= 0
+def accumulate_stack_depth(cfg, weight='weight', source=0):
+    '''The stack depth supposed to be independent of path.
+    So dijkstra on the undirected graph suffices.
+    The `undirected` part is just because we want to work
+    with unreachable code too. 
+    '''
+    lengths = nx.single_source_dijkstra_path_length(
+              utils.copy_to_bidirectional(cfg), source=source, weight=weight)
+    nx.set_node_attributes(cfg, name='tos', values=lengths)
+    print(cfg.nodes(data=True))
 
 
 def cfg_to_basic_blocks(cfg):
@@ -27,15 +24,16 @@ def cfg_to_basic_blocks(cfg):
     starts = set(chain( (n for n in cfg if cfg.in_degree(n) != 1),
                  chain.from_iterable(cfg.successors_iter(n) for n in cfg
                                      if cfg.out_degree(n) > 1)))
-    import tac    
+    import tac
     blocks = nx.DiGraph()
     for n in starts:
         label = n
         block = []
         while True:
             bcode = cfg.node[n]['ins']
+            print(bcode)
             r = tac.make_TAC(bcode.opname, bcode.argval, bcode.stack_effect(),
-                             cfg.node[n].get('depth_in'))
+                             cfg.node[n]['tos'])
             block.extend(r)
             if cfg.out_degree(n) != 1:
                 break
@@ -47,25 +45,24 @@ def cfg_to_basic_blocks(cfg):
             blocks.add_node(label)
         blocks.add_edges_from( (label, suc) for suc in cfg.successors_iter(n))
         blocks[label]['block'] = block
-    for n in blocks:
-        print(n, ':', blocks[n]['block'])
+    # for n in blocks: print(n, ':', blocks[n]['block'])
     return blocks
 
 
 def make_graph(f):
     dbs = dict(bcode.get_instructions(f))
-    cfg = nx.DiGraph([(b.offset, dbs[j].offset, {'stack_effect': stack_effect})
-                    for offset, b in dbs.items()# this ^ should be called weight to be used in algorithms
+    cfg = nx.DiGraph([(b.offset, dbs[j].offset, {'weight': stack_effect})
+                    for offset, b in dbs.items()
                     for (j, stack_effect) in b.next_list() if dbs.get(j)])
+    accumulate_stack_depth(cfg)
     for offset, b in dbs.items():
         cfg.node[offset]['ins'] = b
-    accumulate_stack_depth(cfg)
     return cfg_to_basic_blocks(cfg)
 
 
 def print_graph(cfg):
     for b in sorted(cfg.node):
-        print(b, ':', cfg[b].get('depth_in', 'DEAD CODE'), ' <- ', cfg[b]['block'])
+        print(b, ':', cfg.node[b].get('tos', 'DEAD CODE'), ' <- ', cfg[b]['block'])
 
 
 def draw(g: nx.DiGraph):
@@ -79,7 +76,7 @@ def test():
     from code_examples import calc_mandelbrot_vals as bar
     import cfg
     cfg = cfg.make_graph(code_examples.CreatePlasmaCube)
-    print_graph(cfg)
+    # print_graph(cfg)
 
     
 if __name__ == '__main__':   
