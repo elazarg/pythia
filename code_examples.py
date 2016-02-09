@@ -307,7 +307,8 @@ def RayTrace(rayX, rayY, rayZ, dx, dy, dz):
         if opacity[rayZint][rayYint][rayXint] == 1:
             return voxelRGB[rayZint][rayYint][rayXint]
 
-def CreateScene():
+def CreateScene(x):
+    a.foo(x)
     print("Creating scene...")
     CreatePlasmaCube()
     CreateSphere(imgx / 2.0, imgy / 2.0, imgz / 2, min(imgx / 2.0, imgy / 2.0, imgz / 2))

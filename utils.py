@@ -1,3 +1,26 @@
+from collections.abc import MutableSet
+
+class ComplementSet:
+    def __init__(self, iterable=()):
+        self.set = set(iterable)
+        
+    def __contains__(self, obj):
+        return obj not in self.set
+    
+    def add(self, obj):
+        self.set.discard(obj)
+        
+    def discard(self, obj):
+        self.set.add(obj)
+    
+    def issuperset(self, other):
+        return not self.set.intersection(other)
+    
+    def update(self, other):
+        return self.set.difference_update(other)
+
+    def difference_update(self, other):
+        return self.set.update(other)
 
 def false(x): return False
 
