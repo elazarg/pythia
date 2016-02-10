@@ -5,24 +5,44 @@ from enum import Enum
 # TAC is an instruction that knows where it stands :)
 # i.e, it knows the current stack depth
 # I call the stack depth 'tos', although it usually means "the value at the top of the stack"
+
+
 def test():
     import code_examples
-    import bcode_cfg
-    cfg = bcode_cfg.make_graph(code_examples.CreateScene)
-    print_3addr(cfg)
+    tac_name = 'tac_block'
+    cfg = make_graph(code_examples.CreateScene, blockname=tac_name)
+    print_3addr(cfg, blockname=tac_name)
     # draw(cfg)
 
 
-def var(x):
-    return chr(ord('α') + x-1)
-
-
-def print_3addr(cfg):
+def print_3addr(cfg, blockname):
     for n in sorted(cfg.nodes()):
-        block = cfg.node[n]['block']
+        block = cfg.node[n][blockname]
         for ins in block:
             cmd = ins.fmt.format(**ins._asdict())
             print(n, ':\t', cmd , '\t\t', '' and ins)
+
+
+def make_graph(f, blockname):
+    import bcode_cfg
+    bcode_name = 'bcode_block'
+    blocks = bcode_cfg.make_graph(f, blockname=bcode_name)
+        
+    for label in blocks.nodes():
+        block = blocks.node[label]
+        tac_block = list(it.chain.from_iterable(
+                        make_TAC(bc.opname, bc.argval, bc.stack_effect(), tos, bc.starts_line)
+                        for bc, tos in block[bcode_name]))
+        del block[bcode_name]
+        block[blockname] = tac_block
+    
+    return blocks
+
+
+def var(x):
+    return chr(ord('α') + x - 1)
+
+
 
 class OP(Enum):
     NOP = 0
@@ -40,11 +60,13 @@ class OP(Enum):
     
 # Tac is most of the interface of this module:
     
-fields = ('opcode', 'fmt', 'gens', 'uses', 'kills', 
+fields = ('opcode', 'fmt', 'gens', 'uses', 'kills',
           'is_id', 'op', 'target',
-          'func', 'args', 'kwargs' )
+          'func', 'args', 'kwargs',
+          'starts_line')
 
 class Tac(namedtuple('Tac', fields)):
+    __slots__ = ()
     @property
     def is_assign(self):
         return self.opcode == OP.ASSIGN 
@@ -58,11 +80,12 @@ class Tac(namedtuple('Tac', fields)):
             # +  ' \t\t -- kills: {}'.format(self.kills) 
 
 def tac(opcode, *, fmt, gens=(), uses=(), kills=(), is_id=False, op=None,
-        target=None, func=None, args=(), kwargs=()):
+        target=None, func=None, args=(), kwargs=(), starts_line=None):
     assert isinstance(opcode, OP)
     assert isinstance(fmt, str)
     return Tac(opcode, fmt=fmt, gens=gens, uses=uses, kills=kills or gens, is_id=is_id,
-               op=op, target=target, func=func, args=args, kwargs=kwargs)
+               op=op, target=target, func=func, args=args, kwargs=kwargs,
+               starts_line=starts_line)
 
 NOP = tac(OP.NOP, fmt='NOP')
 
@@ -79,7 +102,7 @@ def assign(lhs, rhs, is_id=True):
 
 def assign_attr(lhs, rhs, attr, is_id=True):
     return tac(OP.ASSIGN, gens=[lhs], uses=[rhs], is_id=is_id,
-                  fmt='{gens[0]} = {uses[0]}.'+attr)
+                  fmt='{gens[0]} = {uses[0]}.' + attr)
 
 def mulassign(*lhs, rhs, is_id=True):
     return tac(OP.ASSIGN, gens=lhs, uses=[rhs], is_id=is_id,
@@ -120,13 +143,13 @@ def get_gens(block):
 def get_uses(block):
     return set(it.chain.from_iterable(ins.uses for ins in block))
 
-def make_TAC(opname, val, stack_effect, tos):
+def make_TAC(opname, val, stack_effect, tos, starts_line=None):
     tac = make_TAC_no_dels(opname, val, stack_effect, tos)
-    #this is simplistic analysis, that is not correct in general:
-    tac = list(map(delete, get_gens(tac)-get_uses(tac))) + tac
+    # this is simplistic klls analysis, that is not correct in general:
+    tac = list(map(delete, get_gens(tac) - get_uses(tac))) + tac
     if stack_effect < 0:
         tac += [delete(var(tos + i)) for i in range(stack_effect + 1, 1)]
-    return tac
+    return [t._replace(starts_line=starts_line) for t in tac]
 
 def make_TAC_no_dels(opname, val, stack_effect, tos):
     out = tos + stack_effect if tos is not None else None
@@ -147,9 +170,9 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
         return res + [tac(OP.JUMP, uses=[var(tos)], target=val,
                     fmt='IF {uses[0]} GOTO {target}')]
     elif name == 'POP_TOP':
-        return [] # will be completed by make_TAC
+        return []  # will be completed by make_TAC
     elif name == 'DELETE_FAST':
-        return [] # will be completed by make_TAC
+        return []  # will be completed by make_TAC
     elif name == 'ROT_TWO':
         fresh = var(tos + 1)
         return [assign(fresh, var(tos)),
@@ -190,10 +213,10 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
     elif name.startswith('STORE_ATTR'):
         return [assign('{}.{}'.format(var(tos), val), var(tos - 1))]
     elif name.startswith('STORE_SUBSCR'):
-        return [call(var(tos), 'BUILTINS.getattr', [var(tos-1), "'__setitem__'"]),
+        return [call(var(tos), 'BUILTINS.getattr', [var(tos - 1), "'__setitem__'"]),
                 call(var(tos), var(tos), [var(tos - 2)])]
     elif name == 'BINARY_SUBSCR':
-        return [call(var(out), 'BUILTINS.getattr', [var(tos-1), "'__getitem__'"]),
+        return [call(var(out), 'BUILTINS.getattr', [var(tos - 1), "'__getitem__'"]),
                 call(var(out), var(out), [var(tos)])]
     elif name == 'POP_BLOCK':
         return [NOP]
@@ -272,7 +295,7 @@ BIN_TO_OP = {
 'SUBSCR':    '[]',
 }
 
-#TODO. == to __eq__, etc.
+# TODO. == to __eq__, etc.
 CMPOP_TO_OP = {
 
 }

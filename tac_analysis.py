@@ -7,13 +7,14 @@ def print_block(n, block):
 
 def test():
     import code_examples
-    import bcode_cfg
-    cfg = bcode_cfg.make_graph(code_examples.RenderScene)
+    import tac
+    name = 'tac_block'
+    cfg = tac.make_graph(code_examples.RenderScene, blockname=name)
     for n in sorted(cfg.nodes()):
-        block = cfg.node[n]['block']
-        #print('uses:', single_block_uses(block))
-        #print_block(n, block)
-        #print('push up:')
+        block = cfg.node[n][name]
+        # print('uses:', single_block_uses(block))
+        # print_block(n, block)
+        # print('push up:')
         single_block_constant_prpagation_update(block)
         block = list(single_block_kills(block)); block.reverse()
         single_block_constant_prpagation_update(block)
@@ -34,11 +35,11 @@ def undef(kills, gens):
 
 
 def _filter_killed(ins, kills, new_kills):
-    #moved here only because it is a transformation and not an analysis
+    # moved here only because it is a transformation and not an analysis
     if ins.is_del or ins.is_assign and set(ins.gens).issubset(kills):
         return
     yield ins._replace(gens=undef(kills, ins.gens),
-                       kills=kills-new_kills)
+                       kills=kills - new_kills)
 
 def single_block_kills(block, kills=frozenset()):
     'kills: the set of names that will no longer be used'
