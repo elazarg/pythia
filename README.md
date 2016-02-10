@@ -1,6 +1,6 @@
 # pythia
 
-Translating Python to Three Address Code
+Translating Python [bytecode](https://docs.python.org/3.5/library/dis.html#python-bytecode-instructions) to Three Address Code
 
 ## Pipeline operations by modules:
 
