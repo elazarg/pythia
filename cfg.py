@@ -31,7 +31,6 @@ def cfg_to_basic_blocks(cfg):
         block = []
         while True:
             bcode = cfg.node[n]['ins']
-            print(bcode)
             r = tac.make_TAC(bcode.opname, bcode.argval, bcode.stack_effect(),
                              cfg.node[n]['tos'])
             block.extend(r)
@@ -44,7 +43,7 @@ def cfg_to_basic_blocks(cfg):
         if label not in blocks:
             blocks.add_node(label)
         blocks.add_edges_from( (label, suc) for suc in cfg.successors_iter(n))
-        blocks[label]['block'] = block
+        blocks.node[label]['block'] = block
     # for n in blocks: print(n, ':', blocks[n]['block'])
     return blocks
 
@@ -60,9 +59,9 @@ def make_graph(f):
     return cfg_to_basic_blocks(cfg)
 
 
-def print_graph(cfg):
-    for b in sorted(cfg.node):
-        print(b, ':', cfg.node[b].get('tos', 'DEAD CODE'), ' <- ', cfg[b]['block'])
+def print_graph(cfg, code):
+    for b in sorted(cfg.nodes()):
+        print(b, ':', cfg.node[b][code])
 
 
 def draw(g: nx.DiGraph):
@@ -76,7 +75,8 @@ def test():
     from code_examples import calc_mandelbrot_vals as bar
     import cfg
     cfg = cfg.make_graph(code_examples.CreatePlasmaCube)
-    # print_graph(cfg)
+    print_graph(cfg, code='block')
+    
 
     
 if __name__ == '__main__':   

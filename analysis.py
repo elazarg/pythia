@@ -4,12 +4,13 @@ def print_block(n, block):
     for ins in block:
         print(ins.format())
 
+
 def test():
     import code_examples
     import cfg
     cfg = cfg.make_graph(code_examples.RenderScene)
-    for n in sorted(cfg.node):
-        block = cfg[n]['block']
+    for n in sorted(cfg.nodes()):
+        block = cfg.node[n]['block']
         #print('uses:', single_block_uses(block))
         #print_block(n, block)
         #print('push up:')
@@ -26,6 +27,7 @@ def single_block_uses(block):
         uses.difference_update(ins.gens)
         uses.update(ins.uses)
     return [x for x in uses if is_extended_identifier(x)]
+
 
 def undef(kills, gens):
     return [('_' if v in kills else v) for v in gens]
@@ -83,6 +85,7 @@ def chaotic(g:'graph', s:'node', lattice, f):
             if new != entry[v]:
                 entry[v] = new
                 wl.add(v)
+
 
 def is_extended_identifier(name):
     return name.replace('.', '').isidentifier()

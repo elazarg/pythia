@@ -18,8 +18,8 @@ def var(x):
 
 
 def print_3addr(cfg):
-    for n in sorted(cfg.node):
-        block = cfg[n]['block']
+    for n in sorted(cfg.nodes()):
+        block = cfg.node[n]['block']
         for ins in block:
             cmd = ins.fmt.format(**ins._asdict())
             print(n, ':\t', cmd , '\t\t', '' and ins)
