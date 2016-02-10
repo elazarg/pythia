@@ -12,7 +12,7 @@ def test():
     cfg = tac.make_graph(code_examples.RenderScene, blockname=name)
     for n in sorted(cfg.nodes()):
         block = cfg.node[n][name]
-        # print('uses:', single_block_uses(block))
+        print('uses:', single_block_uses(block))
         # print_block(n, block)
         # print('push up:')
         single_block_constant_prpagation_update(block)

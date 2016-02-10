@@ -130,7 +130,7 @@ def foreach(lhs, iterator, target):
     return tac(OP.FOR, gens=(lhs,), uses=(iterator,), target=target,
                fmt='{gens[0]} = next({uses[0]}) HANDLE: GOTO {target}')
 
-def jump(target, cond=True):
+def jump(target, cond='True'):
     return tac(OP.JUMP, uses=(cond,), target=target,
                fmt='IF {uses[0]} GOTO {target}')
 
