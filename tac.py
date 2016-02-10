@@ -7,8 +7,8 @@ from enum import Enum
 # I call the stack depth 'tos', although it usually means "the value at the top of the stack"
 def test():
     import code_examples
-    import cfg
-    cfg = cfg.make_graph(code_examples.CreateScene)
+    import bcode_cfg
+    cfg = bcode_cfg.make_graph(code_examples.CreateScene)
     print_3addr(cfg)
     # draw(cfg)
 
@@ -272,6 +272,7 @@ BIN_TO_OP = {
 'SUBSCR':    '[]',
 }
 
+#TODO. == to __eq__, etc.
 CMPOP_TO_OP = {
 
 }

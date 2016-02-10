@@ -71,28 +71,28 @@ class BCode(dis.Instruction):
 
 
 def update_break_instruction(ins_iter):
-    '''BREAK_LOOP is problematic, since it does not contain the target
-    and since the stack effect depends on whether it is inside FOR or not
-    the right way to fix it is from inside the graph, but for most purposes
-    running over the code will suffice.
+    '''BREAK_LOOP is problematic:
+    (a) It does not contain the target
+    (b) The both stack effect and target depends on whether it is inside FOR or inside WHILE.
+    The right way to fix it is from inside the graph, but for most purposes
+    running over the code will suffice; It'stack hard to do so from cfg, since its structure depends on the analysis...
     RAISE_VARARGS is obviously problematic too. we want to jump to all `excpet` clauses
-    and out of the function.
+    and out of the function; but more important, its POP_BLOCK should be matched appropriately.
     '''
-    s = []
+    stack = []
     for ins in ins_iter:
         if ins.opname == 'SETUP_LOOP':
-            s.append([ins, 'WHILE '])
+            stack.append([ins, 'WHILE '])
         if ins.opname == 'POP_BLOCK':
-            s.pop()
+            stack.pop()
         if ins.opname == 'FOR_ITER':
-            s[-1][-1] = 'FOR '
+            stack[-1][-1] = 'FOR '
         if ins.opname == 'BREAK_LOOP':
-            last = next(x for x in reversed(s))
+            last = stack[-1]
             to = last[0].argval
-            yield BCode(*ins._replace(argrepr='{}to {}'.format(last[-1], to)))
-        else:
-            yield BCode(*ins)
-    assert not s
+            ins = ins._replace(argrepr='{}to {}'.format(last[-1], to))
+        yield BCode(*ins)
+    assert len(stack) == 0
 
 
 def get_instructions(f):

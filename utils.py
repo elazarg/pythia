@@ -1,4 +1,3 @@
-from collections.abc import MutableSet
 
 class ComplementSet:
     def __init__(self, iterable=()):

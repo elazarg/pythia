@@ -7,8 +7,8 @@ def print_block(n, block):
 
 def test():
     import code_examples
-    import cfg
-    cfg = cfg.make_graph(code_examples.RenderScene)
+    import bcode_cfg
+    cfg = bcode_cfg.make_graph(code_examples.RenderScene)
     for n in sorted(cfg.nodes()):
         block = cfg.node[n]['block']
         #print('uses:', single_block_uses(block))

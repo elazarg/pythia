@@ -72,9 +72,7 @@ def draw(g: nx.DiGraph):
 
 def test():
     import code_examples
-    from code_examples import calc_mandelbrot_vals as bar
-    import cfg
-    cfg = cfg.make_graph(code_examples.CreatePlasmaCube)
+    cfg = make_graph(code_examples.CreatePlasmaCube)
     print_graph(cfg, code='block')
     
 
