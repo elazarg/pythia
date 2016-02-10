@@ -10,7 +10,7 @@ from enum import Enum
 def test():
     import code_examples
     tac_name = 'tac_block'
-    cfg = make_graph(code_examples.CreateScene, blockname=tac_name)
+    cfg = make_cfg(code_examples.CreateScene, blockname=tac_name)
     print_3addr(cfg, blockname=tac_name)
     # draw(cfg)
 
@@ -23,10 +23,10 @@ def print_3addr(cfg, blockname):
             print(n, ':\t', cmd , '\t\t', '' and ins)
 
 
-def make_graph(f, blockname):
+def make_cfg(f, blockname):
     import bcode_cfg
     bcode_name = 'bcode_block'
-    blocks = bcode_cfg.make_graph(f, blockname=bcode_name)
+    blocks = bcode_cfg.make_cfg(f, blockname=bcode_name)
         
     for label in blocks.nodes():
         block = blocks.node[label]

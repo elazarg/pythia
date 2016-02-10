@@ -1,28 +1,32 @@
 import networkx as nx
 import bcode
-import utils
+import graph_utils as gu
 
 def accumulate_stack_depth(cfg, source, into_name, weight):
     '''The stack depth supposed to be independent of path.
-    So dijkstra on the undirected graph suffices.
+    So dijkstra on the undirected graph suffices (and maybe too strong. we don't need minimality)
     The `undirected` part is just because we want to work
     with unreachable code too. 
     '''
-    lengths = nx.single_source_dijkstra_path_length(
-              utils.copy_to_bidirectional(cfg), source=source, weight=weight)
-    nx.set_node_attributes(cfg, name=into_name, values=lengths)
+    depths = nx.single_source_dijkstra_path_length(
+              gu.copy_to_bidirectional(cfg), source=source, weight=weight)
+    nx.set_node_attributes(cfg, name=into_name, values=depths)
 
 
-def make_graph(f, blockname):
-    dbs = dict(bcode.get_instructions(f))
+def make_cfg(f, blockname):
+    dbs = {b.offset: b for b in bcode.get_instructions(f)}
     cfg = nx.DiGraph([(b.offset, dbs[j].offset, {'weight': stack_effect})
-                    for offset, b in dbs.items()
+                    for b in dbs.values()
                     for (j, stack_effect) in b.next_list() if dbs.get(j)])
-    for offset, b in dbs.items():
-        cfg.node[offset]['BCode'] = b
+    nx.set_node_attributes(cfg, name='BCode', values=dbs)
+    
     accumulate_stack_depth(cfg, source=0, into_name='tos', weight='weight')
-    return cfg_to_basic_blocks(cfg, blockname=blockname,
-                               f=lambda d: (d['BCode'], d['tos']))
+    
+    pairs_graph = gu.node_data_map(cfg, f=lambda d:(d['BCode'], d['tos']))
+    
+    basic_block_cfg = gu.contract_chains(pairs_graph, blockname=blockname)
+    
+    return basic_block_cfg
 
 
 def print_graph(cfg, code):
@@ -39,36 +43,8 @@ def draw(g: nx.DiGraph):
 def test():
     import code_examples
     name = 'bcode_block'
-    cfg = make_graph(code_examples.CreatePlasmaCube, blockname=name)
+    cfg = make_cfg(code_examples.CreatePlasmaCube, blockname=name)
     print_graph(cfg, code=name)
-    
 
-def cfg_to_basic_blocks(cfg, blockname='block', f=lambda x:x):
-    '''I Tried to make it "general chain contraction algorithm"...
-    Finds basic blocks in the graph.
-    there's (almost) nothing special about cfg in particular.
-    '''
-    from itertools import chain
-    starts = set(chain((n for n in cfg if cfg.in_degree(n) != 1),
-                 chain.from_iterable(cfg.successors_iter(n) for n in cfg
-                                     if cfg.out_degree(n) > 1)))
-    blocks = nx.DiGraph()
-    for label in starts:
-        n = label
-        block = []
-        while True:
-            block.append(f(cfg.node[n]))
-            if cfg.out_degree(n) != 1:
-                break
-            next_n = next(cfg.successors_iter(n))
-            if cfg.in_degree(next_n) > 1:
-                break
-            n = next_n
-        if label not in blocks:
-            blocks.add_node(label)
-        blocks.add_edges_from((label, suc) for suc in cfg.successors_iter(n))
-        blocks.node[label][blockname] = block
-    return blocks
-    
 if __name__ == '__main__':   
     test()

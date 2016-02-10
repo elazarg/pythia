@@ -9,7 +9,7 @@ def test():
     import code_examples
     import tac
     name = 'tac_block'
-    cfg = tac.make_graph(code_examples.RenderScene, blockname=name)
+    cfg = tac.make_cfg(code_examples.RenderScene, blockname=name)
     for n in sorted(cfg.nodes()):
         block = cfg.node[n][name]
         print('uses:', single_block_uses(block))

@@ -96,8 +96,7 @@ def update_break_instruction(ins_iter):
 
 
 def get_instructions(f):
-    return ((b.offset, b)
-            for b in update_break_instruction(dis.get_instructions(f)))
+    return update_break_instruction(dis.get_instructions(f))
 
 sequencers = frozenset(('RETURN_VALUE', 'CONTINUE_LOOP', 'BREAK_LOOP', 'RAISE_VARARGS', 'JUMP_FORWARD', 'JUMP_ABSOLUTE'))
 
