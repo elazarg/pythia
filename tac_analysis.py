@@ -41,6 +41,7 @@ def _filter_killed(ins, kills, new_kills):
     yield ins._replace(gens=undef(kills, ins.gens),
                        kills=kills - new_kills)
 
+
 def single_block_kills(block, kills=frozenset()):
     'kills: the set of names that will no longer be used'
     for ins in reversed(block):
@@ -74,6 +75,7 @@ def single_block_constant_prpagation_update(block):
 
 
 def chaotic(g:'graph', s:'node', lattice, f):
+    'Not working. Only here to remember...'
     entry = {v: lattice.BOT
              for v in g.nodes()}
     entry[s] = lattice.EMPTYSET

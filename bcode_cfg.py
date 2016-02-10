@@ -22,7 +22,7 @@ def make_graph(f, blockname):
         cfg.node[offset]['BCode'] = b
     accumulate_stack_depth(cfg, source=0, into_name='tos', weight='weight')
     return cfg_to_basic_blocks(cfg, blockname=blockname,
-                               data_map=lambda d: [(d['BCode'], d['tos'])])
+                               f=lambda d: (d['BCode'], d['tos']))
 
 
 def print_graph(cfg, code):
@@ -43,7 +43,7 @@ def test():
     print_graph(cfg, code=name)
     
 
-def cfg_to_basic_blocks(cfg, blockname='block', data_map:'data to list'=lambda x:[x]):
+def cfg_to_basic_blocks(cfg, blockname='block', f=lambda x:x):
     '''I Tried to make it "general chain contraction algorithm"...
     Finds basic blocks in the graph.
     there's (almost) nothing special about cfg in particular.
@@ -57,7 +57,7 @@ def cfg_to_basic_blocks(cfg, blockname='block', data_map:'data to list'=lambda x
         n = label
         block = []
         while True:
-            block.extend(data_map(cfg.node[n]))
+            block.append(f(cfg.node[n]))
             if cfg.out_degree(n) != 1:
                 break
             next_n = next(cfg.successors_iter(n))

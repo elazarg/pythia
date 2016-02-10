@@ -4,7 +4,7 @@ from enum import Enum
 
 # TAC is an instruction that knows where it stands :)
 # i.e, it knows the current stack depth
-# I call the stack depth 'tos', although it usually means "the value at the top of the stack"
+# I call the stack depth 'tos', although in Python docs it means "the value at the top of the stack"
 
 
 def test():
@@ -97,20 +97,20 @@ def unary(lhs, op):
     return call(lhs, '{}.{}'.format(lhs, op))
 
 def assign(lhs, rhs, is_id=True):
-    return tac(OP.ASSIGN, gens=[lhs], uses=[rhs], is_id=is_id,
+    return tac(OP.ASSIGN, gens=(lhs,), uses=(rhs,), is_id=is_id,
                   fmt='{gens[0]} = {uses[0]}')
 
 def assign_attr(lhs, rhs, attr, is_id=True):
-    return tac(OP.ASSIGN, gens=[lhs], uses=[rhs], is_id=is_id,
+    return tac(OP.ASSIGN, gens=(lhs,), uses=(rhs,), is_id=is_id,
                   fmt='{gens[0]} = {uses[0]}.' + attr)
 
 def mulassign(*lhs, rhs, is_id=True):
-    return tac(OP.ASSIGN, gens=lhs, uses=[rhs], is_id=is_id,
-                  fmt=', '.join('gens[' + i + ']' for i in range(lhs)) + ' = {uses[0]}')
+    return tac(OP.ASSIGN, gens=lhs, uses=(rhs,), is_id=is_id,
+                  fmt=', '.join('gens[{}]'.format(i) for i in range(lhs)) + ' = {uses[0]}')
 
 def binary(lhs, left, op, right):
     # note that operators are not *exactly* like attribute access, since it is never an attribute
-    return tac(OP.BINARY, gens=[lhs], uses=(left, right), op=op,
+    return tac(OP.BINARY, gens=(lhs,), uses=(left, right), op=op,
                fmt='{gens[0]} = {uses[0]} {op} {uses[1]}')
 
 def inplace(lhs, op, rhs):
@@ -118,24 +118,27 @@ def inplace(lhs, op, rhs):
                fmt='{uses[0]} {op}= {uses[1]}')
 
 def call(lhs, f, args=(), kwargs=()):
-    fmt_args = ', '.join('{uses[' + str(x) + ']}' for x in range(1, len(args) + 1))
-    fmt_kwargs = ', '.join('{uses[' + str(x) + ']:uses[' + str(x + 1) + ']:}' for x in range(len(args) + 1, len(args) + 1 + (len(kwargs) // 2), 2))
-    return tac(OP.CALL, gens=[lhs], uses=[f, *args, *kwargs], func=f, args=args, kwargs=kwargs,
+    # this way of formatting wont let use change the number of arguments easily.
+    # but it is unlikely to be needed  
+    fmt_args = ', '.join('{{uses[{}]}}'.format(x) for x in range(1, len(args) + 1))
+    fmt_kwargs = ', '.join('{{uses[{}]:uses[{}]:}}'.format(x, x + 1) for x in range(len(args) + 1, len(args) + 1 + (len(kwargs) // 2), 2))
+    return tac(OP.CALL, gens=(lhs,), uses=(f, *args, *kwargs), func=f, args=args, kwargs=kwargs,
                 fmt='{gens[0]} = {uses[0]}(' + fmt_args + ')' + \
                      (('(kw=' + fmt_kwargs + ')') if kwargs else ''))
 
-def foreach(lhs, iterator, val):
-    return tac(OP.FOR, gens=[lhs], uses=[iterator], target=val,
+def foreach(lhs, iterator, target):
+    return tac(OP.FOR, gens=(lhs,), uses=(iterator,), target=target,
                fmt='{gens[0]} = next({uses[0]}) HANDLE: GOTO {target}')
 
-def include(lhs, modname):
-    return tac(OP.IMPORT, gens=[lhs],
-                  fmt='{gens[0]} = IMPORT ' + modname)
+def jump(target, cond=True):
+    return tac(OP.JUMP, uses=(cond,), target=target,
+               fmt='IF {uses[0]} GOTO {target}')
 
-def include1(lhs, feature, modname):
-    return tac(OP.IMPORT, gens=[lhs],
-                fmt=('{gens[0]} = FROM ' + modname + ' IMPORT ' + feature))
-
+def include(lhs, modname, feature=None):
+    fmt = '{gens[0]} = IMPORT(' + modname + ')'
+    if feature is not None:
+        fmt += '.' + feature 
+    return tac(OP.IMPORT, gens=(lhs,), fm=fmt)
 
 def get_gens(block):
     return set(it.chain.from_iterable(ins.gens for ins in block))
@@ -151,7 +154,12 @@ def make_TAC(opname, val, stack_effect, tos, starts_line=None):
         tac += [delete(var(tos + i)) for i in range(stack_effect + 1, 1)]
     return [t._replace(starts_line=starts_line) for t in tac]
 
+
 def make_TAC_no_dels(opname, val, stack_effect, tos):
+    '''Yes, this is a long function, since it partially describes the semantics of the bytecode,
+    So it is a long switch. Similar to the one seen in interpreters.
+    It is likely that a table-driven approach will be cleaner and more portable.
+    '''
     out = tos + stack_effect if tos is not None else None
     name, op = choose_category(opname, val)
     if name == 'UNARY_ATTR':
@@ -162,17 +170,15 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
         return [binary(var(out), var(tos - 1), op, var(tos))]
     elif name == 'INPLACE':
         return [inplace(var(out), var(tos), op)]
-    elif name == 'JUMP':
-        return [tac(OP.JUMP, uses=[True], target=val,
-                   fmt='IF {uses[0]} GOTO {target}')]
     elif name.startswith('POP_JUMP_IF_'):
         res = [call(var(tos), 'not', var(tos))] if name.endswith('FALSE') else [] 
-        return res + [tac(OP.JUMP, uses=[var(tos)], target=val,
-                    fmt='IF {uses[0]} GOTO {target}')]
+        return res + [jump(val, var(tos))]
+    elif name == 'JUMP':
+        return [jump(val)]
     elif name == 'POP_TOP':
-        return []  # will be completed by make_TAC
+        return []  # will be completed by the dels in make_TAC
     elif name == 'DELETE_FAST':
-        return []  # will be completed by make_TAC
+        return []  # will be completed by the dels in make_TAC
     elif name == 'ROT_TWO':
         fresh = var(tos + 1)
         return [assign(fresh, var(tos)),
@@ -230,7 +236,7 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
     elif name == 'IMPORT_NAME':
         return [include(var(out), val)]
     elif name == 'IMPORT_FROM':
-        return [include1(var(out), val, var(tos))]
+        return [include(var(out), var(tos), val)]
     elif name == 'BUILD':
         if op == 'SLICE':
             if val == 2:
@@ -247,11 +253,12 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
         mid_kw = [(var(i) + ': ' + var(i + 1))
                             for i in range(tos - nkwargs + 1, tos, 2)]
         return [call(var(out), var(tos - total), mid, mid_kw)]
-    assert False, '{}: {}'.format(opname, val)
+    assert False, 'Falling through. {}: {}'.format(opname, val)
 
 
 
 def choose_category(opname, argval):
+    # I'm not sure that this function is actually helpful. (ELAZAR)
     if opname in ('UNARY_POSITIVE', 'UNARY_NEGATIVE', 'UNARY_INVERT'):
         return 'UNARY_ATTR', UN_TO_OP[opname]
     if opname in ('GET_ITER', 'UNARY_NOT', 'GET_YIELD_FROM_ITER'):
