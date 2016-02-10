@@ -9,7 +9,7 @@ def reverse_weights(g:nx.DiGraph, weight='weight'):
 
 
 def copy_to_bidirectional(g:nx.DiGraph, weight='weight'):
-    return nx.compose(g, reverse_weights(g))
+    return nx.compose(g, reverse_weights(g, weight=weight))
 
 
 def contract_chains(g:nx.DiGraph, blockname='block'):
@@ -45,11 +45,11 @@ def contract_chains(g:nx.DiGraph, blockname='block'):
 def node_data_map_inplace(g, f, attr=None):
     if attr is None:
         for n in g.nodes_iter():
-            g.node[n] = f(g.node[n])
+            g.node[n] = f(n, g.node[n])
     else:
         for n in g.nodes_iter():
             data = g.node[n]
-            data[attr] = f(data[attr])
+            data[attr] = f(n, data[attr])
 
 
 def node_data_map(g, f, attr=None):

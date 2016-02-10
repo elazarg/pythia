@@ -2,7 +2,7 @@ from collections import namedtuple
 import itertools as it
 from enum import Enum
 
-# TAC is an instruction that knows where it stands :)
+# TAC: Three Address Code. An instruction that knows where it stands.
 # i.e, it knows the current stack depth
 # I call the stack depth 'tos', although in Python docs it means "the value at the top of the stack"
 
@@ -10,7 +10,7 @@ from enum import Enum
 def test():
     import code_examples
     tac_name = 'tac_block'
-    cfg = make_cfg(code_examples.CreateScene, blockname=tac_name)
+    cfg = make_tacblock_cfg(code_examples.CreateScene, blockname=tac_name)
     print_3addr(cfg, blockname=tac_name)
     # draw(cfg)
 
@@ -23,20 +23,17 @@ def print_3addr(cfg, blockname):
             print(n, ':\t', cmd , '\t\t', '' and ins)
 
 
-def make_cfg(f, blockname):
-    import bcode_cfg
-    bcode_name = 'bcode_block'
-    blocks = bcode_cfg.make_cfg(f, blockname=bcode_name)
-        
-    for label in blocks.nodes():
-        block = blocks.node[label]
-        tac_block = list(it.chain.from_iterable(
+def make_tacblock_cfg(f, blockname):
+    def bcode_block_to_tac_block(n, block_data):
+        return {blockname: list(it.chain.from_iterable(
                         make_TAC(bc.opname, bc.argval, bc.stack_effect(), tos, bc.starts_line)
-                        for bc, tos in block[bcode_name]))
-        del block[bcode_name]
-        block[blockname] = tac_block
+                        for bc, tos in bcode_cfg.get_code_depth_pairs(block_data))) }
     
-    return blocks
+    import bcode_cfg
+    bcode_blocks = bcode_cfg.make_bcode_block_cfg(f)
+    import graph_utils as gu
+    tac_blocks = gu.node_data_map(bcode_blocks, bcode_block_to_tac_block)
+    return tac_blocks
 
 
 def var(x):
