@@ -1,7 +1,8 @@
 # pythia
-Python to HL IR
 
-Pipeline operations by modules:
+Translating Python to Three Address Code
+
+## Pipeline operations by modules:
 
 1. [bcode.py](bcode.py) Python code to bytecode (CPython functions)
 
