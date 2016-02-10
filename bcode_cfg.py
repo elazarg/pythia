@@ -2,31 +2,32 @@ import networkx as nx
 import bcode
 import graph_utils as gu
 
-def accumulate_stack_depth(cfg, source, into_name, weight):
-    '''The stack depth supposed to be independent of path.
+def update_stackdepth(cfg):
+    '''The stack depth is supposed to be independent of path.
     So dijkstra on the undirected graph suffices (and maybe too strong. we don't need minimality)
     The `undirected` part is just because we want to work
     with unreachable code too. 
     '''
-    depths = nx.single_source_dijkstra_path_length(
-              gu.copy_to_bidirectional(cfg), source=source, weight=weight)
-    nx.set_node_attributes(cfg, name=into_name, values=depths)
+    bidi = gu.copy_to_bidirectional(cfg, weight='stack_effect')
+    depths = nx.single_source_dijkstra_path_length(bidi, source=0, weight='stack_effect')
+    nx.set_node_attributes(cfg, 'stack_depth', depths)
+    return cfg
 
 
-def make_cfg(f, blockname):
+def make_bcode_block_cfg(f):
     dbs = {b.offset: b for b in bcode.get_instructions(f)}
-    cfg = nx.DiGraph([(b.offset, dbs[j].offset, {'weight': stack_effect})
+    cfg = nx.DiGraph([(b.offset, dbs[j].offset, {'stack_effect': stack_effect})
                     for b in dbs.values()
                     for (j, stack_effect) in b.next_list() if dbs.get(j)])
     nx.set_node_attributes(cfg, name='BCode', values=dbs)
-    
-    accumulate_stack_depth(cfg, source=0, into_name='tos', weight='weight')
-    
-    pairs_graph = gu.node_data_map(cfg, f=lambda d:(d['BCode'], d['tos']))
-    
-    basic_block_cfg = gu.contract_chains(pairs_graph, blockname=blockname)
-    
+    update_stackdepth(cfg)
+    # each node will hold a block of dictionaries - bcode and stack_depth
+    basic_block_cfg = gu.contract_chains(cfg, blockname='bcode_block')
     return basic_block_cfg
+
+
+def get_code_depth_pairs(data):
+    return [ (d['BCode'], d['stack_depth']) for d in data['bcode_block']]
 
 
 def print_graph(cfg, code):
@@ -43,7 +44,7 @@ def draw(g: nx.DiGraph):
 def test():
     import code_examples
     name = 'bcode_block'
-    cfg = make_cfg(code_examples.CreatePlasmaCube, blockname=name)
+    cfg = make_bcode_block_cfg(code_examples.CreatePlasmaCube, blockname=name)
     print_graph(cfg, code=name)
 
 if __name__ == '__main__':   
