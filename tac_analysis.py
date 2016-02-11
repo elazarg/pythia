@@ -26,7 +26,7 @@ def test():
     import code_examples
     import tac
     name = 'tac_block'
-    cfg = tac.make_tacblock_cfg(code_examples.RenderScene, blockname=name)
+    cfg = tac.make_tacblock_cfg(code_examples.RayTrace, blockname=name)
     dataflow(cfg, 0, {})
     for n in sorted(cfg.nodes()):
         block = cfg.node[n][name]
@@ -83,7 +83,7 @@ def single_block_constant_prpagation_update(block, in_cons_map):
             if rhs in cons_map:
                 rhs = cons_map[rhs]
             cons_map[lhs] = rhs
-        else:
+        elif not ins.is_inplace:
             block[i] = ins._replace(uses=[cons_map.get(v, v)
                                           for v in ins.uses])
             for v in ins.gens:
@@ -153,17 +153,12 @@ def dataflow(g:'graph', start:'node', start_value):
     wl = set(g.nodes())
     while wl:
         u = wl.pop()
-        print(u)
         inb = g.node[u]['inb']
-        print(u, inb)
         join(inb, [g.node[x]['outb'] for x in g.predecessors(u)])
-        print(u, inb)
         outb = single_block_constant_prpagation_update(g.node[u]['tac_block'], inb)
-        print(u, outb)
         if outb != g.node[u]['outb']:
             g.node[u]['outb'] = outb
             wl.update(g.successors(u))
-        print(wl)
 
 if __name__ == '__main__':
     test()

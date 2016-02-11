@@ -73,6 +73,10 @@ class Tac(namedtuple('Tac', fields)):
     @property
     def is_del(self):
         return self.opcode == OP.DEL 
+
+    @property
+    def is_inplace(self):
+        return self.opcode == OP.INPLACE
     
     def format(self):
         return self.fmt.format(**self._asdict()) \
@@ -112,7 +116,7 @@ def binary(lhs, left, op, right):
     return tac(OP.BINARY, gens=(lhs,), uses=(left, right), op=op,
                fmt='{gens[0]} = {uses[0]} {op} {uses[1]}')
 
-def inplace(lhs, op, rhs):
+def inplace(lhs, rhs, op):
     return tac(OP.INPLACE, uses=(lhs, rhs), op=op,
                fmt='{uses[0]} {op}= {uses[1]}')
 
