@@ -25,14 +25,16 @@ def print_3addr(cfg, blockname):
 
 def make_tacblock_cfg(f, blockname):
     def bcode_block_to_tac_block(n, block_data):
-        return {blockname: list(it.chain.from_iterable(
-                        make_TAC(bc.opname, bc.argval, bc.stack_effect(), tos, bc.starts_line)
-                        for bc, tos in bcode_cfg.get_code_depth_pairs(block_data))) }
+        return list(it.chain.from_iterable(
+                    make_TAC(bc.opname, bc.argval, bc.stack_effect(), tos, bc.starts_line)
+                    for bc, tos in bcode_cfg.get_code_depth_pairs(block_data)))
     
     import bcode_cfg
     bcode_blocks = bcode_cfg.make_bcode_block_cfg(f)
     import graph_utils as gu
-    tac_blocks = gu.node_data_map(bcode_blocks, bcode_block_to_tac_block)
+    tac_blocks = gu.node_data_map(bcode_blocks, 
+                                  bcode_block_to_tac_block,
+                                  blockname)
     return tac_blocks
 
 

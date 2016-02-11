@@ -49,7 +49,7 @@ def node_data_map_inplace(g, f, attr=None):
     else:
         for n in g.nodes_iter():
             data = g.node[n]
-            data[attr] = f(n, data[attr])
+            data[attr] = f(n, data)
 
 
 def node_data_map(g, f, attr=None):
