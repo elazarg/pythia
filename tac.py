@@ -17,6 +17,9 @@ def test():
 
 def print_3addr(cfg, blockname):
     for n in sorted(cfg.nodes()):
+        # The call for sorted() gives us for free the ordering of blocks by "fallthrough"
+        # It is not guaranteed anywhere, but it makes sense - the order of blocks is the 
+        # order of the lines in the code
         block = cfg.node[n][blockname]
         for ins in block:
             cmd = ins.fmt.format(**ins._asdict())
@@ -30,7 +33,7 @@ def make_tacblock_cfg(f, blockname):
                     for bc, tos in bcode_cfg.get_code_depth_pairs(block_data)))
     
     import bcode_cfg
-    bcode_blocks = bcode_cfg.make_bcode_block_cfg(f)
+    bcode_blocks = bcode_cfg.make_bcode_block_cfg_from_function(f)
     import graph_utils as gu
     tac_blocks = gu.node_data_map(bcode_blocks, 
                                   bcode_block_to_tac_block,
@@ -41,7 +44,8 @@ def make_tacblock_cfg(f, blockname):
 def var(x):
     return chr(ord('α') + x - 1)
 
-
+def is_stackvar(v):
+    return v >= 'α'
 
 class OP(Enum):
     NOP = 0
@@ -86,6 +90,8 @@ def tac(opcode, *, fmt, gens=(), uses=(), kills=(), is_id=False, op=None,
         target=None, func=None, args=(), kwargs=(), starts_line=None):
     assert isinstance(opcode, OP)
     assert isinstance(fmt, str)
+    for args in [uses, kills, args]:
+        assert isinstance(args, (tuple, frozenset))
     return Tac(opcode, fmt=fmt, gens=gens, uses=uses, kills=kills or gens, is_id=is_id,
                op=op, target=target, func=func, args=args, kwargs=kwargs,
                starts_line=starts_line)
@@ -93,7 +99,7 @@ def tac(opcode, *, fmt, gens=(), uses=(), kills=(), is_id=False, op=None,
 NOP = tac(OP.NOP, fmt='NOP')
 
 def delete(*vs):
-    return tac(OP.DEL, kills=set(vs),
+    return tac(OP.DEL, kills=vs,
                fmt='DEL {kills}')
 
 def unary(lhs, op):
@@ -117,14 +123,15 @@ def binary(lhs, left, op, right):
                fmt='{gens[0]} = {uses[0]} {op} {uses[1]}')
 
 def inplace(lhs, rhs, op):
-    return tac(OP.INPLACE, uses=(lhs, rhs), op=op,
+    return tac(OP.INPLACE, uses=(lhs, rhs), gens=(lhs,), op=op,
                fmt='{uses[0]} {op}= {uses[1]}')
 
 def call(lhs, f, args=(), kwargs=()):
     # this way of formatting wont let use change the number of arguments easily.
     # but it is unlikely to be needed  
     fmt_args = ', '.join('{{uses[{}]}}'.format(x) for x in range(1, len(args) + 1))
-    fmt_kwargs = ', '.join('{{uses[{}]:uses[{}]:}}'.format(x, x + 1) for x in range(len(args) + 1, len(args) + 1 + (len(kwargs) // 2), 2))
+    fmt_kwargs = ', '.join('{{uses[{}]:uses[{}]:}}'.format(x, x + 1)
+                           for x in range(len(args) + 1, len(args) + 1 + (len(kwargs) // 2), 2))
     return tac(OP.CALL, gens=(lhs,), uses=(f, *args, *kwargs), func=f, args=args, kwargs=kwargs,
                 fmt='{gens[0]} = {uses[0]}(' + fmt_args + ')' + \
                      (('(kw=' + fmt_kwargs + ')') if kwargs else ''))
@@ -168,13 +175,13 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
     if name == 'UNARY_ATTR':
         return [unary(var(tos), op)]
     if name == 'UNARY_FUNC':
-        return [call(var(out), op, var(tos))]
+        return [call(var(out), op, (var(tos),))]
     elif name == 'BINARY':
         return [binary(var(out), var(tos - 1), op, var(tos))]
     elif name == 'INPLACE':
         return [inplace(var(out), var(tos), op)]
     elif name.startswith('POP_JUMP_IF_'):
-        res = [call(var(tos), 'not', var(tos))] if name.endswith('FALSE') else [] 
+        res = [call(var(tos), 'not', (var(tos),))] if name.endswith('FALSE') else [] 
         return res + [jump(val, var(tos))]
     elif name == 'JUMP':
         return [jump(val)]
@@ -201,7 +208,7 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
         return [assign(var(out), var(tos - 2)),
                 assign(var(out + 1), var(tos - 1))]
     elif name == 'RETURN_VALUE':
-        return [tac(OP.RET, uses=[var(tos)], fmt='RETURN {uses[0]}')]
+        return [tac(OP.RET, uses=(var(tos),), fmt='RETURN {uses[0]}')]
     elif name == 'YIELD_VALUE':
         return [tac(OP.YIELD, gens=[var(out)], uses=[var(tos)],
                 fmt='YIELD {uses[0]}')]
@@ -209,7 +216,7 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
         return [foreach(var(out), var(tos), val)]
     elif name == 'LOAD':
         if op == 'ATTR':
-            return [call(var(out), 'BUILTINS.getattr', [var(tos), val])]
+            return [call(var(out), 'BUILTINS.getattr', (var(tos), val))]
         if op == 'FAST':     rhs = val
         elif op == 'CONST':  rhs = repr(val)
         elif op == 'DEREF':  rhs = 'NONLOCAL.{}'.format(val)
@@ -222,11 +229,11 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
     elif name.startswith('STORE_ATTR'):
         return [assign('{}.{}'.format(var(tos), val), var(tos - 1))]
     elif name.startswith('STORE_SUBSCR'):
-        return [call(var(tos), 'BUILTINS.getattr', [var(tos - 1), "'__setitem__'"]),
-                call(var(tos), var(tos), [var(tos - 2)])]
+        return [call(var(tos), 'BUILTINS.getattr', (var(tos - 1), "'__setitem__'")),
+                call(var(tos), var(tos), (var(tos - 2),))]
     elif name == 'BINARY_SUBSCR':
-        return [call(var(out), 'BUILTINS.getattr', [var(tos - 1), "'__getitem__'"]),
-                call(var(out), var(out), [var(tos)])]
+        return [call(var(out), 'BUILTINS.getattr', (var(tos - 1), "'__getitem__'")),
+                call(var(out), var(out), (var(tos),))]
     elif name == 'POP_BLOCK':
         return [NOP]
     elif name == 'SETUP_LOOP':
@@ -243,11 +250,11 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
     elif name == 'BUILD':
         if op == 'SLICE':
             if val == 2:
-                args = [var(tos - 1), var(tos)]
+                args = (var(tos - 1), var(tos))
             else:
-                args = [var(tos), var(tos - 1), var(tos - 2)]
+                args = (var(tos), var(tos - 1), var(tos - 2))
             return [call(var(out), 'SLICE', args)]
-        return [call(var(out), op, [var(i + 1) for i in range(tos - val, tos)])]
+        return [call(var(out), op, tuple(var(i + 1) for i in range(tos - val, tos)))]
     elif name == 'CALL_FUNCTION':
         nargs = val & 0xFF
         nkwargs = 2 * ((val >> 8) & 0xFF)
@@ -255,7 +262,7 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
         mid = [var(i + 1) for i in range(tos - nkwargs - nargs, tos - nkwargs)]
         mid_kw = [(var(i) + ': ' + var(i + 1))
                             for i in range(tos - nkwargs + 1, tos, 2)]
-        return [call(var(out), var(tos - total), mid, mid_kw)]
+        return [call(var(out), var(tos - total), tuple(mid), tuple(mid_kw))]
     assert False, 'Falling through. {}: {}'.format(opname, val)
 
 
