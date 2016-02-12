@@ -15,9 +15,6 @@ def update_stackdepth(cfg):
     nx.set_node_attributes(cfg, 'stack_depth', depths)
     return cfg
 
-def make_bcode_block_cfg_from_function(f):
-    instructions = bcode.get_instructions(f)
-    return make_bcode_block_cfg(instructions)
 
 def make_bcode_block_cfg(instructions):
     dbs = {b.offset: b for b in instructions}
@@ -44,6 +41,11 @@ def draw(g: nx.DiGraph):
     import matplotlib.pyplot as plt
     nx.draw_networkx(g, with_labels=True)
     plt.show()
+
+
+def make_bcode_block_cfg_from_function(f):
+    instructions = bcode.get_instructions(f)
+    return make_bcode_block_cfg(instructions)
 
 
 def test():
