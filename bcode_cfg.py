@@ -44,7 +44,8 @@ def draw(g: nx.DiGraph):
 def test():
     import code_examples
     name = 'bcode_block'
-    cfg = make_bcode_block_cfg(code_examples.CreatePlasmaCube, blockname=name)
+    #cfg = make_bcode_block_cfg(code_examples.CreatePlasmaCube, blockname=name)
+    cfg = make_bcode_block_cfg(code_examples.CreatePlasmaCube)
     print_graph(cfg, code=name)
 
 if __name__ == '__main__':   

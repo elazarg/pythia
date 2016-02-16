@@ -1,10 +1,29 @@
 # TODO: full graph constant/copy propagation
+import graph_utils
 
 def print_block(n, block):
     print(n, ':')
     for ins in block:
         print(ins.format())
-
+    
+def print_tac_cfg(tac_cfg, blockname):
+    for n in sorted(tac_cfg.nodes()):
+        print("succ:", tac_cfg.successors(n))
+        block = tac_cfg.node[n][blockname]
+        print_block(n, block)
+    
+def simplify_tac_block(n, block_data, block_name):
+    #print("block", str(block))
+    #assert False
+    block = block_data[block_name]
+    single_block_constant_prpagation_update(block)
+    block = list(single_block_kills(block)); block.reverse()
+    single_block_constant_prpagation_update(block)
+    block = list(single_block_kills(block)); block.reverse()
+    return {block_name: block}
+    
+def simplified_tac_blocks_cfg(tac_cfg, blockname):
+    return graph_utils.node_data_map(tac_cfg, lambda n, block_data: simplify_tac_block(n, block_data, blockname))
 
 def test():
     import code_examples

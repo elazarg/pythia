@@ -37,9 +37,8 @@ def make_tacblock_cfg(f, blockname):
 
 
 def var(x):
-    return chr(ord('α') + x - 1)
-
-
+    #return chr(945 + x - 1)
+    return 'var' + str(x)
 
 class OP(Enum):
     NOP = 0
@@ -74,7 +73,14 @@ class Tac(namedtuple('Tac', fields)):
     
     def format(self):
         return self.fmt.format(**self._asdict()) \
-            # +  ' \t\t -- kills: {}'.format(self.kills) 
+            # +  ' \t\t -- kills: {}'.format(self.kills)
+            
+    # making the class hashable for direct use as nodes in networkx graphs
+    # lookup is by reference, not some smart equivalence condition
+    def __eq__(self, *args, **kwargs):
+        return object.__eq__(self, *args, **kwargs)
+    def __hash__(self, *args, **kwargs):
+        return object.__hash__(self, *args, **kwargs) 
 
 def tac(opcode, *, fmt, gens=(), uses=(), kills=(), is_id=False, op=None,
         target=None, func=None, args=(), kwargs=(), starts_line=None):
@@ -316,3 +322,4 @@ UN_TO_OP = {
 
 if __name__ == '__main__':   
     test()
+
