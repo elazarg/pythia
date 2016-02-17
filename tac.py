@@ -210,12 +210,14 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
     elif name == 'LOAD':
         if op == 'ATTR':
             return [call(var(out), 'BUILTINS.getattr', [var(tos), val])]
-        if op == 'FAST':     rhs = val
+        if op == 'FAST' or op == 'NAME':     rhs = val
         elif op == 'CONST':  rhs = repr(val)
         elif op == 'DEREF':  rhs = 'NONLOCAL.{}'.format(val)
         elif op == 'GLOBAL': rhs = 'GLOBALS.{}'.format(val)
+        else:
+            assert False, "Unrecognized LOAD, op=%s" % op
         return [assign(var(out), rhs, is_id=(op != 'CONST'))]
-    elif name.startswith('STORE_FAST'):
+    elif name.startswith('STORE_FAST') or name == 'STORE_NAME':
         return [assign(val, var(tos))]
     elif name == 'STORE_GLOBAL':
         return [assign('GLOBALS.{}'.format(val), var(tos))]
