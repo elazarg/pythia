@@ -7,13 +7,9 @@ import z3_utils
 import z3
 
 def test_code():
-    if True:
-        x = 1
-        y = 1
-    else:
-        x = 'bla'
-        y = 'bla2'
-    z = x + y
+    x = 0
+    z = x + 1
+    z = x + 'bla'
     
 def chaotic_type_analysis(type_abstract_analyzer, cfg):
     s = cfg.initial_location()

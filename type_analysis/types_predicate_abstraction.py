@@ -203,4 +203,14 @@ class AbstractTypesAnalysis(object):
             assert False, "Unknown Three Address Code instruction in %s" % str(instruction) 
             
     def get_types_exclusion_theory(self):
-        return set()
+        types_exclusion_theory = set()
+        for program_location in self._cfg.all_locations():
+            for var_name in self._cfg.program_vars():
+                var_logical_const = self._type_logical_const(self.var_logical_name(var_name, program_location))
+                # TODO: should be more fine-grained when we support subtyping
+                for possible_type1, possible_type2 in zip(self._possible_type_relations, self._possible_type_relations):
+                    if possible_type1 != possible_type2:
+                        exclusion_statement = z3.Not(z3.And(possible_type1(var_logical_const),
+                                                            possible_type2(var_logical_const)))
+                        types_exclusion_theory.add(exclusion_statement)
+        return types_exclusion_theory
