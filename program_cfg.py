@@ -10,6 +10,7 @@ class ProgramCFG(object):
 
     def __init__(self, tac_blocks_cfg, name):
         self._cfg = networkx.DiGraph()
+        self._instruction_numbers = []
         
         for block_node in tac_blocks_cfg.nodes():
             commands_in_block_lst = ProgramCFG.tac_blocks_cfg_get_commands_in_block(tac_blocks_cfg, block_node, name)
@@ -26,6 +27,12 @@ class ProgramCFG(object):
     def __initialize_nodes_and_intra_block_edges(self, commands_in_block_lst):
             for tac_command in commands_in_block_lst:
                 self._cfg.add_node(tac_command)
+                # we rely here on the fact that two TAC objects, although they depict the same command,
+                # do not equal to each other as they don't represent the same program location
+                # TODO (Yotam): make this more explicit and less confusing in the instruction class
+                # TODO: should be "program location"
+                assert tac_command not in self._instruction_numbers
+                self._instruction_numbers.append(tac_command)
             
             for tac_command, next_command in pairs(commands_in_block_lst):
                 self._cfg.add_edge(tac_command, next_command)
@@ -52,4 +59,23 @@ class ProgramCFG(object):
         for ins in networkx.dfs_preorder_nodes(self._cfg, self._start_location):
             cmd = ins.fmt.format(**ins._asdict())
             print(cmd , '\t\t', '' and ins)
-                
+            
+    def get_instruction_number(self, instruction):
+        return self._instruction_numbers.index(instruction)
+    
+    def initial_location(self):
+        return self._start_location
+    
+    def program_vars(self):
+        all_vars = set()
+        for ins in self._cfg.nodes():
+            all_vars.update(set(ins.gens))
+            all_vars.update(set(ins.kills))
+
+        return all_vars
+    
+    def all_locations(self):
+        return self._cfg.nodes()
+    
+    def successors(self, program_location):
+        return self._cfg.successors(program_location)
