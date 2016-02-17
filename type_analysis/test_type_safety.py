@@ -52,6 +52,15 @@ else:
     x = 1
 z = 2 + x """) == False
 
+    assert type_analysis.analyze_type_safety("""
+if True:
+    x = 1
+    y = 1
+else:
+    x = 'bla'
+    y = 'bla2'
+z = x + y""") == True
+
     # while
     assert type_analysis.analyze_type_safety("""
 while True:
@@ -69,6 +78,8 @@ z = 'hi' + x """) == True
 # while True:
 #     y = 'hello'
 # z = 1 + y""") == False
+
+    # type exclusion
     
     
 if __name__ == "__main__":
