@@ -142,3 +142,62 @@ class AbstractTypesAnalysis(object):
         
     def join(self, abstract_type1, abstract_type2):
         return AbstractType(z3.Or(abstract_type1.formula(), abstract_type2.formula()))
+    
+    def _operand_is_numeric_formula(self, operand_expr, program_location):
+        if instruction_utils.is_var_reference(operand_expr):
+            operand_logical_const = self._type_logical_const(self.var_logical_name(operand_expr, program_location))
+            return self._numeric_rel(operand_logical_const)
+        elif instruction_utils.is_numeric_literal(operand_expr):
+            return True
+        elif instruction_utils.is_string_literal(operand_expr):
+            return False
+        
+    def _operand_is_string_formula(self, operand_expr, program_location):
+        if instruction_utils.is_var_reference(operand_expr):
+            operand_logical_const = self._type_logical_const(self.var_logical_name(operand_expr, program_location))
+            return self._string_rel(operand_logical_const)
+        elif instruction_utils.is_numeric_literal(operand_expr):
+            return False
+        elif instruction_utils.is_string_literal(operand_expr):
+            return True
+    
+    def _binary_op_constraint(self, program_location):
+        op = program_location.op
+        operands = program_location.uses
+        
+        all_operands_numeric_formula = z3.And(*(self._operand_is_numeric_formula(operand, program_location)
+                                                for operand in operands))
+        all_operands_string_formula = z3.And(*(self._operand_is_string_formula(operand, program_location)
+                                                for operand in operands))
+        if op in ['**', '*', '//', '/', '%', '-', '<<', '>>']:
+            return all_operands_numeric_formula
+        elif op == '+':
+            return z3.Or(all_operands_numeric_formula, all_operands_string_formula)
+        else:
+            assert False, "Unknown type safety: op %s of instruction %s" % (op, program_location)
+    
+    def generate_safety_constraints(self, program_location):
+        instruction = program_location
+        opcode = instruction.opcode
+        if opcode == tac.OP.NOP:
+            return True
+        elif opcode == tac.OP.ASSIGN:
+            return True
+        elif opcode == tac.OP.IMPORT:
+            return True
+        elif opcode == tac.OP.BINARY:
+            return self._binary_op_constraint(program_location)
+        elif opcode == tac.OP.INPLACE:
+            assert False
+        elif opcode == tac.OP.CALL:
+            assert False, "Function calls not supported %s" % str(instruction)
+        elif opcode == tac.OP.JUMP:
+            return True # TODO:
+        elif opcode == tac.OP.FOR:
+            assert False
+        elif opcode == tac.OP.RET:
+            if instruction.uses[0] == 'None':
+                return True
+            assert False, "Function calls not supported %s" % str(instruction)
+        else:
+            assert False, "Unknown Three Address Code instruction in %s" % str(instruction) 
