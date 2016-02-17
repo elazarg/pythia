@@ -1,5 +1,6 @@
 import tac
 import z3
+import instruction_utils
 
 class ConcreteTransformer(object):
     def __init__(self, program_location_transforming, program_location_next):
@@ -39,15 +40,21 @@ class AbstractTypesAnalysis(object):
         self._cfg = cfg
                 
         self.TypeSort = z3.DeclareSort("Type")
-        self._possible_type_relations = [z3.Function('numeric', self.TypeSort, z3.BoolSort()),
-                                        z3.Function('string', self.TypeSort, z3.BoolSort())]
+        self._numeric_rel = z3.Function('numeric', self.TypeSort, z3.BoolSort())
+        self._string_rel = z3.Function('string', self.TypeSort, z3.BoolSort())
+        self._possible_type_relations = [self._numeric_rel,
+                                        self._string_rel]
             
     def lattice_bottom(self):
         return AbstractType(formula=False)
         
+
+    def _type_logical_const(self, var_name):
+        return z3.Const(var_name, self.TypeSort)
+
     def _type_propagated_formula(self, previou_var_name, current_var_name):
         previous_var_logical_constant = z3.Const(previou_var_name, self.TypeSort)
-        current_var_logical_constant = z3.Const(current_var_name, self.TypeSort)
+        current_var_logical_constant = self._type_logical_const(current_var_name)
         return z3.And(*(z3.Implies(type_rel(previous_var_logical_constant), type_rel(current_var_logical_constant))
                         for type_rel in self._possible_type_relations))
         
@@ -69,14 +76,31 @@ class AbstractTypesAnalysis(object):
                                                                self._cfg.program_vars()))
     
     def _assign(self, concrete_transformation, abstract_type):
+        # TODO: must refactor: instructions to classes?
         assigned_to_var_name = concrete_transformation.current_location().gens[0]
-        assigned_from_var_name = concrete_transformation.current_location().uses[0]
+        change_to_assigned = False
+        expression_assigned = concrete_transformation.current_location().uses[0]
+        
+        assigned_var_logical_constant = self._type_logical_const(self.var_logical_name(assigned_to_var_name,
+                                                                                       concrete_transformation.next_location()))
+        
+        if instruction_utils.is_var_reference(expression_assigned):
+            assigned_from_var_name = expression_assigned
+            # TODO: var_logical_name is important and buggy, make sure we don't make this mistake somehow
+            assigned_from_name_with_context = self.var_logical_name(assigned_from_var_name, concrete_transformation.current_location())
+            assigned_to_name_with_context = self.var_logical_name(assigned_to_var_name, concrete_transformation.next_location())
+            change_to_assigned = self._type_propagated_formula(assigned_from_name_with_context, 
+                                                               assigned_to_name_with_context)
+        elif instruction_utils.is_numeric_literal(expression_assigned):
+            change_to_assigned = self._numeric_rel(assigned_var_logical_constant)
+        elif instruction_utils.is_string_literal(expression_assigned):
+            change_to_assigned = self._string_rel(assigned_var_logical_constant)
         
         all_vars_except_changed = self._cfg.program_vars()
         all_vars_except_changed.remove(assigned_to_var_name)
         
         formula = z3.And(self._type_preserved_for_variables(concrete_transformation, all_vars_except_changed),
-                         self._type_propagated_formula(assigned_from_var_name, assigned_to_var_name))
+                         change_to_assigned)
         
         return AbstractType(formula)
 
