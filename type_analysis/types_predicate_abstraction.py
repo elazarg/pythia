@@ -1,6 +1,7 @@
 import tac
 import z3
 import instruction_utils
+import z3_utils
 
 class ConcreteTransformer(object):
     def __init__(self, program_location_transforming, program_location_next):
@@ -131,14 +132,13 @@ class AbstractTypesAnalysis(object):
             assert False, "Unknown Three Address Code instruction in %s" % str(instruction) 
             
     def equiv_type(self, abstract_type1, abstract_type2):
-        # TODO: note that in the current implementation this has little use,
+        # Note: In the current implementation this has little use,
         # since in the chaotic iterations we really need to traverse each edge just once
-        solver = z3.Solver()
-        solver.add(z3.Not(z3.And(z3.Implies(abstract_type1.formula(), abstract_type2.formula()), 
-                                         z3.Implies(abstract_type2.formula(), abstract_type1.formula()))))
-        res = solver.check()
-        assert(res == z3.sat or res == z3.unsat), res
-        return res == z3.unsat
+        if z3_utils.sat_formula(z3.And(abstract_type1.formula(), z3.Not(abstract_type2.formula()))):
+            return False
+        if z3_utils.sat_formula(z3.And(abstract_type2.formula(), z3.Not(abstract_type1.formula()))):
+            return False
+        return True
         
     def join(self, abstract_type1, abstract_type2):
         return AbstractType(z3.Or(abstract_type1.formula(), abstract_type2.formula()))
@@ -201,3 +201,6 @@ class AbstractTypesAnalysis(object):
             assert False, "Function calls not supported %s" % str(instruction)
         else:
             assert False, "Unknown Three Address Code instruction in %s" % str(instruction) 
+            
+    def get_types_exclusion_theory(self):
+        return set()

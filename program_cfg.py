@@ -38,7 +38,7 @@ class ProgramCFG(object):
                 self._cfg.add_edge(tac_command, next_command)
                 
     def __add_consecutive_blocks_edges(self, tac_blocks_cfg, name):
-        for block_node_id in tac_blocks_cfg.nodes():
+        for block_node_id in sorted(tac_blocks_cfg.nodes()):
             for succ_id in tac_blocks_cfg.successors(block_node_id):
                 last_command_in_pre_block = ProgramCFG.tac_blocks_cfg_get_commands_in_block(tac_blocks_cfg, block_node_id, name)[-1]
                 first_command_in_suc_block =  ProgramCFG.tac_blocks_cfg_get_commands_in_block(tac_blocks_cfg, succ_id, name)[0]
@@ -59,6 +59,7 @@ class ProgramCFG(object):
         for ins in networkx.dfs_preorder_nodes(self._cfg, self._start_location):
             cmd = ins.fmt.format(**ins._asdict())
             print(cmd , '\t\t', '' and ins)
+            print("succ: ", [ins.format() for ins in self.successors(ins)])
             
     def get_instruction_number(self, instruction):
         return self._instruction_numbers.index(instruction)
