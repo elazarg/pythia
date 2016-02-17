@@ -11,7 +11,9 @@ import z3
 #         v = 1
 #     z = w + v
 def test_code():
-    y = 1
+    y = 0
+    while True:
+        y = 1
     z = 1 + y
     
 def chaotic_type_analysis(type_abstract_analyzer, cfg):
@@ -42,13 +44,16 @@ def chaotic(s, i,
 # i is the initial value at the start
 # bottom is the minimum value
     wl = [s]
-    df = dict([(x, bottom) for x in all_nodes])
+    df = dict()
     df[s] = i
     while wl != []:
         u = wl.pop()
         if verbose: print("Handling:", u)
         
         for v in succ(u):
+            if v not in df:
+                df[v] = bottom
+                
             new = join(df[v], abstract_transformer(u, v, df[u]))
             if not abstract_equivalence(new, df[v]):
                 if verbose: print("changing the dataflow value at node:", v, "to" , new)
@@ -60,7 +65,10 @@ def chaotic(s, i,
 
     print("Dataflow results")
     for node in all_nodes:
-        print("%s: %s"%(node, df[node]))
+        if node not in df:
+            print("%s: unreachable" % str(node))
+        else:
+            print("%s: %s"%(node, df[node]))
     return df
 
 #     import os
@@ -107,10 +115,11 @@ def test():
     print(cfg.program_vars())
     
     type_abstract_analyzer = types_predicate_abstraction.AbstractTypesAnalysis(cfg)
-    abstract_type_for_location = chaotic_type_analysis(type_abstract_analyzer, cfg)
+    abstract_type_for_reachable_location = chaotic_type_analysis(type_abstract_analyzer, cfg)
     type_safety_constraints = generate_type_safety_constraints(type_abstract_analyzer, cfg)
     print(type_safety_constraints)
-    if check_type_safety(abstract_type_for_location, type_safety_constraints):
+    if check_type_safety(abstract_type_for_reachable_location, 
+                         type_safety_constraints):
         print("Type safe!")
     else:
         print("Not safe!")
