@@ -42,10 +42,10 @@ def make_tacblock_cfg(f):
 
 
 def var(x):
-    return chr(ord('α') + x - 1)
+    return '@v{}'.format(x - 1)
 
 def is_stackvar(v):
-    return v >= 'α'
+    return v[0] == '@'
 
 class OP(Enum):
     NOP = 0
