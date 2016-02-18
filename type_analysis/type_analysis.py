@@ -89,12 +89,12 @@ def check_type_safety(abstract_type_for_location, type_safety_constraints, types
     return z3_utils.unsat(solver)
 
 def analyze_type_safety(code_to_analyze):
-    name = "bcode_block"
-    cfg = tac.make_tacblock_cfg(code_to_analyze, blockname=name)
-    cfg = tac_analysis.simplified_tac_blocks_cfg(cfg, blockname=name)
-    tac_analysis.print_tac_cfg(cfg, blockname=name)
+    #ELAZAR: tried to change here so it will work with the updated API
+    #I can't test it though :(
+    cfg = tac_analysis.make_propagated_tacblock_cfg(code_to_analyze)
+    tac_analysis.print_tac_cfg(cfg)
 
-    cfg = program_cfg.ProgramCFG(cfg, name)
+    cfg = program_cfg.ProgramCFG(cfg, name=tac_analysis.BLOCKNAME)
     cfg.depict()
     print(cfg.program_vars())
     
