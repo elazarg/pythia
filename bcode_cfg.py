@@ -2,6 +2,8 @@ import networkx as nx
 import bcode
 import graph_utils as gu
 
+BLOCKNAME='bcode_block'
+
 def update_stackdepth(cfg):
     '''The stack depth is supposed to be independent of path.
     So dijkstra on the undirected graph suffices (and maybe too strong. we don't need minimality)
@@ -14,25 +16,25 @@ def update_stackdepth(cfg):
     return cfg
 
 
-def make_bcode_block_cfg(f):
-    dbs = {b.offset: b for b in bcode.get_instructions(f)}
+def make_bcode_block_cfg(instructions):
+    dbs = {b.offset: b for b in instructions}
     cfg = nx.DiGraph([(b.offset, dbs[j].offset, {'stack_effect': stack_effect})
                     for b in dbs.values()
                     for (j, stack_effect) in b.next_list() if dbs.get(j)])
     nx.set_node_attributes(cfg, name='BCode', values=dbs)
     update_stackdepth(cfg)
     # each node will hold a block of dictionaries - bcode and stack_depth
-    basic_block_cfg = gu.contract_chains(cfg, blockname='bcode_block')
+    basic_block_cfg = gu.contract_chains(cfg, blockname=BLOCKNAME)
     return basic_block_cfg
 
 
 def get_code_depth_pairs(data):
-    return [ (d['BCode'], d['stack_depth']) for d in data['bcode_block']]
+    return [ (d['BCode'], d['stack_depth']) for d in data[BLOCKNAME]]
 
 
-def print_graph(cfg, code):
+def print_graph(cfg):
     for b in sorted(cfg.nodes()):
-        print(b, ':', cfg.node[b][code])
+        print(b, ':', cfg.node[b][BLOCKNAME])
 
 
 def draw(g: nx.DiGraph):
@@ -41,12 +43,15 @@ def draw(g: nx.DiGraph):
     plt.show()
 
 
+def make_bcode_block_cfg_from_function(f):
+    instructions = bcode.get_instructions(f)
+    return make_bcode_block_cfg(instructions)
+
+
 def test():
     import code_examples
-    name = 'bcode_block'
-    #cfg = make_bcode_block_cfg(code_examples.CreatePlasmaCube, blockname=name)
-    cfg = make_bcode_block_cfg(code_examples.CreatePlasmaCube)
-    print_graph(cfg, code=name)
+    cfg = make_bcode_block_cfg_from_function(code_examples.CreatePlasmaCube)
+    print_graph(cfg)
 
 if __name__ == '__main__':   
     test()

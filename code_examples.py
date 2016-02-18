@@ -317,6 +317,7 @@ def getpass(prompt = 'Password: ', hideChar = ' '):
     if char == '\003':
         raise KeyboardInterrupt # ctrl + c
         print(1)
+
 def RenderScene():
     print("Rendering scene...")
     for ky in range(imgy):

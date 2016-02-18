@@ -6,7 +6,7 @@ class BCode(dis.Instruction):
     __slots__ = ()
     @property    
     def is_sequencer(self):
-        return self.opname in sequencers 
+        return self.opname in ('RETURN_VALUE', 'CONTINUE_LOOP', 'BREAK_LOOP', 'RAISE_VARARGS', 'JUMP_FORWARD', 'JUMP_ABSOLUTE')
             
     @property
     def is_jump_source(self):
@@ -98,8 +98,11 @@ def update_break_instruction(ins_iter):
 def get_instructions(f):
     return update_break_instruction(dis.get_instructions(f))
 
-sequencers = frozenset(('RETURN_VALUE', 'CONTINUE_LOOP', 'BREAK_LOOP', 'RAISE_VARARGS', 'JUMP_FORWARD', 'JUMP_ABSOLUTE'))
 
-if __name__ == '__main__':   
+if __name__ == '__main__':
+    import pyclbr
+    elems = pyclbr.readmodule_ex('code_examples')
+    for name, val in elems.items():
+        print(val.lineno, ':', name)
     for b in get_instructions(code_examples.getpass):
         print(b)
