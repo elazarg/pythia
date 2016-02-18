@@ -8,8 +8,6 @@ import z3
 
 def test_code():
     x = 0
-    z = x + 1
-    z = x + 'bla'
     
 def chaotic_type_analysis(type_abstract_analyzer, cfg):
     s = cfg.initial_location()
@@ -50,7 +48,7 @@ def chaotic(s, i,
                 df[v] = bottom
                 
             new = join(df[v], abstract_transformer(u, v, df[u]))
-            if verbose: print("changing the dataflow value at node:", v, "to" , new)
+            if verbose: print("changing the dataflow value at node:", str(v), "to" , new)
             if not abstract_equivalence(new, df[v]):
                 df[v] = new
                 wl.append(v)
@@ -65,7 +63,7 @@ def chaotic(s, i,
         if node not in df:
             print("%s: unreachable" % str(node))
         else:
-            print("%s: %s"%(node, df[node]))
+            print("%s: %s"%(str(node), df[node]))
     return df
     
 def generate_type_safety_constraints(type_abstract_analyzer, cfg):
@@ -89,8 +87,6 @@ def check_type_safety(abstract_type_for_location, type_safety_constraints, types
     return z3_utils.unsat(solver)
 
 def analyze_type_safety(code_to_analyze):
-    #ELAZAR: tried to change here so it will work with the updated API
-    #I can't test it though :(
     cfg = tac_analysis.make_tacblock_cfg(code_to_analyze)
     tac_analysis.print_tac_cfg(cfg)
 

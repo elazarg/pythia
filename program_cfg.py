@@ -3,6 +3,16 @@ import networkx
 def pairs(lst):
     return zip(lst, lst[1:])
 
+class ProgramLocation(object):
+    def __init__(self, instruction):
+        self._instruction = instruction
+        
+    def instruction(self):
+        return self._instruction
+    
+    def __str__(self):
+        return "ProgramLocation(%s)" % self._instruction.format()
+
 class ProgramCFG(object):
     @staticmethod
     def tac_blocks_cfg_get_commands_in_block(tac_blocks_cfg, block_node, name):
@@ -12,54 +22,42 @@ class ProgramCFG(object):
         self._cfg = networkx.DiGraph()
         self._instruction_numbers = []
         
+        block_number_to_first_location = {}
+        block_number_to_last_location = {}
+        
         for block_node in tac_blocks_cfg.nodes():
             commands_in_block_lst = ProgramCFG.tac_blocks_cfg_get_commands_in_block(tac_blocks_cfg, block_node, name)
-            self.__initialize_nodes_and_intra_block_edges(commands_in_block_lst)
+            program_locations_in_block = [ProgramLocation(instruction) for instruction in commands_in_block_lst]
+            for program_location in program_locations_in_block:
+                self._cfg.add_node(program_location)
+                self._instruction_numbers.append(program_location)
             
-        self.__add_consecutive_blocks_edges(tac_blocks_cfg, name)
+            for program_location, next_location in pairs(program_locations_in_block):
+                self._cfg.add_edge(program_location, next_location)
             
-        self.__add_goto_edges(tac_blocks_cfg, name)
+            block_number_to_first_location[block_node] = program_locations_in_block[0]
+            block_number_to_last_location[block_node] = program_locations_in_block[-1]
+            
+        self.__add_consecutive_blocks_edges(tac_blocks_cfg, name,
+                                            block_number_to_first_location, block_number_to_last_location)
         
         first_block_id = sorted(tac_blocks_cfg.nodes())[0]
-        self._start_location = tac_blocks_cfg.node[first_block_id][name][0]
-        print(self._start_location)
-    
-    def __initialize_nodes_and_intra_block_edges(self, commands_in_block_lst):
-            for tac_command in commands_in_block_lst:
-                self._cfg.add_node(tac_command)
-                # we rely here on the fact that two TAC objects, although they depict the same command,
-                # do not equal to each other as they don't represent the same program location
-                # TODO (Yotam): make this more explicit and less confusing in the instruction class
-                # TODO: should be "program location"
-                assert tac_command not in self._instruction_numbers
-                self._instruction_numbers.append(tac_command)
-            
-            for tac_command, next_command in pairs(commands_in_block_lst):
-                self._cfg.add_edge(tac_command, next_command)
+        self._start_location = block_number_to_first_location[first_block_id]
+        print(self._start_location)        
                 
-    def __add_consecutive_blocks_edges(self, tac_blocks_cfg, name):
+    def __add_consecutive_blocks_edges(self, tac_blocks_cfg, name,
+                                       block_number_to_first_location, block_number_to_last_location):
         for block_node_id in sorted(tac_blocks_cfg.nodes()):
             for succ_id in tac_blocks_cfg.successors(block_node_id):
-                last_command_in_pre_block = ProgramCFG.tac_blocks_cfg_get_commands_in_block(tac_blocks_cfg, block_node_id, name)[-1]
-                first_command_in_suc_block =  ProgramCFG.tac_blocks_cfg_get_commands_in_block(tac_blocks_cfg, succ_id, name)[0]
+                last_command_in_pre_block = block_number_to_last_location.get(block_node_id)
+                first_command_in_suc_block =  block_number_to_first_location(succ_id)
                 self._cfg.add_edge(last_command_in_pre_block, first_command_in_suc_block)
-                
-    def __add_goto_edges(self, tac_blocks_cfg, name):
-        for command in self._cfg.nodes():
-            # TODO: handle also function calls
-            target_block = command.target
-            if target_block != None:
-                target_block_node = tac_blocks_cfg.node[target_block]
-                commands_in_target_block = target_block_node[name]
-                assert commands_in_target_block != []
-                # TODO: add identifier indicating "TRUE" part of the branch?
-                self._cfg.add_edge(command, commands_in_target_block[0])
-                
+
     def depict(self):
-        for ins in networkx.dfs_preorder_nodes(self._cfg, self._start_location):
-            cmd = ins.fmt.format(**ins._asdict())
-            print(cmd , '\t\t', '' and ins)
-            print("succ: ", [ins.format() for ins in self.successors(ins)])
+        for location in networkx.dfs_preorder_nodes(self._cfg, self._start_location):
+            cmd = location.instruction().fmt.format(**location.instruction()._asdict())
+            print(cmd)
+            print("succ: ", [suc_location.instruction().format() for suc_location in self.successors(location)])
             
     def get_instruction_number(self, instruction):
         return self._instruction_numbers.index(instruction)
@@ -69,7 +67,9 @@ class ProgramCFG(object):
     
     def program_vars(self):
         all_vars = set()
-        for ins in self._cfg.nodes():
+        for location in self._cfg.nodes():
+            ins = location.instruction()
+            # TODO: ignore constant literals
             all_vars.update(set(ins.gens))
             all_vars.update(set(ins.kills))
 

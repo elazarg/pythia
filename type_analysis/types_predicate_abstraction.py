@@ -78,9 +78,9 @@ class AbstractTypesAnalysis(object):
     
     def _assign(self, concrete_transformation, abstract_type):
         # TODO: must refactor: instructions to classes?
-        assigned_to_var_name = concrete_transformation.current_location().gens[0]
+        assigned_to_var_name = concrete_transformation.current_location().instruction().gens[0]
         change_to_assigned = False
-        expression_assigned = concrete_transformation.current_location().uses[0]
+        expression_assigned = concrete_transformation.current_location().instruction().uses[0]
         
         assigned_var_logical_constant = self._type_logical_const(self.var_logical_name(assigned_to_var_name,
                                                                                        concrete_transformation.next_location()))
@@ -105,29 +105,31 @@ class AbstractTypesAnalysis(object):
         
         return AbstractType(formula)
 
-    def transform(self, concrete_trasformation, abstract_type):
-        instruction = concrete_trasformation.current_location()
+    def transform(self, concrete_transformation, abstract_type):
+        instruction = concrete_transformation.current_location().instruction()
         op = instruction.opcode
         if op == tac.OP.NOP:
-            return self._no_change(concrete_trasformation, abstract_type)
+            return self._no_change(concrete_transformation, abstract_type)
         elif op == tac.OP.ASSIGN:
-            return self._assign(concrete_trasformation, abstract_type)
+            return self._assign(concrete_transformation, abstract_type)
         elif op == tac.OP.IMPORT:
-            return self._no_change(concrete_trasformation, abstract_type)
+            return self._no_change(concrete_transformation, abstract_type)
         elif op == tac.OP.BINARY:
             # TODO: do something real
-            return self._assign(concrete_trasformation, abstract_type)
-            #return self._binary_operator(concrete_trasformation, abstract_type)
+            return self._assign(concrete_transformation, abstract_type)
+            #return self._binary_operator(concrete_transformation, abstract_type)
         elif op == tac.OP.INPLACE:
             assert False
         elif op == tac.OP.CALL:
             assert False, "Function calls not supported"
         elif op == tac.OP.JUMP:
-            return self._no_change(concrete_trasformation, abstract_type)
+            return self._no_change(concrete_transformation, abstract_type)
         elif op == tac.OP.FOR:
             assert False
         elif op == tac.OP.RET:
             assert False, "Function calls not supported"
+        elif op == tac.OP.DEL:
+            return self._no_change(concrete_transformation, abstract_type)
         else:
             assert False, "Unknown Three Address Code instruction in %s" % str(instruction) 
             
@@ -162,8 +164,8 @@ class AbstractTypesAnalysis(object):
             return True
     
     def _binary_op_constraint(self, program_location):
-        op = program_location.op
-        operands = program_location.uses
+        op = program_location.instruction().op
+        operands = program_location.instruction().uses
         
         all_operands_numeric_formula = z3.And(*(self._operand_is_numeric_formula(operand, program_location)
                                                 for operand in operands))
@@ -177,7 +179,7 @@ class AbstractTypesAnalysis(object):
             assert False, "Unknown type safety: op %s of instruction %s" % (op, program_location)
     
     def generate_safety_constraints(self, program_location):
-        instruction = program_location
+        instruction = program_location.instruction()
         opcode = instruction.opcode
         if opcode == tac.OP.NOP:
             return True
@@ -199,6 +201,8 @@ class AbstractTypesAnalysis(object):
             if instruction.uses[0] == 'None':
                 return True
             assert False, "Function calls not supported %s" % str(instruction)
+        elif opcode == tac.OP.DEL:
+            return True
         else:
             assert False, "Unknown Three Address Code instruction in %s" % str(instruction) 
             

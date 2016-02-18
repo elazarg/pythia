@@ -1,6 +1,9 @@
 import ast
+import tac
 
 def __parse_literal_expression(string_expr):
+    if tac.is_stackvar(string_expr):
+        return ast.Name
     body = ast.parse(string_expr).body
     assert len(body) == 1
     expr = body[0]
