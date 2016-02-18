@@ -23,7 +23,7 @@ def print_3addr(cfg):
         block = cfg.node[n][BLOCKNAME]
         for ins in block:
             cmd = ins.fmt.format(**ins._asdict())
-            print(n, ':\t', hash(cmd), cmd)
+            print(n, ':\t', cmd)
 
 
 def make_tacblock_cfg(f):
