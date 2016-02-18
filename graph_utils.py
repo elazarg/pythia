@@ -82,7 +82,7 @@ def test_refine_to_chain():
     import code_examples
     tac_name = 'tac_block'
     import tac
-    cfg = tac.make_tacblock_cfg(code_examples.CreateSphere, blockname=tac_name)
+    cfg = tac.make_tacblock_cfg(code_examples.CreateSphere)
     refined = refine_to_chain(cfg, tac_name, 'tac')
     for x in sorted(refined.nodes_iter()):
         print(x, refined.node[x]['tac'].format())
