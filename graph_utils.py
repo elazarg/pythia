@@ -51,8 +51,42 @@ def node_data_map_inplace(g, f, attr=None):
             data = g.node[n]
             data[attr] = f(n, data)
 
+def refine_to_chain(g, from_attr, to_attr):
+    '''can be used to refine basic blocks into blocks - the dual of contract_chains()
+    assume g.node[n][attr] is a list
+    returns a graph whose nodes are the refinement of the lists into paths
+    the elements of the lists are held as to_attr
+    the nodes become tuples (node_index, list_index)'''
+    paths = []
+    for n in g.nodes_iter():
+        block = g.node[n][from_attr]
+        size = len(block)
+        path = nx.path_graph(size, create_using=nx.DiGraph())
+        nx.relabel_nodes(path, mapping={x:(n, x) for x in path.nodes()}, copy=False)
+        path.add_edges_from(((n, size - 1), (s, 0)) for s in g.successors_iter(n))
+        paths.append(path)
+    values = {(n, x): block
+              for n in g.nodes_iter()
+              for x, block in enumerate(g.node[n][from_attr])}
+    res = nx.compose_all(paths)
+    nx.set_node_attributes(res, to_attr, values)
+    return res
+
 
 def node_data_map(g, f, attr=None):
     g = g.copy()
     node_data_map_inplace(g, f, attr)
     return g
+
+def test_refine_to_chain():
+    import code_examples
+    tac_name = 'tac_block'
+    import tac
+    cfg = tac.make_tacblock_cfg(code_examples.CreateSphere, blockname=tac_name)
+    refined = refine_to_chain(cfg, tac_name, 'tac')
+    for x in sorted(refined.nodes_iter()):
+        print(x, refined.node[x]['tac'].format())
+
+if __name__ == '__main__':
+    test_refine_to_chain()
+    
