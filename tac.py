@@ -6,27 +6,27 @@ from enum import Enum
 # i.e, it knows the current stack depth
 # I call the stack depth 'tos', although in Python docs it means "the value at the top of the stack"
 
+BLOCKNAME = 'tac_block'
 
 def test():
     import code_examples
-    tac_name = 'tac_block'
-    cfg = make_tacblock_cfg(code_examples.CreateScene, blockname=tac_name)
-    print_3addr(cfg, blockname=tac_name)
+    cfg = make_tacblock_cfg(code_examples.CreateScene)
+    print_3addr(cfg)
     # draw(cfg)
 
 
-def print_3addr(cfg, blockname):
+def print_3addr(cfg):
     for n in sorted(cfg.nodes()):
         # The call for sorted() gives us for free the ordering of blocks by "fallthrough"
         # It is not guaranteed anywhere, but it makes sense - the order of blocks is the 
         # order of the lines in the code
-        block = cfg.node[n][blockname]
+        block = cfg.node[n][BLOCKNAME]
         for ins in block:
             cmd = ins.fmt.format(**ins._asdict())
-            print(n, ':\t', cmd , '\t\t', '' and ins)
+            print(n, ':\t', hash(cmd), cmd)
 
 
-def make_tacblock_cfg(f, blockname):
+def make_tacblock_cfg(f):
     def bcode_block_to_tac_block(n, block_data):
         return list(it.chain.from_iterable(
                     make_TAC(bc.opname, bc.argval, bc.stack_effect(), tos, bc.starts_line)
@@ -37,7 +37,7 @@ def make_tacblock_cfg(f, blockname):
     import graph_utils as gu
     tac_blocks = gu.node_data_map(bcode_blocks, 
                                   bcode_block_to_tac_block,
-                                  blockname)
+                                  BLOCKNAME)
     return tac_blocks
 
 

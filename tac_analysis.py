@@ -23,7 +23,16 @@
 #       and push them into each other and into other instructions.
 #       So in some cases, `x = f(a, b)` might have e.g. KILLS={a}
 #       (and implicitly x too) if it is the last command to use the varible `a`.
+import tac
+from tac import print_3addr as print_tac_cfg
 
+BLOCKNAME = tac.BLOCKNAME
+
+def make_tacblock_cfg(f, propagate_consts=True):
+    cfg = tac.make_tacblock_cfg(f)
+    if propagate_consts:
+        dataflow(cfg, 0, {}, ConsProp)   
+    return cfg
 
 def print_block(n, block):
     print(n, ':')
@@ -33,11 +42,9 @@ def print_block(n, block):
 
 def test_single_block():
     import code_examples
-    import tac
-    name = 'tac_block'
-    cfg = tac.make_tacblock_cfg(code_examples.RenderScene, blockname=name)
+    cfg = tac.make_tacblock_cfg(code_examples.RenderScene)
     for n in sorted(cfg.nodes()):
-        block = cfg.node[n][name]
+        block = cfg.node[n][BLOCKNAME]
         print('uses:', single_block_uses(block))
         # print_block(n, block)
         # print('push up:')
@@ -49,12 +56,10 @@ def test_single_block():
 
 def test():
     import code_examples
-    import tac
-    name = 'tac_block'
-    cfg = tac.make_tacblock_cfg(code_examples.RayTrace, blockname=name)
+    cfg = tac.make_tacblock_cfg(code_examples.RayTrace)
     dataflow(cfg, 0, {})
     for n in sorted(cfg.nodes()):
-        block = cfg.node[n][name]
+        block = cfg.node[n][BLOCKNAME]
         block = list(single_block_liveness(block)); block.reverse()
         print_block(n, block)
 
@@ -64,8 +69,6 @@ def single_block_uses(block):
         uses.difference_update(ins.gens)
         uses.update(ins.uses)
     return [x for x in uses if is_extended_identifier(x)]
-
-import tac
 
 def undef(kills, gens):
     return [('_' if v in kills and tac.is_stackvar(v) else v)
@@ -100,6 +103,7 @@ def single_block_gens(block, inb=frozenset()):
 
 
 # mix of domain and analysis-specific choice of operations
+# nothing here really works...
 class Domain:
     name = ''
     direction = (1, -1)
@@ -188,25 +192,25 @@ def run_analysis(cfg):
     gu.node_data_map_inplace(cfg, attr='transfer',
                              f=lambda n, d: compute_transfer_function(d))
     nx.set_node_attributes(cfg, 'out', {n:Analysis() for n in cfg.nodes_iter()})
-    dataflow(cfg, 0, Analysis)
+    dataflow(cfg, 0, {}, Analysis)
 
 
-def dataflow(g:'graph', start:'node', start_value):
+def dataflow(g:'graph', start:'node', start_value, Analysis=ConsProp):
     import networkx as nx
     import graph_utils as gu
     gu.node_data_map_inplace(g,
-            f=lambda n, d: ConsProp.single_block_update,
+            f=lambda n, d: Analysis.single_block_update,
             attr='transfer_function')
     
-    nx.set_node_attributes(g, 'outb', {v: ConsProp.initial() for v in g.nodes()})
-    nx.set_node_attributes(g, 'inb', {v: ConsProp.initial() for v in g.nodes()})
-    g.node[start]['inb'] = ConsProp.initial()
+    nx.set_node_attributes(g, 'outb', {v: Analysis.initial() for v in g.nodes()})
+    nx.set_node_attributes(g, 'inb', {v: Analysis.initial() for v in g.nodes()})
+    g.node[start]['inb'] = Analysis.initial()
     wl = set(g.nodes())
     while wl:
         u = wl.pop()
         inb = g.node[u]['inb']
-        ConsProp.join(inb, [g.node[x]['outb'] for x in g.predecessors(u)])
-        outb = g.node[u]['transfer_function'](g.node[u]['tac_block'], inb)
+        Analysis.join(inb, [g.node[x]['outb'] for x in g.predecessors(u)])
+        outb = g.node[u]['transfer_function'](g.node[u][BLOCKNAME], inb)
         if outb != g.node[u]['outb']:
             g.node[u]['outb'] = outb
             wl.update(g.successors(u))
