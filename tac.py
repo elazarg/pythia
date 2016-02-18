@@ -42,11 +42,10 @@ def make_tacblock_cfg(f):
 
 
 def var(x):
-    return "@var_%d" % x
+    return '@v{}'.format(x - 1)
 
 def is_stackvar(v):
-    #return v >= '��'
-    return v.startswith("@var_")
+    return v[0] == '@'
 
 class OP(Enum):
     NOP = 0

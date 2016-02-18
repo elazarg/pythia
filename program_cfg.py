@@ -50,7 +50,7 @@ class ProgramCFG(object):
         for block_node_id in sorted(tac_blocks_cfg.nodes()):
             for succ_id in tac_blocks_cfg.successors(block_node_id):
                 last_command_in_pre_block = block_number_to_last_location.get(block_node_id)
-                first_command_in_suc_block =  block_number_to_first_location(succ_id)
+                first_command_in_suc_block =  block_number_to_first_location.get(succ_id)
                 self._cfg.add_edge(last_command_in_pre_block, first_command_in_suc_block)
 
     def depict(self):

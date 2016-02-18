@@ -24,14 +24,21 @@
 #       So in some cases, `x = f(a, b)` might have e.g. KILLS={a}
 #       (and implicitly x too) if it is the last command to use the varible `a`.
 import tac
-from tac import print_3addr as print_tac_cfg
+from tac import print_3addr as print_tac_cfg, is_stackvar
+from itertools import chain
 
 BLOCKNAME = tac.BLOCKNAME
 
-def make_tacblock_cfg(f, propagate_consts=True):
+def make_tacblock_cfg(f, propagate_consts=True, liveness=True):
     cfg = tac.make_tacblock_cfg(f)
     if propagate_consts:
-        dataflow(cfg, 0, {}, ConsProp)   
+        dataflow(cfg, 0, {}, ConsProp)
+    if liveness:
+        for n in sorted(cfg.nodes()):
+            block = cfg.node[n][BLOCKNAME]
+            block = list(single_block_liveness(block))
+            block.reverse()
+            cfg.node[n][BLOCKNAME] = block
     return cfg
 
 def print_block(n, block):
@@ -56,23 +63,23 @@ def test_single_block():
 
 def test():
     import code_examples
-    cfg = tac.make_tacblock_cfg(code_examples.RayTrace)
-    dataflow(cfg, 0, {})
+    cfg = make_tacblock_cfg(code_examples.RenderScene)
     for n in sorted(cfg.nodes()):
         block = cfg.node[n][BLOCKNAME]
-        block = list(single_block_liveness(block)); block.reverse()
         print_block(n, block)
+
 
 def single_block_uses(block):
     uses = set()
     for ins in reversed(block):
         uses.difference_update(ins.gens)
         uses.update(ins.uses)
-    return [x for x in uses if is_extended_identifier(x)]
+    return tuple(x for x in uses if is_extended_identifier(x))
+
 
 def undef(kills, gens):
     return tuple(('_' if v in kills and tac.is_stackvar(v) else v)
-            for v in gens)
+                 for v in gens)
 
 
 def _filter_killed(ins, kills, new_kills):
@@ -97,9 +104,6 @@ def single_block_gens(block, inb=frozenset()):
         gens.difference_update(ins.kills)
         gens.update(ins.gens)
     return [x for x in gens if is_extended_identifier(x)]
-
-
-
 
 
 # mix of domain and analysis-specific choice of operations
@@ -139,22 +143,24 @@ class ConsProp(Domain):
                     res[v] = c
                 elif res[v] != c:
                     del res[v]
+
     @staticmethod
     def single_block_update(block, in_cons_map):
         cons_map = in_cons_map.copy()
         for i, ins in enumerate(block):
-            if ins.is_assign and len(ins.gens) == len(ins.uses) == 1:
+            if ins.is_assign and len(ins.gens) == len(ins.uses) == 1 and is_stackvar(ins.gens[0]):
                 [lhs], [rhs] = ins.gens, ins.uses
                 if rhs in cons_map:
                     rhs = cons_map[rhs]
                 cons_map[lhs] = rhs
             else:
-                uses = [(cons_map.get(v, v) if v not in ins.gens else v)
+                uses = [(cons_map.get(v, v))
                          for v in ins.uses]
                 if ins.is_inplace:
                     uses[1] = ins.uses[1]
+                uses = tuple(uses)
                 block[i] = ins._replace(uses=tuple(uses))
-                for v in ins.gens:
+                for v in chain(ins.gens, ins.kills):
                     if v in cons_map:
                         del cons_map[v]
         return cons_map
@@ -208,12 +214,14 @@ def dataflow(g:'graph', start:'node', start_value, Analysis=ConsProp):
     wl = set(g.nodes())
     while wl:
         u = wl.pop()
-        inb = g.node[u]['inb']
+        udata = g.node[u]
+        inb = udata['inb']
         Analysis.join(inb, [g.node[x]['outb'] for x in g.predecessors(u)])
-        outb = g.node[u]['transfer_function'](g.node[u][BLOCKNAME], inb)
-        if outb != g.node[u]['outb']:
-            g.node[u]['outb'] = outb
+        outb = udata['transfer_function'](udata[BLOCKNAME], inb)
+        if outb != udata['outb']:
+            udata['outb'] = outb
             wl.update(g.successors(u))
+
 
 if __name__ == '__main__':
     test()
