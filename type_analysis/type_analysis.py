@@ -91,7 +91,7 @@ def check_type_safety(abstract_type_for_location, type_safety_constraints, types
 def analyze_type_safety(code_to_analyze):
     #ELAZAR: tried to change here so it will work with the updated API
     #I can't test it though :(
-    cfg = tac_analysis.make_propagated_tacblock_cfg(code_to_analyze)
+    cfg = tac_analysis.make_tacblock_cfg(code_to_analyze)
     tac_analysis.print_tac_cfg(cfg)
 
     cfg = program_cfg.ProgramCFG(cfg, name=tac_analysis.BLOCKNAME)
