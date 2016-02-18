@@ -71,8 +71,8 @@ def single_block_uses(block):
     return [x for x in uses if is_extended_identifier(x)]
 
 def undef(kills, gens):
-    return [('_' if v in kills and tac.is_stackvar(v) else v)
-            for v in gens]
+    return tuple(('_' if v in kills and tac.is_stackvar(v) else v)
+            for v in gens)
 
 
 def _filter_killed(ins, kills, new_kills):
@@ -153,7 +153,7 @@ class ConsProp(Domain):
                          for v in ins.uses]
                 if ins.is_inplace:
                     uses[1] = ins.uses[1]
-                block[i] = ins._replace(uses=uses)
+                block[i] = ins._replace(uses=tuple(uses))
                 for v in ins.gens:
                     if v in cons_map:
                         del cons_map[v]
