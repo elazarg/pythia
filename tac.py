@@ -42,10 +42,11 @@ def make_tacblock_cfg(f):
 
 
 def var(x):
-    return chr(ord('α') + x - 1)
+    return "@var_%d" % x
 
 def is_stackvar(v):
-    return v >= 'α'
+    #return v >= '��'
+    return v.startswith("@var_")
 
 class OP(Enum):
     NOP = 0
@@ -92,9 +93,10 @@ def tac(opcode, *, fmt, gens=(), uses=(), kills=(), is_id=False, op=None,
     assert isinstance(fmt, str)
     for args in [uses, kills, args]:
         assert isinstance(args, (tuple, frozenset))
-    return Tac(opcode, fmt=fmt, gens=gens, uses=uses, kills=kills or gens, is_id=is_id,
+    tac = Tac(opcode, fmt=fmt, gens=gens, uses=uses, kills=kills or gens, is_id=is_id,
                op=op, target=target, func=func, args=args, kwargs=kwargs,
                starts_line=starts_line)
+    return tac
 
 NOP = tac(OP.NOP, fmt='NOP')
 
