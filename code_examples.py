@@ -330,5 +330,10 @@ def RenderScene():
             dx = dx / d; dy = dy / d; dz = dz / d # ray unit vector
             pixels[kx, ky] = RayTrace(kx, ky, 0, dx, dy, dz)
 
+def simple():
+    x = 1
+    y = 1
+    z = x + y
+
 if __name__ == "__main__":
     main()
