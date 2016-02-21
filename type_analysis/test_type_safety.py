@@ -81,6 +81,25 @@ z = 'hi' + x """) == True
 
     # type exclusion
     
+    # binary operations
+    assert type_analysis.analyze_type_safety("""
+x = 0
+y = x - 1
+""") == True
+
+    assert type_analysis.analyze_type_safety("""
+x = 0
+y = x - "bla"
+""") == False
+
+    assert type_analysis.analyze_type_safety("""
+x = "hi"
+y = x - "bla"
+""") == False
+
+
+
+    
     
 if __name__ == "__main__":
     all_tests()

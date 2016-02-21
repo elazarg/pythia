@@ -83,17 +83,18 @@ class AbstractTypesAnalysis(object):
         return AbstractType(formula)
     
     def _function_call(self, concrete_transformation, ret_var, function_name, operands):
+        all_string_implies_string = self._operation_type_implies(concrete_transformation, 
+            ret_var, self._string_rel, 
+            [(operand, self._string_rel) for operand in operands])
+        
+        all_numeric_implies_numeric = self._operation_type_implies(concrete_transformation, 
+            ret_var, self._numeric_rel, 
+            [(operand, self._numeric_rel) for operand in operands])
+        
+        if function_name in ['**', '*', '//', '/', '%', '-', '<<', '>>']:
+            return all_numeric_implies_numeric
         if function_name == '+':
-            plus_string = self._operation_type_implies(concrete_transformation, 
-                ret_var, self._string_rel, 
-                [(operand, self._string_rel) for operand in operands])
-            
-            plus_numeric = self._operation_type_implies(concrete_transformation, 
-                ret_var, self._numeric_rel, 
-                [(operand, self._numeric_rel) for operand in operands])
-            
-            return z3.Or(plus_numeric, plus_string)
-                              
+            return z3.Or(all_numeric_implies_numeric, all_string_implies_string)
         else:
             assert False, "Unknown function call"
             
