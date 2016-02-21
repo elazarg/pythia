@@ -17,3 +17,6 @@ def is_numeric_literal(string_expr):
 
 def is_string_literal(string_expr):
     return __parse_literal_expression(string_expr) == ast.Str
+
+def is_bool_literal(string_expr):
+    return string_expr.strip() in ['True', 'False']

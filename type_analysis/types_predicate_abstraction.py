@@ -1,7 +1,7 @@
 import tac
 import z3
 import z3_utils
-from types_logical_relations import NumericRelation, StringRelation
+from types_logical_relations import NumericRelation, StringRelation, BoolRelation
 
 class ConcreteTransformer(object):
     def __init__(self, program_location_transforming, program_location_next):
@@ -42,8 +42,11 @@ class AbstractTypesAnalysis(object):
                 
         self._numeric_rel = NumericRelation(self._cfg)
         self._string_rel = StringRelation(self._cfg)
+        self._bool_rel = BoolRelation(self._cfg)
+        
         self._possible_type_relations = [self._numeric_rel,
-                                        self._string_rel]
+                                        self._string_rel,
+                                        self._bool_rel]
             
     def lattice_bottom(self):
         return AbstractType(formula=False)
@@ -91,10 +94,17 @@ class AbstractTypesAnalysis(object):
             ret_var, self._numeric_rel, 
             [(operand, self._numeric_rel) for operand in operands])
         
+        all_boolean_implies_boolean = self._operation_type_implies(concrete_transformation, 
+            ret_var, self._bool_rel, 
+            [(operand, self._bool_rel) for operand in operands])
+        
         if function_name in ['**', '*', '//', '/', '%', '-', '<<', '>>']:
             return all_numeric_implies_numeric
         if function_name == '+':
             return z3.Or(all_numeric_implies_numeric, all_string_implies_string)
+        if function_name in ['&', '|', '^']:
+            # TODO: not support implicit conversion to boolean
+            return all_boolean_implies_boolean
         else:
             assert False, "Unknown function call"
             
@@ -151,10 +161,14 @@ class AbstractTypesAnalysis(object):
                                                 for operand in operands))
         all_operands_string_formula = z3.And(*(self._string_rel.has_type_of_formula(operand, program_location)
                                                 for operand in operands))
+        all_operands_bool_formula = z3.And(*(self._bool_rel.has_type_of_formula(operand, program_location)
+                                                for operand in operands))
         if op in ['**', '*', '//', '/', '%', '-', '<<', '>>']:
             return all_operands_numeric_formula
         elif op == '+':
             return z3.Or(all_operands_numeric_formula, all_operands_string_formula)
+        elif op in ['&', '|', '^']: 
+            return all_operands_bool_formula
         else:
             assert False, "Unknown type safety: op %s of instruction %s" % (op, program_location)
     

@@ -98,8 +98,21 @@ y = x - "bla"
 """) == False
 
 
+    # booleans
+    assert type_analysis.analyze_type_safety("""
+x = True
+y = x & True
+""") == True
 
-    
+assert type_analysis.analyze_type_safety("""
+x = True
+y = x & 1
+""") == False # not supporting implicit conversion, TODO:
+
+assert type_analysis.analyze_type_safety("""
+x = True
+y = x & 'hello'
+""") == False
     
 if __name__ == "__main__":
     all_tests()

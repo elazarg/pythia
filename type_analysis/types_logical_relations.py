@@ -43,3 +43,14 @@ class StringRelation(TypeRelation):
         if instruction_utils.is_var_reference(expression):
             return TypeRelation.has_type_of_formula(self, expression, program_location)
         return False
+    
+class BoolRelation(TypeRelation):
+    def __init__(self, cfg):
+        super(BoolRelation, self).__init__('string', cfg)
+        
+    def has_type_of_formula(self, expression, program_location):
+        if instruction_utils.is_bool_literal(expression):
+            return True
+        if instruction_utils.is_var_reference(expression):
+            return TypeRelation.has_type_of_formula(self, expression, program_location)
+        return False

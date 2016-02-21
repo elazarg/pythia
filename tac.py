@@ -309,8 +309,7 @@ BIN_TO_OP = {
 'RSHIFT':    '>>',
 'AND':    '&',
 'XOR':    '^',
-'OR':    '|',
-'SUBSCR':    '[]',
+'OR':    '|'
 }
 
 # TODO. == to __eq__, etc.
