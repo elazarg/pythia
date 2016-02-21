@@ -19,7 +19,6 @@ class AbstractType(object):
         super(AbstractType, self).__init__()
         
         self._formula = formula
-        #self._simplify()
         
     def formula(self):
         return self._formula
@@ -29,6 +28,8 @@ class AbstractType(object):
         self._simplify()
         
     def _simplify(self):
+        if self._formula in [True, False]:
+            return
         self._formula = z3.simplify(self._formula)
         
     def __str__(self):
