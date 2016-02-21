@@ -8,6 +8,7 @@ import z3
 
 def test_code():
     x = 0
+    y = x + 1
     
 def chaotic_type_analysis(type_abstract_analyzer, cfg):
     s = cfg.initial_location()

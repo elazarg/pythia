@@ -1,7 +1,7 @@
 import tac
 import z3
-import instruction_utils
 import z3_utils
+from types_logical_relations import NumericRelation, StringRelation
 
 class ConcreteTransformer(object):
     def __init__(self, program_location_transforming, program_location_next):
@@ -40,36 +40,29 @@ class AbstractTypesAnalysis(object):
         
         self._cfg = cfg
                 
-        self.TypeSort = z3.DeclareSort("Type")
-        self._numeric_rel = z3.Function('numeric', self.TypeSort, z3.BoolSort())
-        self._string_rel = z3.Function('string', self.TypeSort, z3.BoolSort())
+        self._numeric_rel = NumericRelation(self._cfg)
+        self._string_rel = StringRelation(self._cfg)
         self._possible_type_relations = [self._numeric_rel,
                                         self._string_rel]
             
     def lattice_bottom(self):
         return AbstractType(formula=False)
-        
-
-    def _type_logical_const(self, var_name):
-        return z3.Const(var_name, self.TypeSort)
-
-    def _type_propagated_formula(self, previou_var_name, current_var_name):
-        previous_var_logical_constant = z3.Const(previou_var_name, self.TypeSort)
-        current_var_logical_constant = self._type_logical_const(current_var_name)
-        return z3.And(*(z3.Implies(type_rel(previous_var_logical_constant), type_rel(current_var_logical_constant))
-                        for type_rel in self._possible_type_relations))
-        
-    def var_logical_name(self, var_name, program_location):
-        return "%s_%d" % (var_name, self._cfg.get_instruction_number(program_location))
     
+    def _operation_type_implies(self, concrete_transformation, ret_var, ret_type, operands_with_types):
+        return z3.Implies(z3.And(*(type_relation.has_type_of_formula(operand_expr, concrete_transformation.current_location())
+                                for (operand_expr, type_relation) in operands_with_types)),
+                          ret_type.has_type_of_formula(ret_var, concrete_transformation.next_location()))
+
+    def _type_propagated_formula(self, expression_propagated_from, current_var_name, concrete_transformation):
+        return z3.And(*[self._operation_type_implies(concrete_transformation, current_var_name, type_rel,
+                                                    [(expression_propagated_from, type_rel)])
+                        for type_rel in self._possible_type_relations])
+
     def _type_preserved_for_variables(self, concrete_transformation, variables_names_unchanged):
         all_types_preserved_formula = True
-        for var_name in variables_names_unchanged:
-            # TODO: perhaps convert CFG to SSA and all of this becomes trivial?
-            previous_var_name = self.var_logical_name(var_name, concrete_transformation.current_location())
-            current_var_name  = self.var_logical_name(var_name, concrete_transformation.next_location()) 
+        for var_name in variables_names_unchanged: 
             all_types_preserved_formula = z3.And(all_types_preserved_formula, 
-                                                self._type_propagated_formula(previous_var_name, current_var_name))
+                                                self._type_propagated_formula(var_name, var_name, concrete_transformation))
         return all_types_preserved_formula
         
     def _no_change(self, concrete_transformation, abstract_type):
@@ -77,33 +70,39 @@ class AbstractTypesAnalysis(object):
                                                                self._cfg.program_vars()))
     
     def _assign(self, concrete_transformation, abstract_type):
-        # TODO: must refactor: instructions to classes?
         assigned_to_var_name = concrete_transformation.current_location().instruction().gens[0]
-        change_to_assigned = False
         expression_assigned = concrete_transformation.current_location().instruction().uses[0]
         
-        assigned_var_logical_constant = self._type_logical_const(self.var_logical_name(assigned_to_var_name,
-                                                                                       concrete_transformation.next_location()))
-        
-        if instruction_utils.is_var_reference(expression_assigned):
-            assigned_from_var_name = expression_assigned
-            # TODO: var_logical_name is important and buggy, make sure we don't make this mistake somehow
-            assigned_from_name_with_context = self.var_logical_name(assigned_from_var_name, concrete_transformation.current_location())
-            assigned_to_name_with_context = self.var_logical_name(assigned_to_var_name, concrete_transformation.next_location())
-            change_to_assigned = self._type_propagated_formula(assigned_from_name_with_context, 
-                                                               assigned_to_name_with_context)
-        elif instruction_utils.is_numeric_literal(expression_assigned):
-            change_to_assigned = self._numeric_rel(assigned_var_logical_constant)
-        elif instruction_utils.is_string_literal(expression_assigned):
-            change_to_assigned = self._string_rel(assigned_var_logical_constant)
+        change_to_assigned = self._type_propagated_formula(expression_assigned, assigned_to_var_name, concrete_transformation)
         
         all_vars_except_changed = self._cfg.program_vars()
         all_vars_except_changed.remove(assigned_to_var_name)
         
         formula = z3.And(self._type_preserved_for_variables(concrete_transformation, all_vars_except_changed),
                          change_to_assigned)
-        
         return AbstractType(formula)
+    
+    def _function_call(self, concrete_transformation, ret_var, function_name, operands):
+        if function_name == '+':
+            plus_string = self._operation_type_implies(concrete_transformation, 
+                ret_var, self._string_rel, 
+                [(operand, self._string_rel) for operand in operands])
+            
+            plus_numeric = self._operation_type_implies(concrete_transformation, 
+                ret_var, self._numeric_rel, 
+                [(operand, self._numeric_rel) for operand in operands])
+            
+            return z3.Or(plus_numeric, plus_string)
+                              
+        else:
+            assert False, "Unknown function call"
+            
+    def _binary(self, concrete_transformation, abstract_type):
+        instruction = concrete_transformation.current_location().instruction()
+        op = instruction.op
+        (assigned_to_var,) = instruction.gens
+        (operand1, operand2) = instruction.uses
+        return AbstractType(self._function_call(concrete_transformation, assigned_to_var, op, [operand1, operand2]))
 
     def transform(self, concrete_transformation, abstract_type):
         instruction = concrete_transformation.current_location().instruction()
@@ -115,9 +114,7 @@ class AbstractTypesAnalysis(object):
         elif op == tac.OP.IMPORT:
             return self._no_change(concrete_transformation, abstract_type)
         elif op == tac.OP.BINARY:
-            # TODO: do something real
-            return self._assign(concrete_transformation, abstract_type)
-            #return self._binary_operator(concrete_transformation, abstract_type)
+            return self._binary(concrete_transformation, abstract_type)
         elif op == tac.OP.INPLACE:
             assert False
         elif op == tac.OP.CALL:
@@ -145,31 +142,13 @@ class AbstractTypesAnalysis(object):
     def join(self, abstract_type1, abstract_type2):
         return AbstractType(z3.Or(abstract_type1.formula(), abstract_type2.formula()))
     
-    def _operand_is_numeric_formula(self, operand_expr, program_location):
-        if instruction_utils.is_var_reference(operand_expr):
-            operand_logical_const = self._type_logical_const(self.var_logical_name(operand_expr, program_location))
-            return self._numeric_rel(operand_logical_const)
-        elif instruction_utils.is_numeric_literal(operand_expr):
-            return True
-        elif instruction_utils.is_string_literal(operand_expr):
-            return False
-        
-    def _operand_is_string_formula(self, operand_expr, program_location):
-        if instruction_utils.is_var_reference(operand_expr):
-            operand_logical_const = self._type_logical_const(self.var_logical_name(operand_expr, program_location))
-            return self._string_rel(operand_logical_const)
-        elif instruction_utils.is_numeric_literal(operand_expr):
-            return False
-        elif instruction_utils.is_string_literal(operand_expr):
-            return True
-    
     def _binary_op_constraint(self, program_location):
         op = program_location.instruction().op
         operands = program_location.instruction().uses
         
-        all_operands_numeric_formula = z3.And(*(self._operand_is_numeric_formula(operand, program_location)
+        all_operands_numeric_formula = z3.And(*(self._numeric_rel.has_type_of_formula(operand, program_location)
                                                 for operand in operands))
-        all_operands_string_formula = z3.And(*(self._operand_is_string_formula(operand, program_location)
+        all_operands_string_formula = z3.And(*(self._string_rel.has_type_of_formula(operand, program_location)
                                                 for operand in operands))
         if op in ['**', '*', '//', '/', '%', '-', '<<', '>>']:
             return all_operands_numeric_formula
@@ -210,11 +189,10 @@ class AbstractTypesAnalysis(object):
         types_exclusion_theory = set()
         for program_location in self._cfg.all_locations():
             for var_name in self._cfg.program_vars():
-                var_logical_const = self._type_logical_const(self.var_logical_name(var_name, program_location))
                 # TODO: should be more fine-grained when we support subtyping
                 for possible_type1, possible_type2 in zip(self._possible_type_relations, self._possible_type_relations):
                     if possible_type1 != possible_type2:
-                        exclusion_statement = z3.Not(z3.And(possible_type1(var_logical_const),
-                                                            possible_type2(var_logical_const)))
+                        exclusion_statement = z3.Not(z3.And(possible_type1.has_type_of_formula(var_name, program_location),
+                                                            possible_type1.has_type_of_formula(var_name, program_location)))
                         types_exclusion_theory.add(exclusion_statement)
         return types_exclusion_theory
