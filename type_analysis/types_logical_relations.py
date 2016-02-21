@@ -46,7 +46,7 @@ class StringRelation(TypeRelation):
     
 class BoolRelation(TypeRelation):
     def __init__(self, cfg):
-        super(BoolRelation, self).__init__('string', cfg)
+        super(BoolRelation, self).__init__('bool', cfg)
         
     def has_type_of_formula(self, expression, program_location):
         if instruction_utils.is_bool_literal(expression):
