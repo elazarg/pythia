@@ -85,7 +85,7 @@ class AbstractTypesAnalysis(object):
                          change_to_assigned)
         return AbstractType(formula)
     
-    def _function_call(self, concrete_transformation, ret_var, function_name, operands):
+    def _function_call_typing(self, concrete_transformation, ret_var, function_name, operands):
         all_string_implies_string = self._operation_type_implies(concrete_transformation, 
             ret_var, self._string_rel, 
             [(operand, self._string_rel) for operand in operands])
@@ -105,6 +105,9 @@ class AbstractTypesAnalysis(object):
         if function_name in ['&', '|', '^']:
             # TODO: not support implicit conversion to boolean
             return all_boolean_implies_boolean
+        
+        if function_name == 'not':
+            return all_boolean_implies_boolean
         else:
             assert False, "Unknown function call"
             
@@ -113,7 +116,14 @@ class AbstractTypesAnalysis(object):
         op = instruction.op
         (assigned_to_var,) = instruction.gens
         (operand1, operand2) = instruction.uses
-        return AbstractType(self._function_call(concrete_transformation, assigned_to_var, op, [operand1, operand2]))
+        return AbstractType(self._function_call_typing(concrete_transformation, assigned_to_var, op, [operand1, operand2]))
+    
+    def _call(self, concrete_transformation, abstract_type):
+        instruction = concrete_transformation.current_location().instruction()
+        args = instruction.uses[1:]  # TODO: add kargs (see TAC)
+        ret_var = instruction.gens[0]
+        function_name = instruction.func
+        return AbstractType(self._function_call_typing(concrete_transformation, ret_var, function_name, args))
 
     def transform(self, concrete_transformation, abstract_type):
         instruction = concrete_transformation.current_location().instruction()
@@ -129,7 +139,7 @@ class AbstractTypesAnalysis(object):
         elif op == tac.OP.INPLACE:
             assert False
         elif op == tac.OP.CALL:
-            assert False, "Function calls not supported"
+            return self._call(concrete_transformation, abstract_type)
         elif op == tac.OP.JUMP:
             return self._no_change(concrete_transformation, abstract_type)
         elif op == tac.OP.FOR:
@@ -171,6 +181,19 @@ class AbstractTypesAnalysis(object):
             return all_operands_bool_formula
         else:
             assert False, "Unknown type safety: op %s of instruction %s" % (op, program_location)
+            
+    def _call_constraints(self, program_location):
+        instruction = program_location.instruction()
+        function_name = instruction.func
+        args = instruction.uses[1:]  # TODO: add kargs (see TAC)
+        
+        all_args_bool_formula = z3.And(*(self._bool_rel.has_type_of_formula(operand, program_location)
+                                                for operand in args))
+        
+        if function_name == 'not':
+            print(all_args_bool_formula)
+            return all_args_bool_formula
+        assert False, "Unknown function call for type constraints"
     
     def generate_safety_constraints(self, program_location):
         instruction = program_location.instruction()
@@ -186,9 +209,10 @@ class AbstractTypesAnalysis(object):
         elif opcode == tac.OP.INPLACE:
             assert False
         elif opcode == tac.OP.CALL:
-            assert False, "Function calls not supported %s" % str(instruction)
+            return self._call_constraints(program_location)
         elif opcode == tac.OP.JUMP:
-            return True # TODO:
+            # TODO: not supporting implicit conversion to bool
+            return self._bool_rel.has_type_of_formula(program_location.instruction().uses[0], program_location)
         elif opcode == tac.OP.FOR:
             assert False
         elif opcode == tac.OP.RET:

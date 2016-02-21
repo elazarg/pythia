@@ -8,7 +8,8 @@ import z3
 
 def test_code():
     x = True
-    y = x & True
+    if x:
+        pass
     
 def chaotic_type_analysis(type_abstract_analyzer, cfg):
     s = cfg.initial_location()
@@ -82,6 +83,7 @@ def check_type_safety(abstract_type_for_location, type_safety_constraints, types
     if z3_utils.unsat(solver):
         # this can happen with 3-address instructions that are not typable, e.g.
         # y = 'hello' + 1
+        print("Outrageously not typable")
         return False
         
     solver.add(z3.Not(z3.And(*type_safety_constraints)))

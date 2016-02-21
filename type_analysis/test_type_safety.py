@@ -104,15 +104,66 @@ x = True
 y = x & True
 """) == True
 
-assert type_analysis.analyze_type_safety("""
+    assert type_analysis.analyze_type_safety("""
 x = True
 y = x & 1
 """) == False # not supporting implicit conversion, TODO:
 
-assert type_analysis.analyze_type_safety("""
+    assert type_analysis.analyze_type_safety("""
 x = True
 y = x & 'hello'
 """) == False
+
+    assert type_analysis.analyze_type_safety("""
+x = True
+if x:
+    y = 1
+""") == True
     
+    assert type_analysis.analyze_type_safety("""
+if True:
+    y = 1
+""") == True
+
+    assert type_analysis.analyze_type_safety("""
+x = 'bla'
+if x:
+    y = 1
+""") == False
+
+    assert type_analysis.analyze_type_safety("""
+if 'bla':
+    y = 1
+""") == True
+
+    # if with a boolean condition
+    assert type_analysis.analyze_type_safety("""
+x = True
+if x:
+    pass
+""") == True
+
+    assert type_analysis.analyze_type_safety("""
+x = False
+if x:
+   y = 1
+""") == True
+    
+    assert type_analysis.analyze_type_safety("""
+x = True
+y = x
+if x:
+   pass
+""") == True
+
+    assert type_analysis.analyze_type_safety("""
+x = "bla"
+y = x
+if x:
+   pass
+""") == False # NOTE: no implicit cast to boolean
+
+
+
 if __name__ == "__main__":
     all_tests()
