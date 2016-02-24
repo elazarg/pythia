@@ -56,7 +56,7 @@ class ProgramCFG(object):
     def depict(self):
         for location in networkx.dfs_preorder_nodes(self._cfg, self._start_location):
             cmd = location.instruction().fmt.format(**location.instruction()._asdict())
-            print(cmd)
+            print(self.get_instruction_number(location), cmd)
             print("succ: ", [suc_location.instruction().format() for suc_location in self.successors(location)])
             
     def get_instruction_number(self, instruction):

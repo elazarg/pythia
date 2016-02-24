@@ -7,9 +7,22 @@ import z3_utils
 import z3
 
 def test_code():
+#     x = 0
+#     while True:
+#         x = x + 1
+#     y = 1
+        
+#     y = 1
+#     x = y
+#     x = x + 2
+   
     x = True
     if x:
-        pass
+        x = 1 + "bla"
+    else:
+        x = 2
+    y = 1 + "bla"
+    
     
 def chaotic_type_analysis(type_abstract_analyzer, cfg):
     s = cfg.initial_location()
@@ -102,16 +115,18 @@ def analyze_type_safety(code_to_analyze):
     type_safety_constraints = generate_type_safety_constraints(type_abstract_analyzer, cfg)
     types_exclusion_theory = type_abstract_analyzer.get_types_exclusion_theory()
     print(type_safety_constraints)
-    return check_type_safety(abstract_type_for_reachable_location, 
+    
+    result = check_type_safety(abstract_type_for_reachable_location, 
                          type_safety_constraints,
                          types_exclusion_theory)
+    return result
     
 def test():
     is_safe = analyze_type_safety(test_code)
     if is_safe:
         print("Type safe!")
     else:
-        print("Not safe!")
+        print("Not safe!")    
             
 if __name__ == '__main__':
     test()
