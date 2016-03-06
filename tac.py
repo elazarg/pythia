@@ -133,7 +133,7 @@ def call(lhs, f, args=(), kwargs=()):
     fmt_args = ', '.join('{{uses[{}]}}'.format(x) for x in range(1, len(args) + 1))
     fmt_kwargs = ', '.join('{{uses[{}]:uses[{}]:}}'.format(x, x + 1)
                            for x in range(len(args) + 1, len(args) + 1 + (len(kwargs) // 2), 2))
-    return tac(OP.CALL, gens=(lhs,), uses=(f, *args, *kwargs), func=f, args=args, kwargs=kwargs,
+    return tac(OP.CALL, gens=(lhs,), uses=((f,) + args + kwargs), func=f, args=args, kwargs=kwargs,
                 fmt='{gens[0]} = {uses[0]}(' + fmt_args + ')' + \
                      (('(kw=' + fmt_kwargs + ')') if kwargs else ''))
 
