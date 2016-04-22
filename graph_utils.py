@@ -81,8 +81,8 @@ def node_data_map(g, f, attr=None):
 def test_refine_to_chain():
     import code_examples
     tac_name = 'tac_block'
-    import tac
-    cfg = tac.make_tacblock_cfg(code_examples.CreateSphere)
+    from tac_analysis import make_tacblock_cfg
+    cfg = make_tacblock_cfg(code_examples.CreateSphere)
     refined = refine_to_chain(cfg, tac_name, 'tac')
     for x in sorted(refined.nodes_iter()):
         print(x, refined.node[x]['tac'].format())
