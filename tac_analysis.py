@@ -24,7 +24,7 @@
 #       So in some cases, `x = f(a, b)` might have e.g. KILLS={a}
 #       (and implicitly x too) if it is the last command to use the varible `a`.
 import tac
-from tac import print_3addr as print_tac_cfg, is_stackvar
+from tac import is_stackvar
 from itertools import chain
 
 BLOCKNAME = tac.BLOCKNAME
@@ -63,7 +63,7 @@ def test_single_block():
 
 def test():
     import code_examples
-    cfg = make_tacblock_cfg(code_examples.RenderScene)
+    cfg = make_tacblock_cfg(code_examples.simple)
     for n in sorted(cfg.nodes()):
         block = cfg.node[n][BLOCKNAME]
         print_block(n, block)

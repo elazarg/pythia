@@ -1,9 +1,11 @@
 import networkx
 
+
 def pairs(lst):
     return zip(lst, lst[1:])
 
-class ProgramLocation(object):
+
+class ProgramLocation:
     def __init__(self, instruction):
         self._instruction = instruction
         
@@ -13,11 +15,12 @@ class ProgramLocation(object):
     def __str__(self):
         return "ProgramLocation(%s)" % self._instruction.format()
 
-class ProgramCFG(object):
-    @staticmethod
-    def tac_blocks_cfg_get_commands_in_block(tac_blocks_cfg, block_node, name):
-        return tac_blocks_cfg.node[block_node][name]
 
+def tac_blocks_cfg_get_commands_in_block(tac_blocks_cfg, block_node, name):
+    return tac_blocks_cfg.node[block_node][name]
+
+
+class ProgramCFG:
     def __init__(self, tac_blocks_cfg, name):
         self._cfg = networkx.DiGraph()
         self._instruction_numbers = []
@@ -26,7 +29,7 @@ class ProgramCFG(object):
         block_number_to_last_location = {}
         
         for block_node in tac_blocks_cfg.nodes():
-            commands_in_block_lst = ProgramCFG.tac_blocks_cfg_get_commands_in_block(tac_blocks_cfg, block_node, name)
+            commands_in_block_lst = tac_blocks_cfg_get_commands_in_block(tac_blocks_cfg, block_node, name)
             program_locations_in_block = [ProgramLocation(instruction) for instruction in commands_in_block_lst]
             for program_location in program_locations_in_block:
                 self._cfg.add_node(program_location)
@@ -38,14 +41,14 @@ class ProgramCFG(object):
             block_number_to_first_location[block_node] = program_locations_in_block[0]
             block_number_to_last_location[block_node] = program_locations_in_block[-1]
             
-        self.__add_consecutive_blocks_edges(tac_blocks_cfg, name,
+        self._add_consecutive_blocks_edges(tac_blocks_cfg, name,
                                             block_number_to_first_location, block_number_to_last_location)
         
         first_block_id = sorted(tac_blocks_cfg.nodes())[0]
         self._start_location = block_number_to_first_location[first_block_id]
         print(self._start_location)        
                 
-    def __add_consecutive_blocks_edges(self, tac_blocks_cfg, name,
+    def _add_consecutive_blocks_edges(self, tac_blocks_cfg, name,
                                        block_number_to_first_location, block_number_to_last_location):
         for block_node_id in sorted(tac_blocks_cfg.nodes()):
             for succ_id in tac_blocks_cfg.successors(block_node_id):

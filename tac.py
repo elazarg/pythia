@@ -10,7 +10,7 @@ BLOCKNAME = 'tac_block'
 
 def test():
     import code_examples
-    cfg = make_tacblock_cfg(code_examples.CreateScene)
+    cfg = make_tacblock_cfg(code_examples.simple)
     print_3addr(cfg)
     # draw(cfg)
 

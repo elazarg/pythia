@@ -313,6 +313,7 @@ def CreateScene(x):
     CreatePlasmaCube()
     CreateSphere(imgx / 2.0, imgy / 2.0, imgz / 2, min(imgx / 2.0, imgy / 2.0, imgz / 2))
 
+
 def getpass(prompt = 'Password: ', hideChar = ' '):
     if char == '\003':
         raise KeyboardInterrupt # ctrl + c
@@ -331,9 +332,10 @@ def RenderScene():
             pixels[kx, ky] = RayTrace(kx, ky, 0, dx, dy, dz)
 
 def simple():
-    x = 1
-    y = 1
-    z = x + y
+    while z:
+        x = 1
+        y = 2
+        z = x + y
 
 if __name__ == "__main__":
     main()
