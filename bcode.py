@@ -75,8 +75,8 @@ def update_break_instruction(ins_iter):
     (a) It does not contain the target
     (b) The both stack effect and target depends on whether it is inside FOR or inside WHILE.
     The right way to fix it is from inside the graph, but for most purposes
-    running over the code will suffice; It'stack hard to do so from cfg, since its structure depends on the analysis...
-    RAISE_VARARGS is obviously problematic too. we want to jump to all `excpet` clauses
+    running over the code will suffice; It's hard to do so from cfg, since its structure depends on the analysis...
+    RAISE_VARARGS is obviously problematic too. we want to jump to all `except` clauses
     and out of the function; but more important, its POP_BLOCK should be matched appropriately.
     '''
     stack = []
@@ -100,9 +100,5 @@ def get_instructions(f):
 
 
 if __name__ == '__main__':
-    import pyclbr
-    elems = pyclbr.readmodule_ex('code_examples')
-    for name, val in elems.items():
-        print(val.lineno, ':', name)
-    for b in dis.dis(code_examples.simple):
+    for b in get_instructions(code_examples.simple):
         print(b)

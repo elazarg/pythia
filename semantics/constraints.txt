@@ -21,7 +21,7 @@ constraint hasattr(obj, name):
 	
 constraint hash(obj):
 	if __hash__ and __eq__ undefined:
-		returns id() or somthing similar s.t. x == y -> (x is y and hash(x) == hash(y))
+		returns id() or something similar s.t. x == y -> (x is y and hash(x) == hash(y))
 	if only __eq__ defined:
 		hash return None; unhashable
 		using hash will raise TypeError

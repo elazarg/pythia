@@ -84,7 +84,7 @@ def undef(kills, gens):
 
 def _filter_killed(ins, kills, new_kills):
     # moved here only because it is a transformation and not an analysis
-    if ins.is_del or ins.is_assign and set(ins.gens).issubset(kills):
+    if ins.is_del() or ins.is_assign() and set(ins.gens).issubset(kills):
         return
     yield ins._replace(gens=undef(kills, ins.gens),
                        kills=kills - new_kills)
@@ -148,7 +148,7 @@ class ConsProp(Domain):
     def single_block_update(block, in_cons_map):
         cons_map = in_cons_map.copy()
         for i, ins in enumerate(block):
-            if ins.is_assign and len(ins.gens) == len(ins.uses) == 1 and is_stackvar(ins.gens[0]):
+            if ins.is_assign() and len(ins.gens) == len(ins.uses) == 1 and is_stackvar(ins.gens[0]):
                 [lhs], [rhs] = ins.gens, ins.uses
                 if rhs in cons_map:
                     rhs = cons_map[rhs]
@@ -156,8 +156,6 @@ class ConsProp(Domain):
             else:
                 uses = [(cons_map.get(v, v))
                          for v in ins.uses]
-                if ins.is_inplace:
-                    uses[1] = ins.uses[1]
                 uses = tuple(uses)
                 block[i] = ins._replace(uses=tuple(uses))
                 for v in chain(ins.gens, ins.kills):

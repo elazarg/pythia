@@ -22,7 +22,7 @@ def print_3addr(cfg):
         # order of the lines in the code
         block = cfg.node[n][BLOCKNAME]
         for ins in block:
-            cmd = ins.fmt.format(**ins._asdict())
+            cmd = ins.format()
             print(n, ':\t', cmd)
 
 
@@ -51,15 +51,13 @@ class OP(Enum):
     NOP = 0
     ASSIGN = 1
     IMPORT = 2
-    BINARY = 3
-    INPLACE = 4
-    CALL = 5
-    JUMP = 6
-    FOR = 7
-    RET = 8
-    RAISE = 9
-    YIELD = 10
-    DEL = 11
+    CALL = 3
+    JUMP = 4
+    FOR = 5
+    RET = 6
+    RAISE = 7
+    YIELD = 8
+    DEL = 9
     
 # Tac is most of the interface of this module:
     
@@ -70,17 +68,12 @@ fields = ('opcode', 'fmt', 'gens', 'uses', 'kills',
 
 class Tac(namedtuple('Tac', fields)):
     __slots__ = ()
-    @property
+    
     def is_assign(self):
         return self.opcode == OP.ASSIGN 
 
-    @property
     def is_del(self):
-        return self.opcode == OP.DEL 
-
-    @property
-    def is_inplace(self):
-        return self.opcode == OP.INPLACE
+        return self.opcode == OP.DEL
     
     def format(self):
         return self.fmt.format(**self._asdict()) \
@@ -98,6 +91,9 @@ def tac(opcode, *, fmt, gens=(), uses=(), kills=(), is_id=False, op=None,
     return tac
 
 NOP = tac(OP.NOP, fmt='NOP')
+
+def resolve(lhs, names, attr):
+    return tac(OP.RESOLVE, fmt='{lhs} = RESOLVE {uses[0]} {uses[1]}', gens=(), uses=(names, attr))
 
 def delete(*vs):
     return tac(OP.DEL, kills=vs,
@@ -118,14 +114,14 @@ def mulassign(*lhs, rhs, is_id=True):
     return tac(OP.ASSIGN, gens=lhs, uses=(rhs,), is_id=is_id,
                   fmt=', '.join('gens[{}]'.format(i) for i in range(lhs)) + ' = {uses[0]}')
 
-def binary(lhs, left, op, right):
+def binary_lst(lhs, left, op, right, fresh):
     # note that operators are not *exactly* like attribute access, since it is never an attribute
-    return tac(OP.BINARY, gens=(lhs,), uses=(left, right), op=op,
-               fmt='{gens[0]} = {uses[0]} {op} {uses[1]}')
+    return [call(fresh, 'BUILTINS.resolve', (repr(op), left, right)),
+            call(lhs, fresh, (left, right))]
 
-def inplace(lhs, rhs, op):
-    return tac(OP.INPLACE, uses=(lhs, rhs), gens=(lhs,), op=op,
-               fmt='{uses[0]} {op}= {uses[1]}')
+def inplace_lst(lhs, rhs, op, fresh):
+    return [call(fresh, 'BUILTINS.resolve', (repr(op), lhs, rhs)),
+            call(lhs, fresh, (lhs, rhs))]
 
 def call(lhs, f, args=(), kwargs=()):
     # this way of formatting wont let use change the number of arguments easily.
@@ -159,7 +155,7 @@ def get_uses(block):
 
 def make_TAC(opname, val, stack_effect, tos, starts_line=None):
     tac = make_TAC_no_dels(opname, val, stack_effect, tos)
-    # this is simplistic klls analysis, that is not correct in general:
+    # this is simplistic kill analysis, that is not correct in general:
     tac = list(map(delete, get_gens(tac) - get_uses(tac))) + tac
     if stack_effect < 0:
         tac += [delete(var(tos + i)) for i in range(stack_effect + 1, 1)]
@@ -172,15 +168,16 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
     It is likely that a table-driven approach will be cleaner and more portable.
     '''
     out = tos + stack_effect if tos is not None else None
+    fresh = var(tos + 1)
     name, op = choose_category(opname, val)
     if name == 'UNARY_ATTR':
         return [unary(var(tos), op)]
     if name == 'UNARY_FUNC':
         return [call(var(out), op, (var(tos),))]
     elif name == 'BINARY':
-        return [binary(var(out), var(tos - 1), op, var(tos))]
+        return binary_lst(var(out), var(tos - 1), op, var(tos), fresh)
     elif name == 'INPLACE':
-        return [inplace(var(out), var(tos), op)]
+        return inplace_lst(var(out), var(tos), op, fresh)
     elif name.startswith('POP_JUMP_IF_'):
         res = [call(var(tos), 'not', (var(tos),))] if name.endswith('FALSE') else [] 
         return res + [jump(val, var(tos))]
@@ -191,13 +188,11 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
     elif name == 'DELETE_FAST':
         return []  # will be completed by the dels in make_TAC
     elif name == 'ROT_TWO':
-        fresh = var(tos + 1)
         return [assign(fresh, var(tos)),
                 assign(var(tos), var(tos - 1)),
                 assign(var(tos - 1), fresh),
                 delete(fresh)]
     elif name == 'ROT_THREE':
-        fresh = var(tos + 1)
         return [assign(fresh, var(tos - 2)),
                 assign(var(tos - 2), var(tos - 1)),
                 assign(var(tos - 1), var(tos)),
@@ -216,13 +211,16 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
     elif name == 'FOR_ITER':
         return [foreach(var(out), var(tos), val)]
     elif name == 'LOAD':
+        res = []
         if op == 'ATTR':
             return [call(var(out), 'BUILTINS.getattr', (var(tos), val))]
         if op in ['FAST', 'NAME']:     rhs = val
         elif op == 'CONST':  rhs = repr(val)
-        elif op == 'DEREF':  rhs = 'NONLOCAL.{}'.format(val)
-        elif op == 'GLOBAL': rhs = 'GLOBALS.{}'.format(val)
-        return [assign(var(out), rhs, is_id=(op != 'CONST'))]
+        elif op == 'DEREF':
+            rhs = 'NONLOCAL.{}'.format(val)
+        elif op == 'GLOBAL':
+            rhs = 'GLOBALS.{}'.format(val)
+        return res + [assign(var(out), rhs, is_id=(op != 'CONST'))]
     elif name in ['STORE_FAST', 'STORE_NAME']:
         return [assign(val, var(tos))]
     elif name == 'STORE_GLOBAL':
