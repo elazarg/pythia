@@ -108,11 +108,11 @@ def assign(lhs, rhs, is_id=True):
 
 def assign_attr(lhs, rhs, attr, is_id=True):
     return tac(OP.ASSIGN, gens=(lhs,), uses=(rhs,), is_id=is_id,
-                  fmt='{gens[0]} = {uses[0]}.' + attr)
+                  fmt='{gens[0]} ATTR= {uses[0]}.' + attr)
 
 def mulassign(*lhs, rhs, is_id=True):
     return tac(OP.ASSIGN, gens=lhs, uses=(rhs,), is_id=is_id,
-                  fmt=', '.join('gens[{}]'.format(i) for i in range(lhs)) + ' = {uses[0]}')
+                  fmt=', '.join('gens[{}]'.format(i) for i in range(len(lhs))) + ' = {uses[0]}')
 
 def binary_lst(lhs, left, op, right, fresh):
     # note that operators are not *exactly* like attribute access, since it is never an attribute
@@ -147,11 +147,13 @@ def include(lhs, modname, feature=None):
         fmt += '.' + feature 
     return tac(OP.IMPORT, gens=(lhs,), fm=fmt)
 
+
 def get_gens(block):
     return set(it.chain.from_iterable(ins.gens for ins in block))
 
 def get_uses(block):
     return set(it.chain.from_iterable(ins.uses for ins in block))
+
 
 def make_TAC(opname, val, stack_effect, tos, starts_line=None):
     tac = make_TAC_no_dels(opname, val, stack_effect, tos)
@@ -225,8 +227,8 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
         return [assign(val, var(tos))]
     elif name == 'STORE_GLOBAL':
         return [assign('GLOBALS.{}'.format(val), var(tos))]
-    elif name.startswith('STORE_ATTR'):
-        return [assign('{}.{}'.format(var(tos), val), var(tos - 1))]
+    elif name == 'STORE_ATTR':
+        return [call(var(tos), 'setattr', (var(tos), repr(val), var(tos-1)))]
     elif name.startswith('STORE_SUBSCR'):
         return [call(var(tos), 'BUILTINS.getattr', (var(tos - 1), "'__setitem__'")),
                 call(var(tos), var(tos), (var(tos - 2),))]

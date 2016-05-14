@@ -41,6 +41,7 @@ def make_tacblock_cfg(f, propagate_consts=True, liveness=True):
             cfg.node[n][BLOCKNAME] = block
     return cfg
 
+
 def print_block(n, block):
     print(n, ':')
     for ins in block:
@@ -60,6 +61,7 @@ def test_single_block():
         ConsProp.single_block_update(block)
         block = list(single_block_liveness(block)); block.reverse()
         print_block(n, block)
+
 
 def test():
     import code_examples
