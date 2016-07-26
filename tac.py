@@ -35,7 +35,7 @@ def make_tacblock_cfg(f):
     import bcode_cfg
     bcode_blocks = bcode_cfg.make_bcode_block_cfg_from_function(f)
     import graph_utils as gu
-    tac_blocks = gu.node_data_map(bcode_blocks, 
+    tac_blocks = gu.node_data_map(bcode_blocks,
                                   bcode_block_to_tac_block,
                                   BLOCKNAME)
     return tac_blocks
@@ -218,8 +218,16 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
     elif name == 'LOAD':
         if op == 'ATTR':
             return [call(var(out), 'BUILTINS.getattr', (var(tos), val))]
-        if op in ['FAST', 'NAME']:     rhs = val
-        elif op == 'CONST':  rhs = repr(val)
+        if op in ['FAST', 'NAME']:
+            rhs = val
+        elif op == 'CONST':
+            if isinstance(val, tuple):
+                indices = range(len(val))
+                build_lst = [assign(var(out+i), repr(val[i]), is_id=False) for i in indices]
+                # FIX: recursive call with BUILD_TUPLE
+                op = 'TUPLE'
+                return build_lst + [call(var(out), op, tuple(var(i + 1) for i in indices))]
+            rhs = repr(val)
         elif op == 'DEREF':  rhs = 'NONLOCAL.{}'.format(val)
         elif op == 'GLOBAL': rhs = 'GLOBALS.{}'.format(val)
         return [assign(var(out), rhs, is_id=(op != 'CONST'))]
@@ -228,7 +236,7 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
     elif name == 'STORE_GLOBAL':
         return [assign('GLOBALS.{}'.format(val), var(tos))]
     elif name == 'STORE_ATTR':
-        return [call(var(tos), 'setattr', (var(tos), repr(val), var(tos-1)))]
+        return [call(var(tos), 'setattr', (var(tos), repr(val), var(tos - 1)))]
     elif name.startswith('STORE_SUBSCR'):
         return [call(var(tos), 'BUILTINS.getattr', (var(tos - 1), "'__setitem__'")),
                 call(var(tos), var(tos), (var(tos - 2),))]
