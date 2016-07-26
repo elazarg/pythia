@@ -332,6 +332,7 @@ def RenderScene():
             pixels[kx, ky] = RayTrace(kx, ky, 0, dx, dy, dz)
 
 def simple():
+    a = 1 > True
     while z:
         x = 1
         y = 2
