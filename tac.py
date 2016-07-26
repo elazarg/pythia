@@ -233,7 +233,7 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
         if op in ['FAST', 'NAME']:
             rhs = val
         elif op == 'CONST':
-            return [assign(var(out), val, is_id=True)]
+            rhs = repr(val)
         elif op == 'DEREF':  rhs = 'NONLOCAL.{}'.format(val)
         elif op == 'GLOBAL': rhs = 'GLOBALS.{}'.format(val)
         return [assign(var(out), rhs, is_id=(op != 'CONST'))]
