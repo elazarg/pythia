@@ -116,7 +116,7 @@ def assign_attr(lhs, rhs, attr, is_id=True):
 
 def mulassign(*lhs, rhs, is_id=True):
     return tac(OP.ASSIGN, gens=lhs, uses=(rhs,), is_id=is_id,
-                  fmt=', '.join('gens[{}]'.format(i) for i in range(lhs)) + ' = {uses[0]}')
+                  fmt=', '.join('{{gens[{}]}}'.format(i) for i in range(len(lhs))) + ' = {uses[0]}')
 
 def binary(lhs, left, op, right):
     # note that operators are not *exactly* like attribute access, since it is never an attribute
