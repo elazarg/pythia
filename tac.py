@@ -217,7 +217,7 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
         return [foreach(var(out), var(tos), val)]
     elif name == 'LOAD':
         if op == 'ATTR':
-            return [call(var(out), 'BUILTINS.getattr', (var(tos), val))]
+            return [call(var(out), 'BUILTINS.getattr', (var(tos), repr(val)))]
         if op in ['FAST', 'NAME']:
             rhs = val
         elif op == 'CONST':
