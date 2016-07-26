@@ -15,15 +15,21 @@ def test():
     # draw(cfg)
 
 
-def print_3addr(cfg):
+def cfg_to_lines(cfg, no_dels=True):
     for n in sorted(cfg.nodes()):
         # The call for sorted() gives us for free the ordering of blocks by "fallthrough"
         # It is not guaranteed anywhere, but it makes sense - the order of blocks is the 
         # order of the lines in the code
         block = cfg.node[n][BLOCKNAME]
         for ins in block:
+            if no_dels and ins.opcode == OP.DEL:
+                continue
             cmd = ins.fmt.format(**ins._asdict())
-            print(n, ':\t', cmd)
+            yield '{}:\t{}'.format(n, cmd)
+
+
+def print_3addr(cfg, no_dels=True):
+    print('\n'.join(cfg_to_lines(cfg, no_dels)))
 
 
 def make_tacblock_cfg(f):
@@ -158,6 +164,12 @@ def get_uses(block):
     return set(it.chain.from_iterable(ins.uses for ins in block))
 
 def make_TAC(opname, val, stack_effect, tos, starts_line=None):
+    if opname == 'LOAD_CONST' and isinstance(val, tuple):
+        lst = []
+        for v in val:
+            lst += make_TAC('LOAD_CONST', v, 1, tos, starts_line)
+            tos += 1
+        return lst + make_TAC('BUILD_TUPLE', len(val), -len(val)+1, tos, starts_line)
     tac = make_TAC_no_dels(opname, val, stack_effect, tos)
     # this is simplistic klls analysis, that is not correct in general:
     tac = list(map(delete, get_gens(tac) - get_uses(tac))) + tac
@@ -221,13 +233,7 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
         if op in ['FAST', 'NAME']:
             rhs = val
         elif op == 'CONST':
-            if isinstance(val, tuple):
-                indices = range(len(val))
-                build_lst = [assign(var(out+i), repr(val[i]), is_id=False) for i in indices]
-                # FIX: recursive call with BUILD_TUPLE
-                op = 'TUPLE'
-                return build_lst + [call(var(out), op, tuple(var(i + 1) for i in indices))]
-            rhs = repr(val)
+            return [assign(var(out), val, is_id=True)]
         elif op == 'DEREF':  rhs = 'NONLOCAL.{}'.format(val)
         elif op == 'GLOBAL': rhs = 'GLOBALS.{}'.format(val)
         return [assign(var(out), rhs, is_id=(op != 'CONST'))]
