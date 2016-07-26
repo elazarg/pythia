@@ -169,7 +169,7 @@ def make_TAC(opname, val, stack_effect, tos, starts_line=None):
         for v in val:
             lst += make_TAC('LOAD_CONST', v, 1, tos, starts_line)
             tos += 1
-        return lst + make_TAC('BUILD_TUPLE', len(val), -len(val)+1, tos, starts_line)
+        return lst + make_TAC('BUILD_TUPLE', len(val), -len(val) + 1, tos, starts_line)
     tac = make_TAC_no_dels(opname, val, stack_effect, tos)
     # this is simplistic klls analysis, that is not correct in general:
     tac = list(map(delete, get_gens(tac) - get_uses(tac))) + tac
@@ -247,8 +247,11 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
         return [call(var(tos), 'BUILTINS.getattr', (var(tos - 1), "'__setitem__'")),
                 call(var(tos), var(tos), (var(tos - 2),))]
     elif name == 'BINARY_SUBSCR':
-        return [call(var(out), 'BUILTINS.getattr', (var(tos - 1), "'__getitem__'")),
-                call(var(out), var(out), (var(tos),))]
+        #
+        #return [call(var(out), 'BUILTINS.getattr', (var(tos - 1), "'__getitem__'")),
+        #        call(var(out), var(out), (var(tos),))]
+        # IVY-Specific: :(
+        return [call(var(out), 'BUILTINS.getitem', (var(tos-1), var(tos)))]
     elif name == 'POP_BLOCK':
         return [NOP]
     elif name == 'SETUP_LOOP':
