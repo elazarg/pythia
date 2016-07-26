@@ -1,25 +1,139 @@
 import ast
+from itertools import combinations
 
 import tac
 import tac_analysis
 
+ivy_type_decls = """\
+#lang ivy1.3
+
+
+type python_object
+type python_type
+
+
+relation type_error
+init ~type_error
+conjecture ~type_error
+
+individual type_of(X:python_object) : python_type
+
+
+individual t_intbool : python_type
+individual t_str : python_type
+individual t_none : python_type
+
+axiom t_intbool ~= t_str
+axiom t_intbool ~= t_none
+axiom t_str ~= t_none
+axiom T = t_intbool | T = t_str | T = t_none
+
+
+action addition(t1:python_type,t2:python_type) returns (t:python_type) = {
+    if t1 = t_intbool & t2 = t_intbool {
+        t := t_intbool
+    } else {
+        if (t1=t_str & t2=t_str) {
+                t := t_str
+        } else {
+            type_error := true
+        }
+    }
+}
+
+
+action multiply(t1:python_type,t2:python_type) returns (t:python_type) = {
+    if t1 = t_intbool & t2 = t_intbool {
+        t := t_intbool
+    } else {
+        if ((t1 = t_str & t2 = t_intbool) | (t2 = t_str & t1 = t_intbool)) {
+            t := t_str
+        }
+        else {
+            type_error := true
+        }
+    }
+}
+
+
+action numeric_op(t1:python_type,t2:python_type) returns (t:python_type) = {
+    if t1 = t_intbool & t2 = t_intbool {
+        t := t_intbool
+    } else {
+        type_error := true
+    }
+}
+
+
+action logical_not(t1:python_type) returns (t:python_type) = {
+    t := t_intbool
+}
+
+action equal(t1:python_type, t2:python_type) returns (t:python_type) = {
+    t := t_intbool
+}
+
+action comparison(t1:python_type,t2:python_type) returns (t:python_type) = {
+    t := t_intbool;
+    if t1 ~= t2 {
+        type_error := true
+    } else {
+        if t1 = t_none {
+            type_error := true
+        }
+    }
+}
+
+
+"""
 
 def test_function():
-    x1 = a + b
-    x2 = a ** b
-    x3 = x1 * x2
-    y = not x1
-    z1 = 1
-    z2 = '1'
-    z3 = True
-    z4 = False
-    z5 = None
-    # z6 = -z1
+    x = 0
+    y = 1 < True
+    while True:
+        z = x + y
+        x = "a"
+        #y = "b"
+    if (x > 0):
+        y = 1
+    else:
+        y = 2
+    z = x + y
 
-    # if x:
-    #     y = 1
-    # else:
-    #     x = 1
+
+# def test_function():
+#     x = 1
+#     y = '' #None
+#     if (x > 0):
+#         y = 1
+#     else:
+#         y = 2
+#     z = x + y
+
+# def test_function():
+#     x1 = a + b
+#     x2 = a ** b
+#     x3 = x1 * x2
+#     y = not x1
+#     z1 = 1
+#     z2 = '1'
+#     z3 = True
+#     z4 = False
+#     z5 = None
+#     # if (ha>3):
+#     #    print('yes')
+#     # z6 = -z1
+
+#     # if x:
+#     #     y = 1
+#     # else:
+#     #     x = 1
+
+
+t_intbool = 't_intbool'
+t_str = 't_str'
+t_none = 't_none'
+
 
 def parse_literal_expression(string_expr):
     if tac.is_stackvar(string_expr):
@@ -29,54 +143,75 @@ def parse_literal_expression(string_expr):
     expr = body[0]
     return type(expr.value)
 
-t_int = 't_int'
-t_str = 't_str'
-t_bool = 't_bool'
-t_none = 't_none'
-
-def ivy_type_of(x):
-    x = x.strip()
-    ast_class = parse_literal_expression(x)
-    if ast_class is ast.Name:
-        return 'type({})'.format(x)
-    elif ast_class is ast.Num:
-        return t_int
-    elif ast_class is ast.Str:
-        return t_str
-    elif ast_class is ast.NameConstant and x in ['True', 'False']:
-        return t_bool
-    elif ast_class is ast.NameConstant and x == 'None':
-        return t_none
+def ivy_and(*exprs):
+    if len(exprs) == 0:
+        return "true"
     else:
-        assert False, (x, ast_class)
+        return '(' + ' & '.join(
+            '({})'.format(e) for e in exprs
+        ) + ')'
+
+def ivy_or(*exprs):
+    if len(exprs) == 0:
+        return "false"
+    else:
+        return '(' + ' | '.join(
+            '({})'.format(e) for e in exprs
+        ) + ')'
+
+
 
 class TacToIvy(object):
+
+    def ivy_type_of(self, x):
+        x = x.strip()
+        ast_class = parse_literal_expression(x)
+        if ast_class is ast.Name:
+            name = str(x)
+            # get rid of '@'
+            name = name.replace('@', 'tmp_')
+            self.python_vars.add(name)
+            return 'type_of({})'.format(name)
+        elif ast_class is ast.Num:
+            return t_intbool
+        elif ast_class is ast.Str:
+            return t_str
+        elif ast_class is ast.NameConstant and x in ['True', 'False']:
+            return t_intbool
+        elif ast_class is ast.NameConstant and x == 'None':
+            return t_none
+        else:
+            assert False, (x, ast_class)
+
     def instruction_to_ivy(self, instruction):
         # return instruction.fmt.format(**instruction._asdict()) + '\n'
         op = instruction.opcode
         if op == tac.OP.NOP:
-            return self.no_change()
+            result = self.no_change()
         elif op == tac.OP.ASSIGN:
-            return self.assign(instruction)
+            result = self.assign(instruction)
         elif op == tac.OP.IMPORT:
-            return self.no_change()
+            result = self.no_change()
         elif op == tac.OP.BINARY:
-            return self.binary(instruction)
+            result = self.binary(instruction)
         elif op == tac.OP.INPLACE:
             assert False
         elif op == tac.OP.CALL:
-            return self.call(instruction)
+            result = self.call(instruction)
         elif op == tac.OP.JUMP:
-            return self.no_change()
+            result = self.no_change()
         elif op == tac.OP.FOR:
             assert False
         elif op == tac.OP.RET:
-            return self.no_change()
-            assert False, "Function calls not supported"
+            result = self.no_change()
+            # assert False, "Function calls not supported"
         elif op == tac.OP.DEL:
-            return self.no_change()
+            result = self.no_change()
         else:
             assert False, "Unknown Three Address Code instruction in {}".format(instruction)
+
+        return result
+
 
     def no_change(self):
         return ""
@@ -84,10 +219,7 @@ class TacToIvy(object):
     def assign(self, instruction):
         lhs = instruction.gens[0]
         rhs = instruction.uses[0]
-
-        return """
-        type({}) := {}
-        """.format(lhs, ivy_type_of(rhs))
+        return "{} := {}".format(self.ivy_type_of(lhs), self.ivy_type_of(rhs))
 
     def call(self, instruction):
         assert len(instruction.gens) == 1
@@ -106,89 +238,121 @@ class TacToIvy(object):
             arguments=instruction.uses[:],
         )
 
-    def ivy_and(self, *exprs):
-        return '(' + ' & '.join(
-            '({})'.format(e) for e in exprs
-        ) + ')'
-
     def builtin_function(self, result, function_name, arguments):
         function_name = function_name.strip()
 
-        # numeric only operations
-        if function_name in ['**', '//', '/', '%', '-', '<<', '>>']:
-            return """
-            if {} {{
-                type({}) := t_int
-            }} else {{
-                type_error := true
-            }}
-            """.format(self.ivy_and(*('type({})=t_int'.format(x) for x in arguments)), result)
+        if function_name in ['**', '//', '%', '-', '<<', '>>', '&', '|', '^']:
+            assert len(arguments) == 2
+            return "{} := numeric_op({}, {})".format(
+                self.ivy_type_of(result), self.ivy_type_of(arguments[0]), self.ivy_type_of(arguments[1])
+            )
 
         elif function_name == '+':
-            return """
-            if ((type({left})=t_int | type({left})=t_bool) & (type({right})=t_int | type({right})=t_bool)) {{
-                type({result}) := t_int
-            }} else {{
-                if (type({left})=t_str & type({right})=t_str) {{
-                    type({result}) := t_str
-                }} else {{
-                    type_error := true
-                }}
-            }}
-            """.format(result=result, left=arguments[0], right=arguments[1])
+            assert len(arguments) == 2
+            return "{} := addition({}, {})".format(
+                self.ivy_type_of(result), self.ivy_type_of(arguments[0]), self.ivy_type_of(arguments[1])
+            )
 
         elif function_name == '*':
-            return """
-            if (type({left})=t_int & type({right})=t_int) {{
-                type({result}) := t_int
-            }} else {{
-                if ((type({left})=t_str & type({right})=t_int) | (type({right})=t_str & type({left})=t_int)) {{
-                    type({result}) := t_str
-                }} else {{
-                    type_error := true
-                }}
-            }}
-            """.format(result=result, left=arguments[0], right=arguments[1])
+            assert len(arguments) == 2
+            return "{} := multiply({}, {})".format(
+                self.ivy_type_of(result), self.ivy_type_of(arguments[0]), self.ivy_type_of(arguments[1])
+            )
 
-
-        # if function_name in ['&', '|', '^']:
-        #     # TODO: not support implicit conversion to boolean
-        #     return all_boolean_implies_boolean
+        elif function_name in ['>', '<', '>=', '<=']:
+            assert len(arguments) == 2
+            return "{} := comparison({}, {})".format(
+                self.ivy_type_of(result), self.ivy_type_of(arguments[0]), self.ivy_type_of(arguments[1])
+            )
 
         elif function_name == 'not':
-            return """
-            type({result}) := t_bool
-            """.format(result=result)
+            assert len(arguments) == 1
+            return "{} := logical_not({})".format(
+                self.ivy_type_of(result), self.ivy_type_of(arguments[0])
+            )
+
+        elif function_name == '==':
+            assert len(arguments) == 2
+            return "{} := equal({}, {})".format(
+                self.ivy_type_of(result), self.ivy_type_of(arguments[0]), self.ivy_type_of(arguments[1])
+            )
 
         else:
-            assert False, "builtin_function({!r}, {!r}, {!r})".format(result, function_name, arguments)
+            assert False, "builtin_function({!r}, {!r}, {!r})".format(
+                result, function_name, arguments
+            )
+
+    def block_instructions_to_ivy(self, block_instructions):
+        instructions = [self.instruction_to_ivy(instruction) for instruction in block_instructions]
+        instructions = [x for x in instructions if x != '']
+        return instructions
 
     def tac_blocks_cfg_to_ivy(self, tac_blocks_cfg):
-        st = """
-        relation str(X)
-        relation num(X)
-        relation bool(X)
-        function type : object -> type
-        
-        """
-        first_block_id = min(tac_blocks_cfg.nodes())
-        for node_id in tac_blocks_cfg.nodes():
-            block_instructions = tac_blocks_cfg.node[node_id][tac.BLOCKNAME]
-            successor_ids = tac_blocks_cfg.successors(node_id)
+        self.python_vars = set()
+        block_ids = sorted(tac_blocks_cfg.nodes())
+        first_block_id = block_ids[0]  # the smallest id is the first to run
+        ivy_can_run_decls = "\n".join([
+            "type basic_block",
+            "relation can_run(B:basic_block)",
+        ] + [
+            "individual bb{}:basic_block".format(i)
+            for i in block_ids
+        ] + [
+            "axiom bb{} ~= bb{}".format(i, j)
+            for i, j in combinations(block_ids, 2)
+        ] + [
+            "axiom " + ivy_or(*("B = bb{}".format(i) for i in block_ids)),
+            "init can_run(B) <-> B = bb{}".format(first_block_id)
+        ]) + "\n\n"
 
+        actions = []
+        for i in block_ids:
+            block_instructions = tac_blocks_cfg.node[i][tac.BLOCKNAME]
+            successor_ids = tac_blocks_cfg.successors(i)
+            ivy_instructions = (
+                ["assume can_run(bb{})".format(i)] +
+                self.block_instructions_to_ivy(block_instructions) +
+                ["can_run(B) := {}".format(ivy_or(*(
+                    "B = bb{}".format(j) for j in successor_ids
+                )))]
+            )
 
-            st += "action basic_block_{} = {{\n".format(node_id)
-            for instruction in block_instructions:
-                st += self.instruction_to_ivy(instruction)
-            st += "}\n"
-        return st
+            actions.append(
+                "action basic_block_{} = {{\n    ".format(i) +
+                ";\n    ".join(ivy_instructions) +
+                "\n}}\nexport basic_block_{}".format(i)
+            )
+
+        python_vars = sorted(self.python_vars)
+        ivy_python_vars_decls = "\n".join([
+            "individual {}:python_object".format(i)
+            for i in python_vars
+        ] + [
+            "axiom {} ~= {}".format(i, j)
+            for i, j in combinations(python_vars, 2)
+        ]
+        )
+
+        return "\n\n\n".join(
+            [
+                ivy_type_decls,
+                ivy_can_run_decls,
+                ivy_python_vars_decls,
+            ] +
+            actions
+        )
+
 
 def test(code_to_analyze):
+    from pdb import set_trace
+    # set_trace()
     tac_blocks_cfg = tac_analysis.make_tacblock_cfg(code_to_analyze)
     tac_analysis.print_tac_cfg(tac_blocks_cfg)
     print()
     tac_to_ivy = TacToIvy()
-    print(tac_to_ivy.tac_blocks_cfg_to_ivy(tac_blocks_cfg))
+    result = tac_to_ivy.tac_blocks_cfg_to_ivy(tac_blocks_cfg)
+    open("ivy_file.ivy", 'w').write(result)
+    print(result)
 
 if __name__ == "__main__":
     test(test_function)
