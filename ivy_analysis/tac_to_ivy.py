@@ -346,8 +346,9 @@ class TacToIvy(object):
 def test(code_to_analyze):
     from pdb import set_trace
     # set_trace()
-    tac_blocks_cfg = tac_analysis.make_tacblock_cfg(code_to_analyze)
-    tac_analysis.print_tac_cfg(tac_blocks_cfg)
+    #tac_blocks_cfg = tac_analysis.make_tacblock_cfg(code_to_analyze)
+    tac_blocks_cfg = tac.make_tacblock_cfg(code_to_analyze)
+    tac.print_3addr(tac_blocks_cfg)
     print()
     tac_to_ivy = TacToIvy()
     result = tac_to_ivy.tac_blocks_cfg_to_ivy(tac_blocks_cfg)
