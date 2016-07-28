@@ -1,0 +1,152 @@
+type python_object
+type python_type
+
+
+individual tmp_result:python_object
+
+
+relation type_error
+init ~type_error
+conjecture ~type_error
+
+
+individual type_of(X:python_object) : python_type
+
+
+individual t_intbool : python_type
+individual t_str : python_type
+individual t_none : python_type
+individual t_tuple : python_type
+individual t_list : python_type
+individual t_iterator : python_type
+axiom t_intbool ~= t_str
+axiom t_intbool ~= t_none
+axiom t_intbool ~= t_tuple
+axiom t_intbool ~= t_list
+axiom t_intbool ~= t_iterator
+axiom t_str ~= t_none
+axiom t_str ~= t_tuple
+axiom t_str ~= t_list
+axiom t_str ~= t_iterator
+axiom t_none ~= t_tuple
+axiom t_none ~= t_list
+axiom t_none ~= t_iterator
+axiom t_tuple ~= t_list
+axiom t_tuple ~= t_iterator
+axiom t_list ~= t_iterator
+axiom T = t_intbool | T = t_str | T = t_none | T = t_tuple | T = t_list | T = t_iterator
+
+
+action addition(a1:python_object, a2:python_object) returns (r:python_object) = {
+    if type_of(a1) = type_of(a2) {
+        assume type_of(r) = type_of(a1)
+    } else {
+        type_error := true
+    };
+    if type_of(a1) = t_list & type_of(a2) = t_list {
+        assume member(r,X) <-> (member(a1,X) | member(a2,X))
+    }
+}
+
+
+action multiply(a1:python_object,a2:python_object) returns (r:python_object) = {
+    if (type_of(a1) = t_intbool & (
+            type_of(a2) = t_intbool |
+            type_of(a2) = t_str |
+            type_of(a2) = t_tuple |
+            type_of(a2) = t_list
+        )) {
+        assume type_of(r) = type_of(a2)
+    } else {
+        if (type_of(a2) = t_intbool & (
+                type_of(a1) = t_intbool |
+                type_of(a1) = t_str |
+                type_of(a1) = t_tuple |
+                type_of(a1) = t_list
+            )) {
+            assume type_of(r) = type_of(a1)
+        } else {
+            type_error := true
+        }
+    }
+}
+
+
+action numeric_op(a1:python_object,a2:python_object) returns (r:python_object) = {
+    if type_of(a1) = t_intbool & type_of(a2) = t_intbool {
+        assume type_of(r) = t_intbool
+    } else {
+        type_error := true
+    }
+}
+
+
+action logical_not(a1:python_object) returns (r:python_object) = {
+    assume type_of(r) = t_intbool
+}
+
+
+action equal(a1:python_object, a2:python_object) returns (r:python_object) = {
+    assume type_of(r) = t_intbool
+}
+
+
+action comparison(a1:python_object,a2:python_object) returns (r:python_object) = {
+    assume type_of(r) = t_intbool;
+    if type_of(a1) ~= type_of(a2) {
+        type_error := true
+    } else {
+        if type_of(a1) = t_none {
+            type_error := true
+        }
+    }
+}
+
+
+# support for lists, tuples, and iterators
+
+relation member(X:python_object,Y:python_object)
+relation iter_of(X:python_object,Y:python_object)
+relation item(X:python_object,Y:python_object,Z:python_object)
+
+
+action new_empty_list returns (r:python_object) = {
+    assume type_of(r) = t_list;
+    assume ~member(r,X)
+}
+
+
+action new_list_1(a:python_object) returns (r:python_object) = {
+    assume type_of(r) = t_list;
+    assume member(r,X) <-> X = a
+}
+
+
+action new_iter_of(a:python_object) returns (r:python_object) = {
+    if type_of(a) ~= t_list {
+        # this is over-restrictive, in python you can actually iterate over other types as well
+        type_error := true
+    } else {
+        assume type_of(r) = t_iterator;
+        assume iter_of(r,a)
+    }
+}
+
+
+action for_loop(a:python_object) returns (r:python_object) = {
+    if type_of(a) ~= t_iterator {
+        type_error := true
+    } else {
+        assume iter_of(a,X) -> member(X,r)  # minor unsoundness for iterating over empty list
+    }
+}
+
+
+action getitem(a1:python_object, a2:python_object) returns (r:python_object) = {
+    if type_of(a1) ~= t_tuple {
+        # this is over-restrictive, in python you can actually __getitem__ over other types as well
+        type_error := true
+    } else {
+        assume item(a1, a2, r)
+    }
+}
