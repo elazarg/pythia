@@ -1,5 +1,5 @@
-from collections import namedtuple
 import itertools as it
+from collections import namedtuple
 from enum import Enum
 
 # TAC: Three Address Code. An instruction that knows where it stands.
@@ -7,6 +7,7 @@ from enum import Enum
 # I call the stack depth 'tos', although in Python docs it means "the value at the top of the stack"
 
 BLOCKNAME = 'tac_block'
+
 
 def test():
     import code_examples
@@ -20,7 +21,7 @@ def cfg_to_lines(cfg, no_dels=True):
         # The call for sorted() gives us for free the ordering of blocks by "fallthrough"
         # It is not guaranteed anywhere, but it makes sense - the order of blocks is the 
         # order of the lines in the code
-        block = cfg.node[n][BLOCKNAME]
+        block = cfg.nodes[n][BLOCKNAME]
         for ins in block:
             if no_dels and ins.opcode == OP.DEL:
                 continue
@@ -35,9 +36,9 @@ def print_3addr(cfg, no_dels=True):
 def make_tacblock_cfg(f):
     def bcode_block_to_tac_block(n, block_data):
         return list(it.chain.from_iterable(
-                    make_TAC(bc.opname, bc.argval, bc.stack_effect(), tos, bc.starts_line)
-                    for bc, tos in bcode_cfg.get_code_depth_pairs(block_data)))
-    
+            make_TAC(bc.opname, bc.argval, bc.stack_effect(), tos, bc.starts_line)
+            for bc, tos in bcode_cfg.get_code_depth_pairs(block_data)))
+
     import bcode_cfg
     bcode_blocks = bcode_cfg.make_bcode_block_cfg_from_function(f)
     import graph_utils as gu
@@ -48,10 +49,12 @@ def make_tacblock_cfg(f):
 
 
 def var(x):
-    return '@v{}'.format(x - 1)
+    return '$v{}'.format(x - 1)
+
 
 def is_stackvar(v):
-    return v[0] == '@'
+    return v[0] == '$'
+
 
 class OP(Enum):
     NOP = 0
@@ -66,31 +69,34 @@ class OP(Enum):
     RAISE = 9
     YIELD = 10
     DEL = 11
-    
+
+
 # Tac is most of the interface of this module:
-    
 fields = ('opcode', 'fmt', 'gens', 'uses', 'kills',
           'is_id', 'op', 'target',
           'func', 'args', 'kwargs',
           'starts_line')
 
+
 class Tac(namedtuple('Tac', fields)):
     __slots__ = ()
+
     @property
     def is_assign(self):
-        return self.opcode == OP.ASSIGN 
+        return self.opcode == OP.ASSIGN
 
     @property
     def is_del(self):
-        return self.opcode == OP.DEL 
+        return self.opcode == OP.DEL
 
     @property
     def is_inplace(self):
         return self.opcode == OP.INPLACE
-    
+
     def format(self):
         return self.fmt.format(**self._asdict()) \
             # +  ' \t\t -- kills: {}'.format(self.kills) 
+
 
 def tac(opcode, *, fmt, gens=(), uses=(), kills=(), is_id=False, op=None,
         target=None, func=None, args=(), kwargs=(), starts_line=None):
@@ -99,39 +105,48 @@ def tac(opcode, *, fmt, gens=(), uses=(), kills=(), is_id=False, op=None,
     for args in [uses, kills, args]:
         assert isinstance(args, (tuple, frozenset))
     tac = Tac(opcode, fmt=fmt, gens=gens, uses=uses, kills=kills or gens, is_id=is_id,
-               op=op, target=target, func=func, args=args, kwargs=kwargs,
-               starts_line=starts_line)
+              op=op, target=target, func=func, args=args, kwargs=kwargs,
+              starts_line=starts_line)
     return tac
 
+
 NOP = tac(OP.NOP, fmt='NOP')
+
 
 def delete(*vs):
     return tac(OP.DEL, kills=vs,
                fmt='DEL {kills}')
 
+
 def unary(lhs, op):
     return call(lhs, '{}.{}'.format(lhs, op))
 
+
 def assign(lhs, rhs, is_id=True):
     return tac(OP.ASSIGN, gens=(lhs,), uses=(rhs,), is_id=is_id,
-                  fmt='{gens[0]} = {uses[0]}')
+               fmt='{gens[0]} = {uses[0]}')
+
 
 def assign_attr(lhs, rhs, attr, is_id=True):
     return tac(OP.ASSIGN, gens=(lhs,), uses=(rhs,), is_id=is_id,
-                  fmt='{gens[0]} = {uses[0]}.' + attr)
+               fmt='{gens[0]} = {uses[0]}.' + attr)
+
 
 def mulassign(*lhs, rhs, is_id=True):
     return tac(OP.ASSIGN, gens=lhs, uses=(rhs,), is_id=is_id,
-                  fmt=', '.join('{{gens[{}]}}'.format(i) for i in range(len(lhs))) + ' = {uses[0]}')
+               fmt=', '.join('{{gens[{}]}}'.format(i) for i in range(len(lhs))) + ' = {uses[0]}')
+
 
 def binary(lhs, left, op, right):
     # note that operators are not *exactly* like attribute access, since it is never an attribute
     return tac(OP.BINARY, gens=(lhs,), uses=(left, right), op=op,
                fmt='{gens[0]} = {uses[0]} {op} {uses[1]}')
 
+
 def inplace(lhs, rhs, op):
     return tac(OP.INPLACE, uses=(lhs, rhs), gens=(lhs,), op=op,
                fmt='{uses[0]} {op}= {uses[1]}')
+
 
 def call(lhs, f, args=(), kwargs=()):
     # this way of formatting wont let use change the number of arguments easily.
@@ -140,28 +155,34 @@ def call(lhs, f, args=(), kwargs=()):
     fmt_kwargs = ', '.join('{{uses[{}]:uses[{}]:}}'.format(x, x + 1)
                            for x in range(len(args) + 1, len(args) + 1 + (len(kwargs) // 2), 2))
     return tac(OP.CALL, gens=(lhs,), uses=((f,) + args + kwargs), func=f, args=args, kwargs=kwargs,
-                fmt='{gens[0]} = {uses[0]}(' + fmt_args + ')' + \
-                     (('(kw=' + fmt_kwargs + ')') if kwargs else ''))
+               fmt='{gens[0]} = {uses[0]}(' + fmt_args + ')' + \
+                   (('(kw=' + fmt_kwargs + ')') if kwargs else ''))
+
 
 def foreach(lhs, iterator, target):
     return tac(OP.FOR, gens=(lhs,), uses=(iterator,), target=target,
                fmt='{gens[0]} = next({uses[0]}) HANDLE: GOTO {target}')
 
+
 def jump(target, cond='True'):
     return tac(OP.JUMP, uses=(cond,), target=target,
                fmt='IF {uses[0]} GOTO {target}')
 
+
 def include(lhs, modname, feature=None):
     fmt = '{gens[0]} = IMPORT(' + modname + ')'
     if feature is not None:
-        fmt += '.' + feature 
-    return tac(OP.IMPORT, gens=(lhs,), fm=fmt)
+        fmt += '.' + feature
+    return tac(OP.IMPORT, gens=(lhs,), fmt=fmt)
+
 
 def get_gens(block):
     return set(it.chain.from_iterable(ins.gens for ins in block))
 
+
 def get_uses(block):
     return set(it.chain.from_iterable(ins.uses for ins in block))
+
 
 def make_TAC(opname, val, stack_effect, tos, starts_line=None):
     if opname == 'LOAD_CONST' and isinstance(val, tuple):
@@ -179,22 +200,22 @@ def make_TAC(opname, val, stack_effect, tos, starts_line=None):
 
 
 def make_TAC_no_dels(opname, val, stack_effect, tos):
-    '''Yes, this is a long function, since it partially describes the semantics of the bytecode,
+    """Yes, this is a long function, since it partially describes the semantics of the bytecode,
     So it is a long switch. Similar to the one seen in interpreters.
     It is likely that a table-driven approach will be cleaner and more portable.
-    '''
+    """
     out = tos + stack_effect if tos is not None else None
     name, op = choose_category(opname, val)
     if name == 'UNARY_ATTR':
         return [unary(var(tos), op)]
-    if name == 'UNARY_FUNC':
+    elif name == 'UNARY_FUNC':
         return [call(var(out), op, (var(tos),))]
     elif name == 'BINARY':
         return [binary(var(out), var(tos - 1), op, var(tos))]
     elif name == 'INPLACE':
         return [inplace(var(out), var(tos), op)]
     elif name.startswith('POP_JUMP_IF_'):
-        res = [call(var(tos), 'not', (var(tos),))] if name.endswith('FALSE') else [] 
+        res = [call(var(tos), 'not', (var(tos),))] if name.endswith('FALSE') else []
         return res + [jump(val, var(tos))]
     elif name == 'JUMP':
         return [jump(val)]
@@ -224,7 +245,7 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
         return [tac(OP.RET, uses=(var(tos),), fmt='RETURN {uses[0]}')]
     elif name == 'YIELD_VALUE':
         return [tac(OP.YIELD, gens=[var(out)], uses=[var(tos)],
-                fmt='YIELD {uses[0]}')]
+                    fmt='YIELD {uses[0]}')]
     elif name == 'FOR_ITER':
         return [foreach(var(out), var(tos), val)]
     elif name == 'LOAD':
@@ -234,8 +255,12 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
             rhs = val
         elif op == 'CONST':
             rhs = repr(val)
-        elif op == 'DEREF':  rhs = 'NONLOCAL.{}'.format(val)
-        elif op == 'GLOBAL': rhs = 'GLOBALS.{}'.format(val)
+        elif op == 'DEREF':
+            rhs = 'NONLOCAL.{}'.format(val)
+        elif op == 'GLOBAL':
+            rhs = 'GLOBALS.{}'.format(val)
+        else:
+            assert False, op
         return [assign(var(out), rhs, is_id=(op != 'CONST'))]
     elif name in ['STORE_FAST', 'STORE_NAME']:
         return [assign(val, var(tos))]
@@ -248,10 +273,10 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
                 call(var(tos), var(tos), (var(tos - 2),))]
     elif name == 'BINARY_SUBSCR':
         #
-        #return [call(var(out), 'BUILTINS.getattr', (var(tos - 1), "'__getitem__'")),
+        # return [call(var(out), 'BUILTINS.getattr', (var(tos - 1), "'__getitem__'")),
         #        call(var(out), var(out), (var(tos),))]
         # IVY-Specific: :(
-        return [call(var(out), 'BUILTINS.getitem', (var(tos-1), var(tos)))]
+        return [call(var(out), 'BUILTINS.getitem', (var(tos - 1), var(tos)))]
     elif name == 'POP_BLOCK':
         return [NOP]
     elif name == 'SETUP_LOOP':
@@ -279,10 +304,9 @@ def make_TAC_no_dels(opname, val, stack_effect, tos):
         total = nargs + nkwargs
         mid = [var(i + 1) for i in range(tos - nkwargs - nargs, tos - nkwargs)]
         mid_kw = [(var(i) + ': ' + var(i + 1))
-                            for i in range(tos - nkwargs + 1, tos, 2)]
+                  for i in range(tos - nkwargs + 1, tos, 2)]
         return [call(var(out), var(tos - total), tuple(mid), tuple(mid_kw))]
     assert False, 'Falling through. {}: {}'.format(opname, val)
-
 
 
 def choose_category(opname, argval):
@@ -291,10 +315,10 @@ def choose_category(opname, argval):
         return 'UNARY_ATTR', UN_TO_OP[opname]
     if opname in ('GET_ITER', 'UNARY_NOT', 'GET_YIELD_FROM_ITER'):
         return 'UNARY_FUNC', UN_TO_OP[opname]
-               
+
     if opname in ('JUMP_ABSOLUTE', 'JUMP_FORWARD', 'BREAK_LOOP', 'CONTINUE_LOOP'):
         return 'JUMP', None
-    
+
     desc = opname.split('_', 1)[1]
     if opname == 'COMPARE_OP':
         return 'BINARY', argval
@@ -303,30 +327,31 @@ def choose_category(opname, argval):
 
     if opname.startswith('INPLACE_'):
         return 'INPLACE', BIN_TO_OP[desc]
-    
+
     if opname.startswith('BUILD_'):
         return 'BUILD', desc
- 
+
     if opname.startswith('LOAD_'):
         return 'LOAD', desc
 
     return opname, None
 
+
 BIN_TO_OP = {
-'POWER':    '**',
-'MULTIPLY':    '*',
-'MATRIX_MULTIPLY':    '@',
-'FLOOR_DIVIDE':    '//',
-'TRUE_DIVIDE':    '/',
-'MODULO':    '%',
-'ADD':    '+',
-'SUBTRACT': '-',
-'SUBSCR':   '[]',
-'LSHIFT':    '<<' ,
-'RSHIFT':    '>>',
-'AND':    '&',
-'XOR':    '^',
-'OR':    '|'
+    'POWER': '**',
+    'MULTIPLY': '*',
+    'MATRIX_MULTIPLY': '@',
+    'FLOOR_DIVIDE': '//',
+    'TRUE_DIVIDE': '/',
+    'MODULO': '%',
+    'ADD': '+',
+    'SUBTRACT': '-',
+    'SUBSCR': '[]',
+    'LSHIFT': '<<',
+    'RSHIFT': '>>',
+    'AND': '&',
+    'XOR': '^',
+    'OR': '|'
 }
 
 # TODO. == to __eq__, etc.
@@ -335,14 +360,14 @@ CMPOP_TO_OP = {
 }
 
 UN_TO_OP = {
-            # __abs__ ?
-'UNARY_POSITIVE' : '__pos__',
-'UNARY_NEGATIVE' : '__neg__',
-'UNARY_NOT': 'not ',
-'UNARY_INVERT': '__invert__',
-'GET_ITER':'ITER ',
-'GET_YIELD_FROM_ITER': 'YIELD_FROM_ITER '
+    # __abs__ ?
+    'UNARY_POSITIVE': '__pos__',
+    'UNARY_NEGATIVE': '__neg__',
+    'UNARY_NOT': 'not ',
+    'UNARY_INVERT': '__invert__',
+    'GET_ITER': 'ITER ',
+    'GET_YIELD_FROM_ITER': 'YIELD_FROM_ITER '
 }
 
-if __name__ == '__main__':   
+if __name__ == '__main__':
     test()

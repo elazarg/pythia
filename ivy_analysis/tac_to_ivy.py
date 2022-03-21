@@ -323,7 +323,7 @@ class TacToIvy(object):
 
         actions = []
         for i in block_ids:
-            block_instructions = tac_blocks_cfg.node[i][tac.BLOCKNAME]
+            block_instructions = tac_blocks_cfg.nodes[i][tac.BLOCKNAME]
             successor_ids = tac_blocks_cfg.successors(i)
             ivy_instructions = (
                 ["assume can_run(bb{})".format(i)] +

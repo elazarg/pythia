@@ -1,10 +1,10 @@
 # Data flow analysis and stuff.
-# The work here is very very "half baked" to say the least, and is very messy,
-# mixing notations and ideas, and some of the functions are unused and/or untested
+# The work here is very "half-baked" to say the least, and is very messy,
+# mixing notations and ideas, and some functions are unused and/or untested
 # What seems to be working: 
 # 1. constant propagation, to some degree 
 # 2. single-block liveness
-# These are important in order to make the TAC at least *look* different than 
+# These are important in order to make the TAC at least *look* different from
 # stack-oriented code, and it removes many variables.
 # The analysis is based heavily on the information in the tac module - some of
 # it is dedicated for the analysis
@@ -14,7 +14,7 @@
 # here:
 #    1. USES is the list of variables used by an instruction/block.
 #       e.g. `x = f(a, b)` : USES=(f, a, b)   
-#    2. GENS is the list of variables defined by an insruction/block
+#    2. GENS is the list of variables defined by an instruction/block
 #       e.g. `x = f(a, b)` : GENS=(x,)
 #    3. KILLS is the list of variables killed by an instruction/block, which do not appear in GENS
 #       For most of the instructions, initially, KILLS is empty.
@@ -22,12 +22,17 @@
 #       In addition, the per-block live variable analysis removes DEL operations,
 #       and push them into each other and into other instructions.
 #       So in some cases, `x = f(a, b)` might have e.g. KILLS={a}
-#       (and implicitly x too) if it is the last command to use the varible `a`.
-import tac
-from tac import is_stackvar
+#       (and implicitly x too) if it is the last command to use the variable `a`.
 from itertools import chain
 
+import networkx as nx
+
+import graph_utils as gu
+import tac
+from tac import is_stackvar
+
 BLOCKNAME = tac.BLOCKNAME
+
 
 def make_tacblock_cfg(f, propagate_consts=True, liveness=True):
     cfg = tac.make_tacblock_cfg(f)
@@ -35,11 +40,12 @@ def make_tacblock_cfg(f, propagate_consts=True, liveness=True):
         dataflow(cfg, 0, {}, ConsProp)
     if liveness:
         for n in sorted(cfg.nodes()):
-            block = cfg.node[n][BLOCKNAME]
+            block = cfg.nodes[n][BLOCKNAME]
             block = list(single_block_liveness(block))
             block.reverse()
-            cfg.node[n][BLOCKNAME] = block
+            cfg.nodes[n][BLOCKNAME] = block
     return cfg
+
 
 def print_block(n, block):
     print(n, ':')
@@ -51,21 +57,24 @@ def test_single_block():
     import code_examples
     cfg = tac.make_tacblock_cfg(code_examples.RenderScene)
     for n in sorted(cfg.nodes()):
-        block = cfg.node[n][BLOCKNAME]
+        block = cfg.nodes[n][BLOCKNAME]
         print('uses:', single_block_uses(block))
         # print_block(n, block)
         # print('push up:')
         ConsProp.single_block_update(block)
-        block = list(single_block_liveness(block)); block.reverse()
+        block = list(single_block_liveness(block))
+        block.reverse()
         ConsProp.single_block_update(block)
-        block = list(single_block_liveness(block)); block.reverse()
+        block = list(single_block_liveness(block))
+        block.reverse()
         print_block(n, block)
+
 
 def test():
     import code_examples
     cfg = make_tacblock_cfg(code_examples.simple)
     for n in sorted(cfg.nodes()):
-        block = cfg.node[n][BLOCKNAME]
+        block = cfg.nodes[n][BLOCKNAME]
         print_block(n, block)
 
 
@@ -111,21 +120,22 @@ def single_block_gens(block, inb=frozenset()):
 class Domain:
     name = ''
     direction = (1, -1)
+
     def transfer(self): pass
-    
+
     @staticmethod
     def unify(self, b):
-        'meet or join'
+        """meet or join"""
         pass
-    
+
     @staticmethod
     def join(self): pass
-    
+
     @staticmethod
     def meet(self): pass
-    
+
     def __init__(self): pass
-    
+
     def is_full(self): pass
 
 
@@ -155,7 +165,7 @@ class ConsProp(Domain):
                 cons_map[lhs] = rhs
             else:
                 uses = [(cons_map.get(v, v))
-                         for v in ins.uses]
+                        for v in ins.uses]
                 if ins.is_inplace:
                     uses[1] = ins.uses[1]
                 uses = tuple(uses)
@@ -165,24 +175,25 @@ class ConsProp(Domain):
                         del cons_map[v]
         return cons_map
 
+
 class Liveness(Domain):
-    
+
     @staticmethod
     def initial():
         return set()
-    
+
     @staticmethod
     def single_block(block, live=frozenset()):
-        'kills: the set of names that will no longer be used'
+        """kills: the set of names that will no longer be used"""
         for ins in reversed(block):
             live = frozenset(ins.gens).union(live.difference(ins.uses))
 
     @staticmethod
     def single_block_total_effect(block, live=frozenset()):
-        'kills: the set of names that will no longer be used'
+        """kills: the set of names that will no longer be used"""
         gens = {ins.gens for ins in block}
         uses = {ins.uses for ins in block}
-        return uses.union(live.difference(gens)) 
+        return uses.union(live.difference(gens))
 
 
 def is_extended_identifier(name):
@@ -192,31 +203,31 @@ def is_extended_identifier(name):
 def run_analysis(cfg):
     import graph_utils as gu
     import networkx as nx
-    
-    Analysis = ConsProp 
-    def compute_transfer_function(): pass
+
+    Analysis = ConsProp
+
+    def compute_transfer_function(d): pass
+
     gu.node_data_map_inplace(cfg, attr='transfer',
                              f=lambda n, d: compute_transfer_function(d))
-    nx.set_node_attributes(cfg, 'out', {n:Analysis() for n in cfg.nodes_iter()})
+    nx.set_node_attributes(cfg, {n: Analysis() for n in cfg.nodes_iter()}, 'out')
     dataflow(cfg, 0, {}, Analysis)
 
 
-def dataflow(g:'graph', start:'node', start_value, Analysis=ConsProp):
-    import networkx as nx
-    import graph_utils as gu
+def dataflow(g: 'graph', start: 'node', start_value, Analysis=ConsProp):
     gu.node_data_map_inplace(g,
-            f=lambda n, d: Analysis.single_block_update,
-            attr='transfer_function')
-    
-    nx.set_node_attributes(g, 'outb', {v: Analysis.initial() for v in g.nodes()})
-    nx.set_node_attributes(g, 'inb', {v: Analysis.initial() for v in g.nodes()})
-    g.node[start]['inb'] = Analysis.initial()
+                             f=lambda n, d: Analysis.single_block_update,
+                             attr='transfer_function')
+
+    nx.set_node_attributes(g, {v: Analysis.initial() for v in g.nodes()}, 'outb')
+    nx.set_node_attributes(g, {v: Analysis.initial() for v in g.nodes()}, 'inb')
+    g.nodes[start]['inb'] = Analysis.initial()
     wl = set(g.nodes())
     while wl:
         u = wl.pop()
-        udata = g.node[u]
+        udata = g.nodes[u]
         inb = udata['inb']
-        Analysis.join(inb, [g.node[x]['outb'] for x in g.predecessors(u)])
+        Analysis.join(inb, [g.nodes[x]['outb'] for x in g.predecessors(u)])
         outb = udata['transfer_function'](udata[BLOCKNAME], inb)
         if outb != udata['outb']:
             udata['outb'] = outb
