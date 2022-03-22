@@ -53,71 +53,7 @@ def make_tacblock_cfg(f, propagate_consts=True, liveness=True, propagate_assignm
 def print_block(n, block):
     print(n, ':')
     for ins in block:
-        print('\t', ins.format())
-
-
-def test_single_block():
-    import code_examples
-    cfg = tac.make_tacblock_cfg(code_examples.RenderScene)
-    for n in sorted(cfg.nodes()):
-        block = cfg.nodes[n][BLOCKNAME]
-        print('uses:', single_block_uses(block))
-        # print_block(n, block)
-        # print('push up:')
-        ConstantPropagation.single_block_update(block)
-        block = list(single_block_liveness(block))
-        block.reverse()
-        ConstantPropagation.single_block_update(block)
-        block = list(single_block_liveness(block))
-        block.reverse()
-        print_block(n, block)
-
-
-def test():
-    import code_examples
-    cfg = make_tacblock_cfg(code_examples.simple_loop, propagate_consts=False, liveness=True)
-    for n in sorted(cfg.nodes()):
-        block = cfg.nodes[n][BLOCKNAME]
-        # print(cfg.nodes[n]['pre_inv'].constants)
-        print_block(n, block)
-        # print(cfg.nodes[n]['post_inv'].constants)
-
-
-def single_block_uses(block):
-    uses = set()
-    for ins in reversed(block):
-        uses.difference_update(ins.gens)
-        uses.update(ins.uses)
-    return tuple(x for x in uses if is_extended_identifier(x))
-
-
-def undef(kills, gens):
-    return tuple(('_' if v in kills and tac.is_stackvar(v) else v)
-                 for v in gens)
-
-
-def _filter_killed(ins, kills, new_kills):
-    # moved here only because it is a transformation and not an analysis
-    if ins.is_del or ins.is_assign and set(ins.gens).issubset(kills):
-        return
-    yield ins._replace(gens=undef(kills, ins.gens),
-                       kills=kills - new_kills)
-
-
-def single_block_liveness(block, kills=frozenset()):
-    """kills: the set of names that will no longer be used"""
-    for ins in reversed(block):
-        new_kills = kills.union(ins.kills).difference(ins.uses)
-        yield from _filter_killed(ins, kills, kills.difference(ins.uses))
-        kills = new_kills
-
-
-def single_block_gens(block, inb=frozenset()):
-    gens = set()
-    for ins in block:
-        gens.difference_update(ins.kills)
-        gens.update(ins.gens)
-    return [x for x in gens if is_extended_identifier(x)]
+        print('\t', ins)
 
 
 T = typing.TypeVar('T')
@@ -149,8 +85,6 @@ class Domain(Protocol):
 
     def is_top(self) -> bool:
         ...
-
-    def is_full(self): pass
 
 
 class ConstantPropagation(Domain):
@@ -192,18 +126,17 @@ class ConstantPropagation(Domain):
         if self.is_bottom:
             return
         for i, ins in enumerate(block):
-            if ins.is_assign and len(ins.gens) == len(ins.uses) == 1 and is_stackvar(ins.gens[0]):
-                [lhs], [rhs] = ins.gens, ins.uses
-                if rhs in self.constants:
-                    self.constants[lhs] = self.constants[rhs]
-                elif isinstance(rhs, tac.Const):
-                    self.constants[lhs] = rhs
-            else:
-                uses = [(self.constants.get(v, v)) for v in ins.uses]
-                if ins.is_inplace:
-                    uses[1] = ins.uses[1]
-                uses = tuple(uses)
-                block[i] = ins._replace(uses=tuple(uses))
+            if isinstance(ins, tac.Assign) and isinstance(ins.target, tac.Var):
+                if isinstance(ins.value, tac.Const):
+                    self.constants[ins.target] = ins.value
+                elif ins.value in self.constants:  # and ins.target.is_stackvar:
+                    self.constants[ins.target] = self.constants[ins.value]
+            # else:
+            #     uses = [(self.constants.get(v, v)) for v in ins.uses]
+            #     if ins.is_inplace:
+            #         uses[1] = ins.uses[1]
+            #     uses = tuple(uses)
+            #     block[i] = ins._replace(uses=tuple(uses))
                 # for v in chain(ins.gens, ins.kills):
                 #     if v in self.constants:
                 #         del self.constants[v]
@@ -233,6 +166,43 @@ class Liveness(Domain):
         return uses.union(live.difference(gens))
 
 
+def single_block_uses(block):
+    uses = set()
+    for ins in reversed(block):
+        uses.difference_update(ins.gens)
+        uses.update(ins.uses)
+    return tuple(x for x in uses if is_extended_identifier(x))
+
+
+def undef(kills, gens):
+    return tuple(('_' if v in kills and tac.is_stackvar(v) else v)
+                 for v in gens)
+
+
+def _filter_killed(ins: tac.Tac, kills, new_kills):
+    # moved here only because it is a transformation and not an analysis
+    if isinstance(ins, tac.Del) or isinstance(ins, tac.Assign) and set(ins.gens).issubset(kills):
+        return
+    yield ins._replace(gens=undef(kills, ins.gens),
+                       kills=kills - new_kills)
+
+
+def single_block_liveness(block, kills=frozenset()):
+    """kills: the set of names that will no longer be used"""
+    for ins in reversed(block):
+        new_kills = kills.union(ins.kills).difference(ins.uses)
+        yield from _filter_killed(ins, kills, kills.difference(ins.uses))
+        kills = new_kills
+
+
+def single_block_gens(block, inb=frozenset()):
+    gens = set()
+    for ins in block:
+        gens.difference_update(ins.kills)
+        gens.update(ins.gens)
+    return [x for x in gens if is_extended_identifier(x)]
+
+
 def is_extended_identifier(name):
     return name.replace('.', '').isidentifier()
 
@@ -257,6 +227,33 @@ def dataflow(g: nx.DiGraph, Analysis: typing.Type[Domain]):
         if inv != udata['post_inv']:
             udata['post_inv'] = inv
             wl.update(g.successors(u))
+
+
+def test_single_block():
+    import code_examples
+    cfg = tac.make_tacblock_cfg(code_examples.RenderScene)
+    for n in sorted(cfg.nodes()):
+        block = cfg.nodes[n][BLOCKNAME]
+        print('uses:', single_block_uses(block))
+        # print_block(n, block)
+        # print('push up:')
+        ConstantPropagation.single_block_update(block)
+        block = list(single_block_liveness(block))
+        block.reverse()
+        ConstantPropagation.single_block_update(block)
+        block = list(single_block_liveness(block))
+        block.reverse()
+        print_block(n, block)
+
+
+def test():
+    import code_examples
+    cfg = make_tacblock_cfg(code_examples.simple_loop, propagate_consts=True, liveness=False)
+    for n in sorted(cfg.nodes()):
+        block = cfg.nodes[n][BLOCKNAME]
+        print(cfg.nodes[n]['pre_inv'].constants)
+        print_block(n, block)
+        print(cfg.nodes[n]['post_inv'].constants)
 
 
 if __name__ == '__main__':
