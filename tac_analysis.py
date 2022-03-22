@@ -34,19 +34,19 @@ import graph_utils as gu
 import tac
 from tac import is_stackvar
 
-BLOCKNAME = tac.BLOCKNAME
 
-
-def make_tacblock_cfg(f, propagate_consts=True, liveness=True, propagate_assignments=True):
+def make_tacblock_cfg(f, propagate_consts=True, liveness=True, propagate_assignments=True, simplify=True):
     cfg = tac.make_tacblock_cfg(f)
+    if simplify:
+        cfg = gu.simplify_cfg(cfg)
     if propagate_consts:
         dataflow(cfg, ConstantPropagation)
     if liveness:
         for n in sorted(cfg.nodes()):
-            block = cfg.nodes[n][BLOCKNAME]
+            block = cfg.nodes[n]['block']
             block = list(single_block_liveness(block))
             block.reverse()
-            cfg.nodes[n][BLOCKNAME] = block
+            cfg.nodes[n]['block'] = block
     return cfg
 
 
@@ -223,7 +223,7 @@ def dataflow(g: nx.DiGraph, Analysis: typing.Type[Domain]):
         inv = udata['pre_inv'].copy()
         for x in g.predecessors(u):
             inv = inv.join(g.nodes[x]['post_inv'])
-        inv.single_block_update(udata[BLOCKNAME])
+        inv.single_block_update(udata['block'])
         if inv != udata['post_inv']:
             udata['post_inv'] = inv
             wl.update(g.successors(u))
@@ -233,7 +233,7 @@ def test_single_block():
     import code_examples
     cfg = tac.make_tacblock_cfg(code_examples.RenderScene)
     for n in sorted(cfg.nodes()):
-        block = cfg.nodes[n][BLOCKNAME]
+        block = cfg.nodes[n]['block']
         print('uses:', single_block_uses(block))
         # print_block(n, block)
         # print('push up:')
@@ -250,10 +250,10 @@ def test():
     import code_examples
     cfg = make_tacblock_cfg(code_examples.simple_loop, propagate_consts=True, liveness=False)
     for n in sorted(cfg.nodes()):
-        block = cfg.nodes[n][BLOCKNAME]
-        print(cfg.nodes[n]['pre_inv'].constants)
+        block = cfg.nodes[n]['block']
+        # print(cfg.nodes[n]['pre_inv'].constants)
         print_block(n, block)
-        print(cfg.nodes[n]['post_inv'].constants)
+        # print(cfg.nodes[n]['post_inv'].constants)
 
 
 if __name__ == '__main__':

@@ -14,10 +14,10 @@ def copy_to_bidirectional(g: nx.DiGraph, weight='weight'):
     return nx.compose(g, reverse_weights(g, weight=weight))
 
 
-def contract_chains(g: nx.DiGraph, blockname='block'):
+def simplify_cfg(g: nx.DiGraph, blockname='block'):
     """Contract chains with in_degree=out_degree=1:
-    i.e. turns > - - - <
-         into  [>---<]
+    i.e. turns > [-] [-] [-] <
+         into  >[---]<
     The label of the chain is the label of its first element.
     g.nodes[n][blockname] will hold list of dictionaries.
     """
@@ -29,7 +29,7 @@ def contract_chains(g: nx.DiGraph, blockname='block'):
         n = label
         block = []
         while True:
-            block.append(g.nodes[n])
+            block += g.nodes[n][blockname]
             if g.out_degree(n) != 1:
                 break
             next_n = next(iter(g.successors(n)))
@@ -53,7 +53,7 @@ def node_data_map_inplace(g: nx.DiGraph, f, attr=None):
 
 
 def refine_to_chain(g, from_attr, to_attr):
-    """can be used to refine basic blocks into blocks - the dual of contract_chains()
+    """can be used to refine basic blocks into blocks - the dual of simplify_cfg()
     assume g.nodes[n][attr] is a list
     returns a graph whose nodes are the refinement of the lists into paths
     the elements of the lists are held as to_attr

@@ -7,8 +7,6 @@ import bcode_cfg
 import bcode
 import graph_utils as gu
 
-BLOCKNAME = 'tac_block'
-
 
 def test() -> None:
     import code_examples
@@ -33,16 +31,18 @@ def print_3addr(cfg, no_dels=True) -> None:
     print('\n'.join(cfg_to_lines(cfg, no_dels)))
 
 
-def make_tacblock_cfg(f):
-    depths, bcode_blocks = bcode_cfg.make_bcode_block_cfg_from_function(f)
+def make_tacblock_cfg(f, simplify=False):
+    depths, cfg = bcode_cfg.make_bcode_block_cfg_from_function(f)
 
-    def bcode_block_to_tac_block(n, block_data: dict[str, list[dict[str, bcode.BCode]]]) -> list[Tac]:
-        block = [bc['BCode'] for bc in block_data['bcode_block']]
+    if simplify:
+        cfg = gu.simplify_cfg(cfg, blockname=bcode_cfg.BLOCKNAME)
+
+    def bcode_block_to_tac_block(n, block_data: dict[str, list[bcode.BCode]]) -> list[Tac]:
         return list(it.chain.from_iterable(
             make_TAC(bc.opname, bc.argval, bc.stack_effect(), depths[bc.offset], bc.starts_line)
-            for bc in block))
+            for bc in block_data[bcode_cfg.BLOCKNAME]))
 
-    tac_blocks = gu.node_data_map(bcode_blocks,
+    tac_blocks = gu.node_data_map(cfg,
                                   bcode_block_to_tac_block,
                                   BLOCKNAME)
 
