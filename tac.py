@@ -1,10 +1,9 @@
 import itertools as it
 from dataclasses import dataclass
 from typing import NamedTuple, Iterable, Optional
-from enum import Enum
 
-import bcode_cfg
 import bcode
+import bcode_cfg
 import graph_utils as gu
 
 
@@ -15,12 +14,12 @@ def test() -> None:
     bcode_cfg.draw(cfg)
 
 
-def cfg_to_lines(cfg, no_dels=True) -> Iterable[str]:
+def linearize_cfg(cfg, no_dels=True) -> Iterable[str]:
     for n in sorted(cfg.nodes()):
         # The call for sorted() gives us for free the ordering of blocks by "fallthrough"
         # It is not guaranteed anywhere, but it makes sense - the order of blocks is the 
         # order of the lines in the code
-        block = cfg.nodes[n][BLOCKNAME]
+        block = cfg.nodes[n]['block']
         for ins in block:
             if no_dels and isinstance(ins, Del):
                 continue
@@ -28,23 +27,23 @@ def cfg_to_lines(cfg, no_dels=True) -> Iterable[str]:
 
 
 def print_3addr(cfg, no_dels=True) -> None:
-    print('\n'.join(cfg_to_lines(cfg, no_dels)))
+    print('\n'.join(linearize_cfg(cfg, no_dels)))
 
 
 def make_tacblock_cfg(f, simplify=False):
     depths, cfg = bcode_cfg.make_bcode_block_cfg_from_function(f)
 
     if simplify:
-        cfg = gu.simplify_cfg(cfg, blockname=bcode_cfg.BLOCKNAME)
+        cfg = gu.simplify_cfg(cfg)
 
     def bcode_block_to_tac_block(n, block_data: dict[str, list[bcode.BCode]]) -> list[Tac]:
         return list(it.chain.from_iterable(
             make_TAC(bc.opname, bc.argval, bc.stack_effect(), depths[bc.offset], bc.starts_line)
-            for bc in block_data[bcode_cfg.BLOCKNAME]))
+            for bc in block_data['block']))
 
     tac_blocks = gu.node_data_map(cfg,
                                   bcode_block_to_tac_block,
-                                  BLOCKNAME)
+                                  'block')
 
     # this is simplistic kills analysis, that is not correct in general:
     # tac = [Del(tuple(get_gens(tac) - get_uses(tac))] + tac
@@ -264,121 +263,123 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
     """
     out = stack_depth + stack_effect if stack_depth is not None else None
     name, op = choose_category(opname, val)
-    if name == 'UNARY_ATTR':
-        return [unary(stackvar(stack_depth), op)]
-    elif name == 'UNARY_FUNC':
-        return [call(stackvar(out), op, (stackvar(stack_depth),))]
-    elif name == 'BINARY':
-        lhs = stackvar(out)
-        left = stackvar(stack_depth - 1)
-        right = stackvar(stack_depth)
-        return [Binary(lhs, left, op, right, is_id=False, is_inplace=False)]
-    elif name == 'INPLACE':
-        lhs1 = stackvar(out)
-        rhs1 = stackvar(stack_depth)
-        return [Binary(lhs1, lhs1, op, rhs1, is_id=False, is_inplace=True)]
-    elif name.startswith('POP_JUMP_IF_'):
-        res = [call(stackvar(stack_depth), 'not', (stackvar(stack_depth),))] if name.endswith('FALSE') else []
-        return res + [Jump(val, stackvar(stack_depth))]
-    elif name == 'JUMP':
-        return [Jump(val)]
-    elif name == 'POP_TOP':
-        return []
-    elif name == 'DELETE_FAST':
-        return []
-    elif name == 'ROT_TWO':
-        fresh = stackvar(stack_depth + 1)
-        return [Assign(fresh, stackvar(stack_depth)),
-                Assign(stackvar(stack_depth), stackvar(stack_depth - 1)),
-                Assign(stackvar(stack_depth - 1), fresh),
-                Del(fresh)]
-    elif name == 'ROT_THREE':
-        fresh = stackvar(stack_depth + 1)
-        return [Assign(fresh, stackvar(stack_depth - 2)),
-                Assign(stackvar(stack_depth - 2), stackvar(stack_depth - 1)),
-                Assign(stackvar(stack_depth - 1), stackvar(stack_depth)),
-                Assign(stackvar(stack_depth), fresh),
-                Del(fresh)]
-    elif name == 'DUP_TOP':
-        return [Assign(stackvar(out), stackvar(stack_depth))]
-    elif name == 'DUP_TOP_TWO':
-        return [Assign(stackvar(out), stackvar(stack_depth - 2)),
-                Assign(stackvar(out + 1), stackvar(stack_depth - 1))]
-    elif name == 'RETURN_VALUE':
-        return [Return(stackvar(stack_depth))]
-    elif name == 'YIELD_VALUE':
-        return [Yield(stackvar(out), stackvar(stack_depth))]
-    elif name == 'FOR_ITER':
-        return [foreach(stackvar(out), stackvar(stack_depth), val)]
-    elif name == 'LOAD':
-        if op == 'ATTR':
-            return [Call(stackvar(out), Var('BUILTINS.getattr'), (stackvar(stack_depth), Var(repr(val))))]
-        if op == 'METHOD':
-            return [Call(stackvar(out), Var('BUILTINS.getattr'), (stackvar(stack_depth), Var(repr(val))))]
-        if op in ['FAST', 'NAME']:
-            rhs = val
-        elif op == 'CONST':
-            rhs = Const(val)
-        elif op == 'DEREF':
-            rhs = Var('NONLOCAL.{}'.format(val))
-        elif op == 'GLOBAL':
-            rhs = Var('GLOBALS.{}'.format(val))
-        else:
-            assert False, op
-        return [Assign(stackvar(out), rhs, is_id=(op != 'CONST'))]
-    elif name in ['STORE_FAST', 'STORE_NAME']:
-        return [Assign(val, stackvar(stack_depth))]
-    elif name == 'STORE_GLOBAL':
-        return [Assign(Var('GLOBALS.{}'.format(val)), stackvar(stack_depth))]
-    elif name == 'STORE_ATTR':
-        return [Call(stackvar(stack_depth), Var('setattr'), Attribute(stackvar(stack_depth), val),
-                     stackvar(stack_depth - 1))]
-    elif name.startswith('STORE_SUBSCR'):
-        return [Call(stackvar(stack_depth), Var('BUILTINS.getattr'), (stackvar(stack_depth - 1), Var('__setitem__'))),
-                Call(stackvar(stack_depth), stackvar(stack_depth), (stackvar(stack_depth - 2),))]
-    elif name == 'BINARY_SUBSCR':
-        #
-        # return [call(stackvar(out), 'BUILTINS.getattr', (stackvar(stack_depth - 1), "'__getitem__'")),
-        #        call(stackvar(out), stackvar(out), (stackvar(stack_depth),))]
-        # IVY-Specific: :(
-        return [call(stackvar(out), 'BUILTINS.getitem', (stackvar(stack_depth - 1), stackvar(stack_depth)))]
-    elif name == 'POP_BLOCK':
-        return [NOP]
-    elif name == 'SETUP_LOOP':
-        return [NOP]
-    elif name == 'RAISE_VARARGS':
-        return [Raise(stackvar(stack_depth))]
-    elif name == 'UNPACK_SEQUENCE':
-        seq = tuple(stackvar(stack_depth + i) for i in reversed(range(val)))
-        return [Assign(seq, stackvar(stack_depth))]
-    elif name == 'IMPORT_NAME':
-        return [Import(stackvar(out), val)]
-    elif name == 'IMPORT_FROM':
-        return [Import(stackvar(out), val, stackvar(stack_depth))]
-    elif name == 'BUILD':
-        if op == 'SLICE':
-            if val == 2:
-                args = (stackvar(stack_depth - 1), stackvar(stack_depth))
-            else:
-                args = (stackvar(stack_depth), stackvar(stack_depth - 1), stackvar(stack_depth - 2))
-            return [call(stackvar(out), 'SLICE', args)]
-        return [call(stackvar(out), op, tuple(stackvar(i + 1) for i in range(stack_depth - val, stack_depth)))]
-    elif name == 'CALL_FUNCTION':
-        nargs = val & 0xFF
-        mid = [stackvar(i + 1) for i in range(stack_depth - nargs, stack_depth)]
-        return [call(stackvar(out), stackvar(stack_depth - nargs), tuple(mid))]
-    elif name == 'CALL_FUNCTION_KW':
-        nargs = val
-        mid = [stackvar(i + 1) for i in range(stack_depth - nargs - 1, stack_depth - 1)]
-        res = [Call(stackvar(out), stackvar(stack_depth - nargs - 1), tuple(mid), stackvar(stack_depth))]
-        return res
-    elif name == "NOP":
-        return []
+    match name:
+        case 'UNARY_ATTR':
+            return [unary(stackvar(stack_depth), op)]
+        case 'UNARY_FUNC':
+            return [call(stackvar(out), op, (stackvar(stack_depth),))]
+        case 'BINARY':
+            lhs = stackvar(out)
+            left = stackvar(stack_depth - 1)
+            right = stackvar(stack_depth)
+            return [Binary(lhs, left, op, right, is_id=False, is_inplace=False)]
+        case 'INPLACE':
+            lhs1 = stackvar(out)
+            rhs1 = stackvar(stack_depth)
+            return [Binary(lhs1, lhs1, op, rhs1, is_id=False, is_inplace=True)]
+        case 'POP_JUMP_IF_FALSE' | 'POP_JUMP_IF_TRUE' | 'POP_JUMP_IF_NONE' | 'POP_JUMP_IF_NOT_NONE':
+            res = [call(stackvar(stack_depth), 'not', (stackvar(stack_depth),))] if name.endswith('FALSE') else []
+            return res + [Jump(val, stackvar(stack_depth))]
+        case 'JUMP':
+            return [Jump(val)]
+        case 'POP_TOP':
+            return []
+        case 'DELETE_FAST':
+            return []
+        case 'ROT_TWO':
+            fresh = stackvar(stack_depth + 1)
+            return [Assign(fresh, stackvar(stack_depth)),
+                    Assign(stackvar(stack_depth), stackvar(stack_depth - 1)),
+                    Assign(stackvar(stack_depth - 1), fresh),
+                    Del(fresh)]
+        case 'ROT_THREE':
+            fresh = stackvar(stack_depth + 1)
+            return [Assign(fresh, stackvar(stack_depth - 2)),
+                    Assign(stackvar(stack_depth - 2), stackvar(stack_depth - 1)),
+                    Assign(stackvar(stack_depth - 1), stackvar(stack_depth)),
+                    Assign(stackvar(stack_depth), fresh),
+                    Del(fresh)]
+        case 'DUP_TOP':
+            return [Assign(stackvar(out), stackvar(stack_depth))]
+        case 'DUP_TOP_TWO':
+            return [Assign(stackvar(out), stackvar(stack_depth - 2)),
+                    Assign(stackvar(out + 1), stackvar(stack_depth - 1))]
+        case 'RETURN_VALUE':
+            return [Return(stackvar(stack_depth))]
+        case 'YIELD_VALUE':
+            return [Yield(stackvar(out), stackvar(stack_depth))]
+        case 'FOR_ITER':
+            return [foreach(stackvar(out), stackvar(stack_depth), val)]
+        case 'LOAD':
+            match op:
+                case 'ATTR':
+                    return [Call(stackvar(out), Var('BUILTINS.getattr'), (stackvar(stack_depth), Var(repr(val))))]
+                case 'METHOD':
+                    return [Call(stackvar(out), Var('BUILTINS.getattr'), (stackvar(stack_depth), Var(repr(val))))]
+                case 'FAST' | 'NAME':
+                    rhs = val
+                case 'CONST':
+                    rhs = Const(val)
+                case 'DEREF':
+                    rhs = Var('NONLOCAL.{}'.format(val))
+                case 'GLOBAL':
+                    rhs = Var('GLOBALS.{}'.format(val))
+                case _:
+                    assert False, op
+            return [Assign(stackvar(out), rhs, is_id=(op != 'CONST'))]
+        case 'STORE_FAST' | 'STORE_NAME':
+            return [Assign(val, stackvar(stack_depth))]
+        case 'STORE_GLOBAL':
+            return [Assign(Var('GLOBALS.{}'.format(val)), stackvar(stack_depth))]
+        case 'STORE_ATTR':
+            return [Call(stackvar(stack_depth), Var('setattr'), Attribute(stackvar(stack_depth), val),
+                         stackvar(stack_depth - 1))]
+        case 'STORE_SUBSCR':
+            return [Call(stackvar(stack_depth), Var('BUILTINS.getattr'), (stackvar(stack_depth - 1), Var('__setitem__'))),
+                    Call(stackvar(stack_depth), stackvar(stack_depth), (stackvar(stack_depth - 2),))]
+        case 'BINARY_SUBSCR':
+            #
+            # return [call(stackvar(out), 'BUILTINS.getattr', (stackvar(stack_depth - 1), "'__getitem__'")),
+            #        call(stackvar(out), stackvar(out), (stackvar(stack_depth),))]
+            # IVY-Specific: :(
+            return [call(stackvar(out), 'BUILTINS.getitem', (stackvar(stack_depth - 1), stackvar(stack_depth)))]
+        case 'POP_BLOCK':
+            return [NOP]
+        case 'SETUP_LOOP':
+            return [NOP]
+        case 'RAISE_VARARGS':
+            return [Raise(stackvar(stack_depth))]
+        case 'UNPACK_SEQUENCE':
+            seq = tuple(stackvar(stack_depth + i) for i in reversed(range(val)))
+            return [Assign(seq, stackvar(stack_depth))]
+        case 'IMPORT_NAME':
+            return [Import(stackvar(out), val)]
+        case 'IMPORT_FROM':
+            return [Import(stackvar(out), stackvar(stack_depth), val)]
+        case 'BUILD':
+            if op == 'SLICE':
+                if val == 2:
+                    args = (stackvar(stack_depth - 1), stackvar(stack_depth))
+                else:
+                    args = (stackvar(stack_depth), stackvar(stack_depth - 1), stackvar(stack_depth - 2))
+                return [call(stackvar(out), 'SLICE', args)]
+            return [call(stackvar(out), op, tuple(stackvar(i + 1) for i in range(stack_depth - val, stack_depth)))]
+        case 'CALL_FUNCTION':
+            nargs = val & 0xFF
+            mid = [stackvar(i + 1) for i in range(stack_depth - nargs, stack_depth)]
+            return [call(stackvar(out), stackvar(stack_depth - nargs), tuple(mid))]
+        case 'CALL_FUNCTION_KW':
+            nargs = val
+            mid = [stackvar(i + 1) for i in range(stack_depth - nargs - 1, stack_depth - 1)]
+            res = [Call(stackvar(out), stackvar(stack_depth - nargs - 1), tuple(mid), stackvar(stack_depth))]
+            return res
+        case "NOP":
+            return []
     return [Unsupported(name)]
 
 
 def choose_category(opname, argval) -> tuple[str, Optional[str]]:
-    # I'm not sure that this function is actually helpful. (ELAZAR)
+    # NB: I'm not sure that this function is actually helpful.
     if opname in ('UNARY_POSITIVE', 'UNARY_NEGATIVE', 'UNARY_INVERT'):
         return 'UNARY_ATTR', UN_TO_OP[opname]
     if opname in ('GET_ITER', 'UNARY_NOT', 'GET_YIELD_FROM_ITER'):
