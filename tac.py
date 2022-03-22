@@ -50,12 +50,36 @@ def make_tacblock_cfg(f):
     return tac_blocks
 
 
+class Const(NamedTuple):
+    value: object
+
+    def __str__(self):
+        return str(self.value)
+
+    def __repr__(self):
+        return repr(self.value)
+
+
+class Var(NamedTuple):
+    name: str
+    is_stackvar: bool = False
+
+    def __str__(self):
+        if self.is_stackvar:
+            return f'${self.name}'
+        return self.name
+
+    def __repr__(self):
+        if self.is_stackvar:
+            return f'${self.name}'
+        return self.name
+
 def var(x) -> Var:
-    return '$v{}'.format(x - 1)
+    return Var(str(x - 1), True)
 
 
-def is_stackvar(v) -> bool:
-    return v[0] == '$'
+def is_stackvar(v: Var | Const) -> bool:
+    return isinstance(v, Var) and v.is_stackvar
 
 
 class Op(Enum):
@@ -136,7 +160,7 @@ def unary(lhs: Var, op) -> Tac:
     return call(lhs, op, args=(lhs,))
 
 
-def assign(lhs: Var, rhs: Var, is_id=True) -> Tac:
+def assign(lhs: Var, rhs: Var | Const, is_id=True) -> Tac:
     return tac(Op.ASSIGN, gens=(lhs,), uses=(rhs,), is_id=is_id,
                fmt='{gens[0]} = {uses[0]}')
 
@@ -267,18 +291,18 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
         if op in ['FAST', 'NAME']:
             rhs = val
         elif op == 'CONST':
-            rhs = repr(val)
+            rhs = Const(val)
         elif op == 'DEREF':
-            rhs = 'NONLOCAL.{}'.format(val)
+            rhs = Var('NONLOCAL.{}'.format(val))
         elif op == 'GLOBAL':
-            rhs = 'GLOBALS.{}'.format(val)
+            rhs = Var('GLOBALS.{}'.format(val))
         else:
             assert False, op
         return [assign(var(out), rhs, is_id=(op != 'CONST'))]
     elif name in ['STORE_FAST', 'STORE_NAME']:
         return [assign(val, var(stack_depth))]
     elif name == 'STORE_GLOBAL':
-        return [assign('GLOBALS.{}'.format(val), var(stack_depth))]
+        return [assign(Var('GLOBALS.{}'.format(val)), var(stack_depth))]
     elif name == 'STORE_ATTR':
         return [call(var(stack_depth), 'setattr', (var(stack_depth), repr(val), var(stack_depth - 1)))]
     elif name.startswith('STORE_SUBSCR'):

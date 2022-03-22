@@ -22,11 +22,6 @@ def unary_minus(z):
     x = -z
     return x
 
-def simple(z):    
-    x = 5 + z
-    y = x
-    return y
-
 def loops(z):
     x = -z
     while z:
@@ -353,7 +348,12 @@ def RenderScene():
             dx = dx / d; dy = dy / d; dz = dz / d # ray unit vector
             pixels[kx, ky] = RayTrace(kx, ky, 0, dx, dy, dz)
 
-def simple():
+def simple(z):
+    x = 5 + z
+    y = x
+    return y
+
+def simple_loop():
     a = 1 > True
     while z:
         x = 1

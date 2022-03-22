@@ -23,9 +23,12 @@
 #       and push them into each other and into other instructions.
 #       So in some cases, `x = f(a, b)` might have e.g. KILLS={a}
 #       (and implicitly x too) if it is the last command to use the variable `a`.
+from __future__ import annotations
+from typing import Protocol
 from itertools import chain
 
 import networkx as nx
+import typing
 
 import graph_utils as gu
 import tac
@@ -34,10 +37,10 @@ from tac import is_stackvar
 BLOCKNAME = tac.BLOCKNAME
 
 
-def make_tacblock_cfg(f, propagate_consts=True, liveness=True):
+def make_tacblock_cfg(f, propagate_consts=True, liveness=True, propagate_assignments=True):
     cfg = tac.make_tacblock_cfg(f)
     if propagate_consts:
-        dataflow(cfg, 0, {}, ConsProp)
+        dataflow(cfg, ConstantPropagation)
     if liveness:
         for n in sorted(cfg.nodes()):
             block = cfg.nodes[n][BLOCKNAME]
@@ -61,10 +64,10 @@ def test_single_block():
         print('uses:', single_block_uses(block))
         # print_block(n, block)
         # print('push up:')
-        ConsProp.single_block_update(block)
+        ConstantPropagation.single_block_update(block)
         block = list(single_block_liveness(block))
         block.reverse()
-        ConsProp.single_block_update(block)
+        ConstantPropagation.single_block_update(block)
         block = list(single_block_liveness(block))
         block.reverse()
         print_block(n, block)
@@ -72,10 +75,12 @@ def test_single_block():
 
 def test():
     import code_examples
-    cfg = make_tacblock_cfg(code_examples.simple, propagate_consts=True, liveness=True)
+    cfg = make_tacblock_cfg(code_examples.simple_loop, propagate_consts=False, liveness=True)
     for n in sorted(cfg.nodes()):
         block = cfg.nodes[n][BLOCKNAME]
+        # print(cfg.nodes[n]['pre_inv'].constants)
         print_block(n, block)
+        # print(cfg.nodes[n]['post_inv'].constants)
 
 
 def single_block_uses(block):
@@ -100,7 +105,7 @@ def _filter_killed(ins, kills, new_kills):
 
 
 def single_block_liveness(block, kills=frozenset()):
-    'kills: the set of names that will no longer be used'
+    """kills: the set of names that will no longer be used"""
     for ins in reversed(block):
         new_kills = kills.union(ins.kills).difference(ins.uses)
         yield from _filter_killed(ins, kills, kills.difference(ins.uses))
@@ -115,71 +120,103 @@ def single_block_gens(block, inb=frozenset()):
     return [x for x in gens if is_extended_identifier(x)]
 
 
+T = typing.TypeVar('T')
+
+
 # mix of domain and analysis-specific choice of operations
 # nothing here really works...
-class Domain:
-    name = ''
-    direction = (1, -1)
+class Domain(Protocol):
 
-    def transfer(self): pass
+    def transfer(self):
+        ...
 
-    @staticmethod
-    def unify(self, b):
-        """meet or join"""
-        pass
+    @classmethod
+    def top(cls: T) -> T:
+        ...
 
-    @staticmethod
-    def join(self): pass
+    @classmethod
+    def bottom(cls: T) -> T:
+        ...
 
-    @staticmethod
-    def meet(self): pass
+    def join(self: T, other) -> T:
+        ...
 
-    def __init__(self): pass
+    def meet(self: T, other) -> T:
+        ...
+
+    def is_bottom(self) -> bool:
+        ...
+
+    def is_top(self) -> bool:
+        ...
 
     def is_full(self): pass
 
 
-class ConsProp(Domain):
+class ConstantPropagation(Domain):
+    def __init__(self, constants: typing.Optional[dict[tac.Var, tac.Const]] = ()) -> None:
+        super().__init__()
+        self.constants = constants or {}
 
-    @staticmethod
-    def initial():
-        return {}
+    def __le__(self, other):
+        return self.join(other).constants == other.constants
 
-    @staticmethod
-    def join(res, cms):
-        for cm in cms[1:]:
-            for v, c in cm.items():
-                if v not in res:
-                    res[v] = c
-                elif res[v] != c:
-                    del res[v]
+    def __eq__(self, other):
+        return self.constants == other.constants
 
-    @staticmethod
-    def single_block_update(block, in_cons_map):
-        cons_map = in_cons_map.copy()
+    def __ne__(self, other):
+        return self.constants != other.constants
+
+    def copy(self: T) -> T:
+        return ConstantPropagation(self.constants)
+
+    @classmethod
+    def top(cls: T) -> T:
+        return ConstantPropagation({})
+
+    def set_to_top(self) -> None:
+        self.constants = {}
+
+    @classmethod
+    def bottom(cls: T) -> T:
+        return ConstantPropagation(None)
+
+    def join(self: T, other: T) -> T:
+        if self.constants is None:
+            return other.copy()
+        if other.constants is None:
+            return self.copy()
+        return ConstantPropagation(dict(self.constants.items() & other.constants.items()))
+
+    def single_block_update(self, block: list[tac.Tac]) -> None:
+        if self.is_bottom:
+            return
         for i, ins in enumerate(block):
             if ins.is_assign and len(ins.gens) == len(ins.uses) == 1 and is_stackvar(ins.gens[0]):
                 [lhs], [rhs] = ins.gens, ins.uses
-                if rhs in cons_map:
-                    rhs = cons_map[rhs]
-                cons_map[lhs] = rhs
+                if rhs in self.constants:
+                    self.constants[lhs] = self.constants[rhs]
+                elif isinstance(rhs, tac.Const):
+                    self.constants[lhs] = rhs
             else:
-                uses = [(cons_map.get(v, v))
-                        for v in ins.uses]
+                uses = [(self.constants.get(v, v)) for v in ins.uses]
                 if ins.is_inplace:
                     uses[1] = ins.uses[1]
                 uses = tuple(uses)
                 block[i] = ins._replace(uses=tuple(uses))
-                for v in chain(ins.gens, ins.kills):
-                    if v in cons_map:
-                        del cons_map[v]
-        return cons_map
+                # for v in chain(ins.gens, ins.kills):
+                #     if v in self.constants:
+                #         del self.constants[v]
+
+    @property
+    def is_bottom(self):
+        return self.constants is None
 
 
 class Liveness(Domain):
 
-    @staticmethod
-    def initial():
+    @classmethod
+    def top(cls: T) -> T:
         return set()
 
     @staticmethod
@@ -201,36 +238,24 @@ def is_extended_identifier(name):
 
 
 def run_analysis(cfg):
-    import graph_utils as gu
-    import networkx as nx
-
-    Analysis = ConsProp
-
-    def compute_transfer_function(d): pass
-
-    gu.node_data_map_inplace(cfg, attr='transfer',
-                             f=lambda n, d: compute_transfer_function(d))
-    nx.set_node_attributes(cfg, {n: Analysis() for n in cfg.nodes_iter()}, 'out')
-    dataflow(cfg, 0, {}, Analysis)
+    dataflow(cfg, ConstantPropagation)
 
 
-def dataflow(g: 'graph', start: 'node', start_value, Analysis=ConsProp):
-    gu.node_data_map_inplace(g,
-                             f=lambda n, d: Analysis.single_block_update,
-                             attr='transfer_function')
-
-    nx.set_node_attributes(g, {v: Analysis.initial() for v in g.nodes()}, 'outb')
-    nx.set_node_attributes(g, {v: Analysis.initial() for v in g.nodes()}, 'inb')
-    g.nodes[start]['inb'] = Analysis.initial()
-    wl = set(g.nodes())
+def dataflow(g: nx.DiGraph, Analysis: typing.Type[Domain]):
+    start = 0
+    nx.set_node_attributes(g, {v: Analysis.bottom() for v in g.nodes()}, 'post_inv')
+    nx.set_node_attributes(g, {v: Analysis.bottom() for v in g.nodes()}, 'pre_inv')
+    g.nodes[start]['pre_inv'] = Analysis.top()
+    wl = {start}
     while wl:
         u = wl.pop()
         udata = g.nodes[u]
-        inb = udata['inb']
-        Analysis.join(inb, [g.nodes[x]['outb'] for x in g.predecessors(u)])
-        outb = udata['transfer_function'](udata[BLOCKNAME], inb)
-        if outb != udata['outb']:
-            udata['outb'] = outb
+        inv = udata['pre_inv'].copy()
+        for x in g.predecessors(u):
+            inv = inv.join(g.nodes[x]['post_inv'])
+        inv.single_block_update(udata[BLOCKNAME])
+        if inv != udata['post_inv']:
+            udata['post_inv'] = inv
             wl.update(g.successors(u))
 
 
