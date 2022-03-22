@@ -23,6 +23,18 @@ def simple(z):
     y = x
     return y
 
+def loops(z):
+    x = -z
+    while z:
+        x += 2
+    x = 5
+    for i in range(itermax):
+        if not len(z):
+            pass
+        z += 7
+    y = 9
+    return
+
 def mandel(n, m, itermax, xmin, xmax, ymin, ymax):
     global c
     ix, iy = mgrid[0:n, 0:m]
@@ -33,7 +45,9 @@ def mandel(n, m, itermax, xmin, xmax, ymin, ymax):
     img = zeros(c.shape, dtype=int) 
     ix.shape = n * m
     iy.shape = n * m 
-    c.shape = n * m 
+    c.shape = n * m
+    while True:
+        x = 2
     z = copy(c)
     for i in range(itermax):
         if not len(z):

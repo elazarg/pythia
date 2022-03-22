@@ -1,4 +1,5 @@
 import dis
+from typing import Iterable, Iterator
 
 import code_examples
 
@@ -12,6 +13,10 @@ class BCode(dis.Instruction):
             'RETURN_VALUE', 'CONTINUE_LOOP', 'BREAK_LOOP', 'RAISE_VARARGS', 'JUMP_FORWARD', 'JUMP_ABSOLUTE')
 
     @property
+    def is_return(self):
+        return self.opname == 'RETURN_VALUE'
+
+    @property
     def is_jump_source(self):
         return self.is_jump or self.is_sequencer
         # YIELD_VALUE does not interrupt the flow
@@ -19,11 +24,24 @@ class BCode(dis.Instruction):
 
     @property
     def is_jump(self):
-        return self.opcode in dis.hasjrel \
-               or self.opcode in dis.hasjabs
+        return self.opcode in dis.hasjrel or self.opcode in dis.hasjabs
 
+    # static int
+    # instr_size(struct instr *instruction)
+    # {
+    #     int opcode = instruction->i_opcode;
+    #     int oparg = HAS_ARG(opcode) ? instruction->i_oparg : 0;
+    #     int extended_args = (0xFFFFFF < oparg) + (0xFFFF < oparg) + (0xFF < oparg);
+    #     int caches = _PyOpcode_Caches[opcode];
+    #     return extended_args + 1 + caches;
+    # }
     @property
     def size(self):
+        return 2
+        has_arg = self.opcode >= dis.HAVE_ARGUMENT
+        oparg = self.arg if has_arg else 0
+        extended_args = (0xFFFFFF < oparg) + (0xFFFF < oparg) + (0xFF < oparg)
+        return extended_args + 1
         return 1 if self.opcode < dis.HAVE_ARGUMENT else 2
 
     @property
@@ -73,32 +91,31 @@ class BCode(dis.Instruction):
                 self, repr(self.argrepr))
 
 
-def update_break_instruction(ins_iter):
+def update_break_instruction(ins_iter: Iterator[dis.Instruction]) -> Iterator[BCode]:
     """BREAK_LOOP is problematic:
-    (a) It does not contain the target
-    (b) The both stack effect and target depends on whether it is inside FOR or inside WHILE.
+    (a) It does not contain the target.
+    (b) Both stack effect and target depends on whether it is inside FOR or inside WHILE.
     The right way to fix it is from inside the graph, but for most purposes
     running over the code will suffice; It's hard to do so from cfg, since its structure depends on the analysis...
-    RAISE_VARARGS is obviously problematic too. we want to jump to all `excpet` clauses
-    and out of the function; but more important, its POP_BLOCK should be matched appropriately.
+    RAISE_VARARGS is obviously problematic too. We want to jump to all `except` clauses
+    and out of the function; but more importantly, its POP_BLOCK should be matched appropriately.
     """
-    stack = []
     for ins in ins_iter:
-        if ins.opname == 'SETUP_LOOP':
-            stack.append([ins, 'WHILE '])
-        if ins.opname == 'POP_BLOCK':
-            stack.pop()
-        if ins.opname == 'FOR_ITER':
-            stack[-1][-1] = 'FOR '
-        if ins.opname == 'BREAK_LOOP':
-            last = stack[-1]
-            to = last[0].argval
-            ins = ins._replace(argrepr='{}to {}'.format(last[-1], to))
+        # if ins.opname == 'SETUP_LOOP':
+        #     stack.append([ins, 'WHILE '])
+        # if ins.opname == 'POP_BLOCK':
+        #     stack.pop()
+        # if ins.opname == 'FOR_ITER':
+        #     stack[-1][-1] = 'FOR '
+        # if ins.opname == 'BREAK_LOOP':
+        #     last = stack[-1]
+        #     to = last[0].argval
+        #     ins = ins._replace(argrepr='{}to {}'.format(last[-1], to))
         yield BCode(*ins)
-    assert len(stack) == 0
+    # assert len(stack) == 0
 
 
-def get_instructions(f):
+def get_instructions(f) -> Iterator[BCode]:
     return update_break_instruction(dis.get_instructions(f))
 
 

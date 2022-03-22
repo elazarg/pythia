@@ -15,7 +15,7 @@ def copy_to_bidirectional(g: nx.DiGraph, weight='weight'):
 
 
 def contract_chains(g: nx.DiGraph, blockname='block'):
-    """Contract chains with indegree=outdegree=1:
+    """Contract chains with in_degree=out_degree=1:
     i.e. turns > - - - <
          into  [>---<]
     The label of the chain is the label of its first element.
@@ -43,9 +43,9 @@ def contract_chains(g: nx.DiGraph, blockname='block'):
     return blocks
 
 
-def node_data_map_inplace(g, f, attr=None):
+def node_data_map_inplace(g: nx.DiGraph, f, attr=None):
     if attr is None:
-        for n in g.nodes_iter():
+        for n in g.nodes:
             g.nodes[n] = f(n, g.nodes[n])
     else:
         for n, data in g.nodes.items():
