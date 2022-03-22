@@ -11,14 +11,15 @@ BLOCKNAME = 'bcode_block'
 def calculate_stack_depth(cfg: nx.DiGraph) -> dict[int, int]:
     """The stack depth is supposed to be independent of path, so dijkstra on the undirected graph suffices
     (and may be too strong, since we don't need minimality).
-    The `undirected` part is just because we want to work with unreachable code too.
+    We do it bidirectionally because we want to work with unreachable code too.
     """
-    res: dict[int, int] = nx.single_source_dijkstra_path_length(cfg, source=0, weight='stack_effect')
+    res: dict[int, int] = {}
     backwards_cfg = cfg.reverse(copy=True)
     for n in cfg.nodes:
         if cfg.nodes[n]['BCode'].is_return:
             # add 1 since return also pops
             res.update({k: v+1 for k, v in nx.single_source_dijkstra_path_length(backwards_cfg, source=n, weight='stack_effect').items()})
+    res.update(nx.single_source_dijkstra_path_length(cfg, source=0, weight='stack_effect'))
     return res
 
 

@@ -72,7 +72,7 @@ def test_single_block():
 
 def test():
     import code_examples
-    cfg = make_tacblock_cfg(code_examples.mandel)
+    cfg = make_tacblock_cfg(code_examples.simple, propagate_consts=True, liveness=True)
     for n in sorted(cfg.nodes()):
         block = cfg.nodes[n][BLOCKNAME]
         print_block(n, block)

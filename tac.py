@@ -133,7 +133,7 @@ def delete(*vs) -> Tac:
 
 
 def unary(lhs: Var, op) -> Tac:
-    return call(lhs, '{}.{}'.format(lhs, op))
+    return call(lhs, op, args=(lhs,))
 
 
 def assign(lhs: Var, rhs: Var, is_id=True) -> Tac:
@@ -162,15 +162,14 @@ def inplace(lhs: Var, rhs: Var, op) -> Tac:
                fmt='{uses[0]} {op}= {uses[1]}')
 
 
-def call(lhs: Var, f, args=(), kwargs=()) -> Tac:
+def call(lhs: Var, f, args=(), kwargs: Optional[Var] = None) -> Tac:
     # this way of formatting won't let use change the number of arguments easily.
     # but it is unlikely to be needed  
     fmt_args = ', '.join('{{uses[{}]}}'.format(x) for x in range(1, len(args) + 1))
-    fmt_kwargs = ', '.join('{{uses[{}]:uses[{}]:}}'.format(x, x + 1)
-                           for x in range(len(args) + 1, len(args) + 1 + (len(kwargs) // 2), 2))
-    return tac(Op.CALL, gens=(lhs,), uses=((f,) + args + kwargs), func=f, args=args, kwargs=kwargs,
+    fmt_kwargs = str(kwargs)
+    return tac(Op.CALL, gens=(lhs,), uses=((f,) + args + ((kwargs,) if kwargs is not None else ())), func=f, args=args, kwargs=kwargs,
                fmt='{gens[0]} = {uses[0]}(' + fmt_args + ')' +
-                   (('(kw=' + fmt_kwargs + ')') if kwargs else ''))
+                   (('(kw=' + str(kwargs) + ')') if kwargs else ''))
 
 
 def foreach(lhs: Var, iterator, target) -> Tac:
@@ -207,7 +206,7 @@ def make_TAC(opname, val, stack_effect, stack_depth, starts_line=None) -> list[T
         return lst + make_TAC('BUILD_TUPLE', len(val), -len(val) + 1, stack_depth, starts_line)
     tac = make_TAC_no_dels(opname, val, stack_effect, stack_depth)
     # this is simplistic kills analysis, that is not correct in general:
-    tac = list(map(delete, get_gens(tac) - get_uses(tac))) + tac
+    tac = [delete(v) for v in get_gens(tac) - get_uses(tac)] + tac
     if stack_effect < 0:
         tac += [delete(var(stack_depth + i)) for i in range(stack_effect + 1, 1)]
     return [t._replace(starts_line=starts_line) for t in tac]
@@ -314,12 +313,13 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
         return [call(var(out), op, tuple(var(i + 1) for i in range(stack_depth - val, stack_depth)))]
     elif name == 'CALL_FUNCTION':
         nargs = val & 0xFF
-        nkwargs = 2 * ((val >> 8) & 0xFF)
-        total = nargs + nkwargs
-        mid = [var(i + 1) for i in range(stack_depth - nkwargs - nargs, stack_depth - nkwargs)]
-        mid_kw = [(var(i) + ': ' + var(i + 1))
-                  for i in range(stack_depth - nkwargs + 1, stack_depth, 2)]
-        return [call(var(out), var(stack_depth - total), tuple(mid), tuple(mid_kw))]
+        mid = [var(i + 1) for i in range(stack_depth - nargs, stack_depth)]
+        return [call(var(out), var(stack_depth - nargs), tuple(mid))]
+    elif name == 'CALL_FUNCTION_KW':
+        nargs = val
+        mid = [var(i + 1) for i in range(stack_depth - nargs - 1, stack_depth - 1)]
+        res = [call(var(out), var(stack_depth - nargs - 1), tuple(mid), var(stack_depth))]
+        return res
     elif name == "NOP":
         return []
     return [tac(Op.UNSUPPORTED, fmt=f'UNSUPPORTED {name}')]

@@ -18,6 +18,10 @@ def example(x):
         print(7)
     example(5 if x else x + x)
 
+def unary_minus(z):
+    x = -z
+    return x
+
 def simple(z):    
     x = 5 + z
     y = x
@@ -34,6 +38,10 @@ def loops(z):
         z += 7
     y = 9
     return
+
+def kwargs():
+    bar('w', 'x')
+    return foo('w', 'x', a='y', b='z')
 
 def mandel(n, m, itermax, xmin, xmax, ymin, ymax):
     global c
