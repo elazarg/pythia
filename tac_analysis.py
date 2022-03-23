@@ -40,27 +40,34 @@ def analyze(g: nx.DiGraph, Analysis: typing.Type[AbstractDomain]) -> None:
     nx.set_node_attributes(g, {v: Analysis.bottom() for v in g.nodes()}, 'post_inv')
     nx.set_node_attributes(g, {v: Analysis.bottom() for v in g.nodes()}, 'pre_inv')
     g.nodes[start]['pre_inv'] = Analysis.top()
-    wl = {start}
+    wl = list(sorted(g.nodes.keys(), reverse=True))
     while wl:
         u = wl.pop()
         udata = g.nodes[u]
-        inv = udata['pre_inv'].copy()
-        for x in g.predecessors(u):
-            inv = inv.join(g.nodes[x]['post_inv'])
-        inv.single_block_update(udata['block'])
+        preds = list(g.predecessors(u))
+        if preds:
+            inv = Analysis.bottom()
+            for pred in preds:
+                pred_inv = g.nodes[pred]['post_inv']
+                inv = inv.join(pred_inv)
+            udata['pre_inv'] = inv.copy()
+        else:
+            inv = Analysis.top()
+        for ins in udata['block']:
+            inv.transfer(ins)
         if inv != udata['post_inv']:
             udata['post_inv'] = inv
-            wl.update(g.successors(u))
+            wl = list(g.successors(u)) + wl
 
 
 def test():
     import code_examples
-    cfg = make_tacblock_cfg(code_examples.simple, propagate_consts=True, liveness=False)
+    cfg = make_tacblock_cfg(code_examples.simple, propagate_consts=True, liveness=False, simplify=True)
     for n in sorted(cfg.nodes()):
         block = cfg.nodes[n]['block']
-        # print(cfg.nodes[n]['pre_inv'].constants)
+        print(cfg.nodes[n]['pre_inv'])
         print_block(n, block)
-        # print(cfg.nodes[n]['post_inv'].constants)
+        print(cfg.nodes[n]['post_inv'])
 
 
 if __name__ == '__main__':

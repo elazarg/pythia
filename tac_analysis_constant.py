@@ -14,7 +14,10 @@ T = typing.TypeVar('T')
 class ConstantDomain(AbstractDomain):
     def __init__(self, constants: typing.Optional[dict[tac.Var, tac.Const]] = ()) -> None:
         super().__init__()
-        self.constants = constants or {}
+        if constants is None:
+            self.constants = None
+        else:
+            self.constants = constants or {}
 
     def __le__(self, other):
         return self.join(other).constants == other.constants
@@ -39,26 +42,34 @@ class ConstantDomain(AbstractDomain):
     def bottom(cls: T) -> T:
         return ConstantDomain(None)
 
-    def join(self: T, other: T) -> T:
-        if self.constants is None:
-            return other.copy()
-        if other.constants is None:
-            return self.copy()
-        return ConstantDomain(dict(self.constants.items() & other.constants.items()))
-
-    def single_block_update(self, block: list[tac.Tac]) -> None:
-        if self.is_bottom:
-            return
-        for i, ins in enumerate(block):
-            if isinstance(ins, tac.Assign) and isinstance(ins.target, tac.Var):
-                if isinstance(ins.value, tac.Const):
-                    self.constants[ins.target] = ins.value
-                elif ins.value in self.constants:  # and ins.target.is_stackvar:
-                    self.constants[ins.target] = self.constants[ins.value]
-
     @property
     def is_bottom(self):
         return self.constants is None
+
+    def join(self: T, other: T) -> T:
+        if self.is_bottom:
+            return other.copy()
+        if other.is_bottom:
+            return self.copy()
+        return ConstantDomain(dict(self.constants.items() & other.constants.items()))
+
+    def transfer(self, ins: tac.Tac) -> None:
+        if self.is_bottom:
+            return
+        if isinstance(ins, tac.Mov):
+            if isinstance(ins.rhs, tac.Const):
+                self.constants[ins.lhs] = ins.rhs
+            elif ins.rhs in self.constants:  # and ins.target.is_stackvar:
+                self.constants[ins.lhs] = self.constants[ins.rhs]
+            elif ins.lhs in self.constants:
+                del self.constants[ins.lhs]
+        else:
+            for var in tac.gens(ins):
+                if var in self.constants:
+                    del self.constants[ins.lhs]
+
+    def __str__(self):
+        return 'ConstantDomain({})'.format(self.constants)
 
 
 def hardcode_constants(ins, constants) -> Tac:
