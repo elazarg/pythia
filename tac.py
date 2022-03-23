@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import itertools as it
 from dataclasses import dataclass
-from typing import NamedTuple, Iterable, Optional
+from typing import NamedTuple, Iterable, Optional, TypeAlias
 
 import bcode
 import bcode_cfg
@@ -82,7 +82,7 @@ class Var:
         return self.name
 
 
-Value = Var | Const
+Value: TypeAlias = Var | Const
 
 
 @dataclass(frozen=True)
@@ -104,7 +104,7 @@ class Subscr:
 
 
 # Simplified version of the real binding construct in Python.
-Signature = Var | tuple[Var]
+Signature: TypeAlias = Var | tuple[Var] | Attribute | Subscr
 
 
 @dataclass
@@ -134,7 +134,8 @@ class Call:
 class Yield:
     value: Value
 
-Expr = Value | Attribute | Binary | Call | Yield
+
+Expr: TypeAlias = Value | Attribute | Subscr | Binary | Call | Yield
 
 
 def stackvar(x) -> Var:
@@ -294,14 +295,6 @@ def gens(tac: Tac) -> set[Var]:
         case _: raise NotImplementedError(f'gens({tac})')
 
 
-def get_gens(block) -> set[Var]:
-    return set(it.chain.from_iterable(ins.gens for ins in block))
-
-
-def get_uses(block) -> set[Var]:
-    return set(it.chain.from_iterable(ins.uses for ins in block))
-
-
 def make_TAC(opname, val, stack_effect, stack_depth, starts_line=None) -> list[Tac]:
     if opname == 'LOAD_CONST' and isinstance(val, tuple):
         lst = []
@@ -347,14 +340,14 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
             return [Mov(fresh, stackvar(stack_depth)),
                     Mov(stackvar(stack_depth), stackvar(stack_depth - 1)),
                     Mov(stackvar(stack_depth - 1), fresh),
-                    Del(fresh)]
+                    Del((fresh,))]
         case 'ROT_THREE':
             fresh = stackvar(stack_depth + 1)
             return [Mov(fresh, stackvar(stack_depth - 2)),
                     Mov(stackvar(stack_depth - 2), stackvar(stack_depth - 1)),
                     Mov(stackvar(stack_depth - 1), stackvar(stack_depth)),
                     Mov(stackvar(stack_depth), fresh),
-                    Del(fresh)]
+                    Del((fresh,))]
         case 'DUP_TOP':
             return [Mov(stackvar(out), stackvar(stack_depth))]
         case 'DUP_TOP_TWO':
