@@ -1,7 +1,5 @@
 import dis
-from typing import Iterable, Iterator
-
-import code_examples
+from typing import Iterator
 
 
 class BCode(dis.Instruction):
@@ -88,7 +86,7 @@ class BCode(dis.Instruction):
     def __str__(self):
         return "BCode(opname='{0.opname}', opcode={0.opcode}, arg={0.arg}, argval={0.argval}, argrepr={1}, " \
                "offset={0.offset}, is_jump_target={0.is_jump_target})".format(
-                self, repr(self.argrepr))
+            self, repr(self.argrepr))
 
 
 def update_break_instruction(ins_iter: Iterator[dis.Instruction]) -> Iterator[BCode]:
@@ -119,7 +117,8 @@ def get_instructions(f) -> Iterator[BCode]:
     return update_break_instruction(dis.get_instructions(f))
 
 
-if __name__ == '__main__':
+def test():
+    import code_examples
     import pyclbr
 
     elems = pyclbr.readmodule_ex('code_examples')
@@ -127,3 +126,7 @@ if __name__ == '__main__':
         print(val.lineno, ':', name)
     for b in dis.dis(code_examples.simple):
         print(b)
+
+
+if __name__ == '__main__':
+    test()

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import itertools as it
 from dataclasses import dataclass
-from typing import NamedTuple, Iterable, Optional, TypeAlias
+from typing import Iterable, Optional, TypeAlias
 
 import bcode
 import bcode_cfg
@@ -14,7 +14,7 @@ def test() -> None:
     import code_examples
     cfg = make_tacblock_cfg(code_examples.calc_mandelbrot_vals)
     print_3addr(cfg)
-    bcode_cfg.draw(cfg)
+    cfg.draw()
 
 
 def linearize_cfg(cfg, no_dels=True) -> Iterable[str]:
@@ -33,20 +33,18 @@ def print_3addr(cfg, no_dels=True) -> None:
     print('\n'.join(linearize_cfg(cfg, no_dels)))
 
 
-def make_tacblock_cfg(f, simplify=False):
+def make_tacblock_cfg(f, simplify=False) -> gu.Cfg[Tac]:
     depths, cfg = bcode_cfg.make_bcode_block_cfg_from_function(f)
 
     if simplify:
         cfg = gu.simplify_cfg(cfg)
 
-    def bcode_block_to_tac_block(n, block_data: dict[str, list[bcode.BCode]]) -> list[Tac]:
+    def bcode_block_to_tac_block(n, block: list[bcode.BCode]) -> list[Tac]:
         return list(it.chain.from_iterable(
             make_TAC(bc.opname, bc.argval, bc.stack_effect(), depths[bc.offset], bc.starts_line)
-            for bc in block_data['block']))
+            for bc in block))
 
-    tac_blocks = gu.node_data_map(cfg,
-                                  bcode_block_to_tac_block,
-                                  'block')
+    tac_blocks = gu.node_data_map(cfg, bcode_block_to_tac_block)
 
     # this is simplistic kills analysis, that is not correct in general:
     # tac = [Del(tuple(get_gens(tac) - get_uses(tac))] + tac
@@ -77,9 +75,7 @@ class Var:
         return self.name
 
     def __repr__(self):
-        if self.is_stackvar:
-            return f'${self.name}'
-        return self.name
+        return self.__str__()
 
 
 Value: TypeAlias = Var | Const
@@ -283,6 +279,8 @@ def gens(tac: Tac) -> set[Var]:
             match tac.lhs:
                 case Var(): return {tac.lhs}
                 case tuple(): return set(tac.lhs)
+                case Attribute(): return set()
+                case Subscr(): return set()
                 case _: raise NotImplementedError(f'gens({tac})')
         case Import(): return {tac.lhs}
         case InplaceBinary(): return {tac.lhs}

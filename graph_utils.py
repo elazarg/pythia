@@ -1,5 +1,52 @@
+from __future__ import annotations
+
+from typing import TypeVar, Generic, Callable, Any
 import networkx as nx
 from itertools import chain
+
+T = TypeVar('T')
+Q = TypeVar('Q')
+
+
+class Cfg(Generic[T]):
+    graph: nx.DiGraph
+
+    def __init__(self, graph: nx.DiGraph | dict | list[tuple[int, int, dict]], blocks=None) -> None:
+        if isinstance(graph, nx.DiGraph):
+            self.graph = graph
+        else:
+            self.graph = nx.DiGraph(graph)
+        if blocks is not None:
+            set_node_attributes(self, name='block', values=blocks)
+
+    @property
+    def entry(self):
+        return self.graph.nodes[0]
+
+    @property
+    def nodes(self):
+        return self.graph.nodes
+
+    def reverse(self: Cfg[T], copy) -> Cfg[T]:
+        return Cfg(self.graph.reverse(copy=copy))
+
+    def draw(self) -> None:
+        import matplotlib.pyplot as plt
+        nx.draw_networkx(self.graph, with_labels=True)
+        plt.show()
+
+    def print_graph(self) -> None:
+        for b in sorted(self.graph.nodes()):
+            print(b, ':', self.graph.nodes[b]['block'])
+
+    def predecessors(self, label):
+        return self.graph.predecessors(label)
+
+    def successors(self, label):
+        return self.graph.successors(label)
+
+    def copy(self: Cfg) -> Cfg:
+        return Cfg(self.graph.copy())
 
 
 def reverse_weights(g: nx.DiGraph, weight='weight'):
@@ -10,17 +57,15 @@ def reverse_weights(g: nx.DiGraph, weight='weight'):
     return g
 
 
-def copy_to_bidirectional(g: nx.DiGraph, weight='weight'):
-    return nx.compose(g, reverse_weights(g, weight=weight))
-
-
-def simplify_cfg(g: nx.DiGraph, blockname='block'):
+def simplify_cfg(cfg: Cfg) -> Cfg:
     """Contract chains with in_degree=out_degree=1:
     i.e. turns > [-] [-] [-] <
          into  >[---]<
     The label of the chain is the label of its first element.
-    g.nodes[n][blockname] will hold list of dictionaries.
+    g.nodes[n]['block'] will hold list of dictionaries.
     """
+    blockname = 'block'
+    g = cfg.graph
     starts = set(chain((n for n in g if g.in_degree(n) != 1),
                        chain.from_iterable(g.successors(n) for n in g
                                            if g.out_degree(n) > 1)))
@@ -40,16 +85,7 @@ def simplify_cfg(g: nx.DiGraph, blockname='block'):
             blocks.add_node(label)
         blocks.add_edges_from((label, suc) for suc in g.successors(n))
         blocks.nodes[label][blockname] = block
-    return blocks
-
-
-def node_data_map_inplace(g: nx.DiGraph, f, attr=None):
-    if attr is None:
-        for n in g.nodes:
-            g.nodes[n] = f(n, g.nodes[n])
-    else:
-        for n, data in g.nodes.items():
-            data[attr] = f(n, data)
+    return Cfg(blocks)
 
 
 def refine_to_chain(g, from_attr, to_attr):
@@ -74,10 +110,11 @@ def refine_to_chain(g, from_attr, to_attr):
     return res
 
 
-def node_data_map(g, f, attr=None):
-    g = g.copy()
-    node_data_map_inplace(g, f, attr)
-    return g
+def node_data_map(cfg: Cfg[T], f: Callable[[int, list[T]], list[Q]]) -> Cfg[Q]:
+    cfg: Cfg[Any] = cfg.copy()
+    for n, data in cfg.nodes.items():
+        data['block'] = f(n, data['block'])
+    return cfg
 
 
 def test_refine_to_chain():
@@ -92,3 +129,11 @@ def test_refine_to_chain():
 
 if __name__ == '__main__':
     test_refine_to_chain()
+
+
+def single_source_dijkstra_path_length(cfg: Cfg, source: int, weight='weight'):
+    return nx.single_source_dijkstra_path_length(cfg.graph, source, weight=weight)
+
+
+def set_node_attributes(cfg: Cfg, values, name):
+    return nx.set_node_attributes(cfg.graph, values, name)

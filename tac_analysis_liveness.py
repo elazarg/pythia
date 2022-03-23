@@ -22,14 +22,14 @@ Here:
 """
 from __future__ import annotations
 
-import typing
+from typing import Type, TypeVar
 from itertools import chain
 
 import tac
 from tac import Tac
 from tac_analysis_domain import AbstractDomain
 
-T = typing.TypeVar('T')
+T = TypeVar('T')
 
 
 def update_liveness(ins, inv) -> Tac:
@@ -42,9 +42,12 @@ def update_liveness(ins, inv) -> Tac:
 
 
 class Liveness(AbstractDomain):
+    @classmethod
+    def is_forward(cls) -> bool:
+        return False
 
     @classmethod
-    def top(cls: T) -> T:
+    def top(cls: Type[T]) -> T:
         return set()
 
     @staticmethod

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import typing
 
-import networkx as nx
-
 import graph_utils as gu
 import tac
 
@@ -35,34 +33,31 @@ def print_block(n, block):
         print('\t', ins)
 
 
-def analyze(g: nx.DiGraph, Analysis: typing.Type[AbstractDomain]) -> None:
-    start = 0
-    nx.set_node_attributes(g, {v: Analysis.bottom() for v in g.nodes()}, 'post_inv')
-    nx.set_node_attributes(g, {v: Analysis.bottom() for v in g.nodes()}, 'pre_inv')
-    g.nodes[start]['pre_inv'] = Analysis.top()
-    wl = list(sorted(g.nodes.keys(), reverse=True))
+def analyze(cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
+    gu.set_node_attributes(cfg, {v: Analysis.bottom() for v in cfg.nodes()}, 'post_inv')
+    gu.set_node_attributes(cfg, {v: Analysis.bottom() for v in cfg.nodes()}, 'pre_inv')
+
+    cfg.entry['pre_inv'] = Analysis.top()
+    wl = [0]
     while wl:
-        u = wl.pop()
-        udata = g.nodes[u]
-        preds = list(g.predecessors(u))
-        if preds:
-            inv = Analysis.bottom()
-            for pred in preds:
-                pred_inv = g.nodes[pred]['post_inv']
-                inv = inv.join(pred_inv)
-            udata['pre_inv'] = inv.copy()
-        else:
-            inv = Analysis.top()
-        for ins in udata['block']:
-            inv.transfer(ins)
-        if inv != udata['post_inv']:
-            udata['post_inv'] = inv
-            wl = list(g.successors(u)) + wl
+        label = wl.pop()
+        node = cfg.nodes[label]
+
+        invariant = node['pre_inv'].copy()
+        for ins in node['block']:
+            invariant.transfer(ins)
+        node['post_inv'] = invariant.copy()
+
+        for succ in cfg.successors(label):
+            succ_node = cfg.nodes[succ]
+            if not (invariant <= succ_node['pre_inv']):
+                succ_node['pre_inv'] = succ_node['pre_inv'].join(invariant)
+                wl = [succ] + wl
 
 
 def test():
     import code_examples
-    cfg = make_tacblock_cfg(code_examples.simple, propagate_consts=True, liveness=False, simplify=True)
+    cfg = make_tacblock_cfg(code_examples.RayTrace, propagate_consts=True, liveness=False, simplify=True)
     for n in sorted(cfg.nodes()):
         block = cfg.nodes[n]['block']
         print(cfg.nodes[n]['pre_inv'])

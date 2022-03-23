@@ -1,4 +1,4 @@
-from typing import TypeVar, Protocol
+from typing import TypeVar, Protocol, Type
 
 T = TypeVar('T')
 
@@ -6,13 +6,16 @@ T = TypeVar('T')
 # mix of domain and analysis-specific choice of operations
 # nothing here really works...
 class AbstractDomain(Protocol):
-
     @classmethod
-    def top(cls: T) -> T:
+    def is_forward(cls) -> bool:
         ...
 
     @classmethod
-    def bottom(cls: T) -> T:
+    def top(cls: Type[T]) -> T:
+        ...
+
+    @classmethod
+    def bottom(cls: Type[T]) -> T:
         ...
 
     def join(self: T, other) -> T:

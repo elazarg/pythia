@@ -1,17 +1,21 @@
 # Data flow analysis and stuff.
 
 from __future__ import annotations
-
+from typing import Type, TypeVar
 import typing
 
 import tac
 from tac import Tac
 from tac_analysis_domain import AbstractDomain
 
-T = typing.TypeVar('T')
+T = TypeVar('T')
 
 
 class ConstantDomain(AbstractDomain):
+    @classmethod
+    def is_forward(cls) -> bool:
+        return True
+
     def __init__(self, constants: typing.Optional[dict[tac.Var, tac.Const]] = ()) -> None:
         super().__init__()
         if constants is None:
@@ -32,18 +36,18 @@ class ConstantDomain(AbstractDomain):
         return ConstantDomain(self.constants)
 
     @classmethod
-    def top(cls: T) -> T:
+    def top(cls: Type[T]) -> T:
         return ConstantDomain({})
 
     def set_to_top(self) -> None:
         self.constants = {}
 
     @classmethod
-    def bottom(cls: T) -> T:
+    def bottom(cls: Type[T]) -> T:
         return ConstantDomain(None)
 
     @property
-    def is_bottom(self):
+    def is_bottom(self) -> bool:
         return self.constants is None
 
     def join(self: T, other: T) -> T:
@@ -68,7 +72,7 @@ class ConstantDomain(AbstractDomain):
                 if var in self.constants:
                     del self.constants[ins.lhs]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'ConstantDomain({})'.format(self.constants)
 
 
