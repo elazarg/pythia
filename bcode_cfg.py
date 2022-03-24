@@ -13,10 +13,10 @@ def calculate_stack_depth(cfg: Cfg) -> dict[int, int]:
     """
     res: dict[int, int] = {}
     backwards_cfg = cfg.reverse(copy=True)
-    for n in cfg.nodes:
-        if cfg.nodes[n]['block'][-1].is_return:
+    for label in cfg.nodes:
+        if cfg[label][-1].is_return:
             # add 1 since return also pops
-            dijkstra = gu.single_source_dijkstra_path_length(backwards_cfg, source=n, weight='stack_effect')
+            dijkstra = gu.single_source_dijkstra_path_length(backwards_cfg, source=label, weight='stack_effect')
             res.update({k: v+1 for k, v in dijkstra.items()})
     res.update(gu.single_source_dijkstra_path_length(cfg, source=0, weight='stack_effect'))
     return res

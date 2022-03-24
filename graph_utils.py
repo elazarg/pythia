@@ -27,6 +27,12 @@ class Cfg(Generic[T]):
     def nodes(self):
         return self.graph.nodes
 
+    def __getitem__(self, label: int) -> list[T]:
+        return self.graph.nodes[label]['block']
+
+    def __setitem__(self, label: int, block: list[T]) -> None:
+        self.graph.nodes[label]['block'] = block
+
     def reverse(self: Cfg[T], copy) -> Cfg[T]:
         return Cfg(self.graph.reverse(copy=copy))
 
@@ -36,8 +42,8 @@ class Cfg(Generic[T]):
         plt.show()
 
     def print_graph(self) -> None:
-        for b in sorted(self.graph.nodes()):
-            print(b, ':', self.graph.nodes[b]['block'])
+        for label in sorted(self.graph.nodes()):
+            print(label, ':', self[label])
 
     def predecessors(self, label):
         return self.graph.predecessors(label)
@@ -62,7 +68,6 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
     i.e. turns > [-] [-] [-] <
          into  >[---]<
     The label of the chain is the label of its first element.
-    g.nodes[n]['block'] will hold list of dictionaries.
     """
     blockname = 'block'
     g = cfg.graph

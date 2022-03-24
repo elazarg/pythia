@@ -19,11 +19,10 @@ def make_tacblock_cfg(f, propagate_consts=True, liveness=True, propagate_assignm
     if propagate_consts:
         analyze(cfg, ConstantDomain)
     if liveness:
-        for n in sorted(cfg.nodes()):
-            block = cfg.nodes[n]['block']
-            block = list(single_block_liveness(block))
+        for label in sorted(cfg.nodes()):
+            block = list(single_block_liveness(cfg[label]))
             block.reverse()
-            cfg.nodes[n]['block'] = block
+            cfg[label] = block
     return cfg
 
 
@@ -44,7 +43,7 @@ def analyze(cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
         node = cfg.nodes[label]
 
         invariant = node['pre_inv'].copy()
-        for ins in node['block']:
+        for ins in cfg[label]:
             invariant.transfer(ins)
         node['post_inv'] = invariant.copy()
 
@@ -59,7 +58,7 @@ def test():
     import code_examples
     cfg = make_tacblock_cfg(code_examples.simple_loop, propagate_consts=True, liveness=False, simplify=True)
     for n in sorted(cfg.nodes()):
-        block = cfg.nodes[n]['block']
+        block = cfg[n]
         print(cfg.nodes[n]['pre_inv'])
         print_block(n, block)
         print(cfg.nodes[n]['post_inv'])

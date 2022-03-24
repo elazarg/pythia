@@ -18,15 +18,14 @@ def test() -> None:
 
 
 def linearize_cfg(cfg, no_dels=True) -> Iterable[str]:
-    for n in sorted(cfg.nodes()):
+    for label in sorted(cfg.nodes):
         # The call for sorted() gives us for free the ordering of blocks by "fallthrough"
         # It is not guaranteed anywhere, but it makes sense - the order of blocks is the 
         # order of the lines in the code
-        block = cfg.nodes[n]['block']
-        for ins in block:
+        for ins in cfg[label]:
             if no_dels and isinstance(ins, Del):
                 continue
-            yield f'{n}:\t{ins}'
+            yield f'{label}:\t{ins}'
 
 
 def print_3addr(cfg, no_dels=True) -> None:
