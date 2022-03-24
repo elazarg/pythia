@@ -12,7 +12,7 @@ import graph_utils as gu
 
 def test() -> None:
     import code_examples
-    cfg = make_tacblock_cfg(code_examples.calc_mandelbrot_vals)
+    cfg = gu.simplify_cfg(make_tacblock_cfg(code_examples.calc_mandelbrot_vals))
     print_3addr(cfg)
     cfg.draw()
 
@@ -33,11 +33,8 @@ def print_3addr(cfg, no_dels=True) -> None:
     print('\n'.join(linearize_cfg(cfg, no_dels)))
 
 
-def make_tacblock_cfg(f, simplify=False) -> gu.Cfg[Tac]:
+def make_tacblock_cfg(f) -> gu.Cfg[Tac]:
     depths, cfg = bcode_cfg.make_bcode_block_cfg_from_function(f)
-
-    if simplify:
-        cfg = gu.simplify_cfg(cfg)
 
     def bcode_block_to_tac_block(n, block: list[bcode.BCode]) -> list[Tac]:
         return list(it.chain.from_iterable(

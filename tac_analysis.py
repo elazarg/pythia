@@ -38,7 +38,7 @@ def analyze(cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
     gu.set_node_attributes(cfg, {v: Analysis.bottom() for v in cfg.nodes()}, 'pre_inv')
 
     cfg.entry['pre_inv'] = Analysis.top()
-    wl = [0]
+    wl = {0}
     while wl:
         label = wl.pop()
         node = cfg.nodes[label]
@@ -52,12 +52,12 @@ def analyze(cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
             succ_node = cfg.nodes[succ]
             if not (invariant <= succ_node['pre_inv']):
                 succ_node['pre_inv'] = succ_node['pre_inv'].join(invariant)
-                wl = [succ] + wl
+                wl.add(succ)
 
 
 def test():
     import code_examples
-    cfg = make_tacblock_cfg(code_examples.RayTrace, propagate_consts=True, liveness=False, simplify=True)
+    cfg = make_tacblock_cfg(code_examples.simple_loop, propagate_consts=True, liveness=False, simplify=True)
     for n in sorted(cfg.nodes()):
         block = cfg.nodes[n]['block']
         print(cfg.nodes[n]['pre_inv'])

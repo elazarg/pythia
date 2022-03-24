@@ -44,7 +44,7 @@ def make_bcode_block_cfg_from_function(f) -> tuple[dict[int, int], Cfg]:
 def test():
     import code_examples
     _, cfg = make_bcode_block_cfg_from_function(code_examples.CreatePlasmaCube)
-    cfg.print_graph()
+    gu.simplify_cfg(cfg).print_graph()
 
 
 if __name__ == '__main__':
