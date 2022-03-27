@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import typing
+from dataclasses import dataclass
+from enum import Enum
 
 import graph_utils as gu
 import tac
 
-from tac_analysis_domain import AbstractDomain
-from tac_analysis_liveness import single_block_liveness
+from tac_analysis_domain import AbstractDomain, IterationStrategy
+from tac_analysis_liveness import LivenessDomain
 from tac_analysis_constant import ConstantDomain
 
 
@@ -19,10 +21,7 @@ def make_tacblock_cfg(f, propagate_consts=True, liveness=True, propagate_assignm
     if propagate_consts:
         analyze(cfg, ConstantDomain)
     if liveness:
-        for label in sorted(cfg.nodes()):
-            block = list(single_block_liveness(cfg[label]))
-            block.reverse()
-            cfg[label] = block
+        analyze(cfg, LivenessDomain)
     return cfg
 
 
@@ -32,36 +31,39 @@ def print_block(n, block):
         print('\t', ins)
 
 
-def analyze(cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
-    gu.set_node_attributes(cfg, {v: Analysis.bottom() for v in cfg.nodes()}, 'post_inv')
-    gu.set_node_attributes(cfg, {v: Analysis.bottom() for v in cfg.nodes()}, 'pre_inv')
+def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
+    name = Analysis.name()
+    for label in _cfg.labels:
+        _cfg[label].pre[name] = Analysis.bottom()
+        _cfg[label].post[name] = Analysis.bottom()
 
-    cfg.entry['pre_inv'] = Analysis.top()
-    wl = {0}
+    cfg: IterationStrategy = Analysis.view(_cfg)
+
+    wl = [entry] = {cfg.entry_label}
+    cfg[entry].pre[name] = Analysis.top()
     while wl:
         label = wl.pop()
-        node = cfg.nodes[label]
+        block = cfg[label]
 
-        invariant = node['pre_inv'].copy()
+        invariant = block.pre[name].copy()
         for ins in cfg[label]:
             invariant.transfer(ins)
-        node['post_inv'] = invariant.copy()
+        block.post[name] = invariant.copy()
 
         for succ in cfg.successors(label):
-            succ_node = cfg.nodes[succ]
-            if not (invariant <= succ_node['pre_inv']):
-                succ_node['pre_inv'] = succ_node['pre_inv'].join(invariant)
+            next_block: gu.Block = cfg[succ]
+            if not (invariant <= (pre := next_block.pre[name])):
+                next_block.pre[name] = pre.join(invariant)
                 wl.add(succ)
 
 
 def test():
     import code_examples
-    cfg = make_tacblock_cfg(code_examples.simple_loop, propagate_consts=True, liveness=False, simplify=True)
-    for n in sorted(cfg.nodes()):
-        block = cfg[n]
-        print(cfg.nodes[n]['pre_inv'])
-        print_block(n, block)
-        print(cfg.nodes[n]['post_inv'])
+    cfg = make_tacblock_cfg(code_examples.simple_loop, propagate_consts=True, liveness=True, simplify=True)
+    for label, block in sorted(cfg.items()):
+        print('pre', block.pre)
+        print_block(label, block)
+        print('post', block.post)
 
 
 if __name__ == '__main__':

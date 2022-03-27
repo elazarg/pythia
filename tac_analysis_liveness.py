@@ -12,7 +12,7 @@ Here:
       e.g. `x = f(a, b)` : USES=(f, a, b)
    2. GENS is the list of variables defined by an instruction/block
       e.g. `x = f(a, b)` : GENS=(x,)
-   3. KILLS is the list of variables killed by an instruction/block, which do not appear in GENS
+   3. KILLS is the list of variables killed by an instruction/block, which do not appear in GENS.
       For most of the instructions, initially, KILLS is empty.
       However, `DEL x` will have KILLS={x} but empty GENS
       In addition, the per-block live variable analysis removes DEL operations,
@@ -22,12 +22,15 @@ Here:
 """
 from __future__ import annotations
 
-from typing import Type, TypeVar
+from collections import defaultdict
+from dataclasses import dataclass
 from itertools import chain
+from typing import Type, TypeVar, ClassVar
 
 import tac
-from tac import Tac
-from tac_analysis_domain import AbstractDomain
+from tac import Tac, Var
+from tac_analysis_domain import AbstractDomain, IterationStrategy, BackwardIterationStrategy
+import graph_utils as gu
 
 T = TypeVar('T')
 
@@ -41,27 +44,99 @@ def update_liveness(ins, inv) -> Tac:
             del inv[v]
 
 
-class Liveness(AbstractDomain):
+@dataclass(frozen=True)
+class LivenessLattice:
+    is_alive: bool = False
+
     @classmethod
-    def is_forward(cls) -> bool:
-        return False
+    def bottom(cls: Type[T]) -> T:
+        return LivenessLattice(False)
 
     @classmethod
     def top(cls: Type[T]) -> T:
-        return set()
+        return LivenessLattice(True)
+
+    def is_bottom(self) -> bool:
+        return not self.is_alive
+
+    def is_top(self) -> bool:
+        return self.is_alive
+
+    def __le__(self, other: LivenessLattice) -> bool:
+        return other.is_alive or not self.is_alive
+
+    def meet(self, other: LivenessLattice) -> LivenessLattice:
+        return LivenessLattice(min(self.is_alive, other.is_alive))
+
+    def join(self, other: LivenessLattice) -> LivenessLattice:
+        return LivenessLattice(max(self.is_alive, other.is_alive))
+
+
+class LivenessDomain(AbstractDomain):
+    vars: defaultdict[Var, LivenessLattice] | None
+
+    BOTTOM: ClassVar[None] = None
 
     @staticmethod
-    def single_block(block, live=frozenset()):
-        """kills: the set of names that will no longer be used"""
-        for ins in reversed(block):
-            live = frozenset(ins.gens).union(live.difference(ins.uses))
+    def name() -> str:
+        return "Liveness"
 
-    @staticmethod
-    def single_block_total_effect(block, live=frozenset()):
-        """kills: the set of names that will no longer be used"""
-        gens = {ins.gens for ins in block}
-        uses = {ins.uses for ins in block}
-        return uses.union(live.difference(gens))
+    def __init__(self, vars: dict[Var, LivenessLattice] | defaultdict[Var, LivenessLattice] | None) -> None:
+        super().__init__()
+        if vars is None:
+            self.vars = LivenessDomain.BOTTOM
+        elif isinstance(vars, defaultdict):
+            self.vars = vars
+        elif isinstance(vars, dict):
+            self.vars = defaultdict(LivenessLattice.top)
+            self.vars.update(vars)
+        else:
+            assert False, f"Unknown type {type(vars)}"
+
+    def __le__(self, other):
+        return self.join(other).vars == other.vars
+
+    def __eq__(self, other):
+        return self.vars == other.vars
+
+    def __ne__(self, other):
+        return self.vars != other.vars
+
+    def copy(self: T) -> T:
+        return LivenessDomain(self.vars)
+
+    @classmethod
+    def top(cls: Type[T]) -> T:
+        return LivenessDomain(defaultdict(LivenessLattice.top))
+
+    @classmethod
+    def bottom(cls: Type[T]) -> T:
+        return LivenessDomain(LivenessDomain.BOTTOM)
+
+    @property
+    def is_bottom(self) -> bool:
+        return self.vars is LivenessDomain.BOTTOM
+
+    def join(self: T, other: T) -> T:
+        if self.is_bottom:
+            return other.copy()
+        if other.is_bottom:
+            return self.copy()
+        return LivenessDomain({k: v for k in self.vars.keys & other.vars
+                         if (v := self.vars[k].join(other.vars[k])) != LivenessLattice.top()})
+
+    def transfer(self, ins: tac.Tac) -> None:
+        if self.vars is None:
+            return
+        self.vars -= tac.gens(ins)
+        self.vars |= tac.free_vars(ins)
+
+    def __str__(self) -> str:
+        return 'ConstantDomain({})'.format(self.vars)
+
+    @classmethod
+    def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy:
+        return BackwardIterationStrategy(cfg)
 
 
 def single_block_uses(block):
@@ -79,7 +154,7 @@ def undef(kills, gens):
 
 def _filter_killed(ins: Tac, kills, new_kills):
     # moved here only because it is a transformation and not an analysis
-    if isinstance(ins, tac.Del) or isinstance(ins, tac.Assign) and set(ins.gens).issubset(kills):
+    if isinstance(ins, tac.Del) or isinstance(ins, tac.Assign) and set(tac.gens(ins)).issubset(kills):
         return
     yield ins._replace(gens=undef(kills, ins.gens),
                        kills=kills - new_kills)

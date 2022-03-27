@@ -35,10 +35,10 @@ def print_3addr(cfg, no_dels=True) -> None:
 def make_tacblock_cfg(f) -> gu.Cfg[Tac]:
     depths, cfg = bcode_cfg.make_bcode_block_cfg_from_function(f)
 
-    def bcode_block_to_tac_block(n, block: list[bcode.BCode]) -> list[Tac]:
-        return list(it.chain.from_iterable(
+    def bcode_block_to_tac_block(n, block: gu.Block[bcode.BCode]) -> gu.Block[Tac]:
+        return gu.ForwardBlock(list(it.chain.from_iterable(
             make_TAC(bc.opname, bc.argval, bc.stack_effect(), depths[bc.offset], bc.starts_line)
-            for bc in block))
+            for bc in block)))
 
     tac_blocks = gu.node_data_map(cfg, bcode_block_to_tac_block)
 

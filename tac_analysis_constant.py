@@ -1,25 +1,41 @@
 # Data flow analysis and stuff.
 
 from __future__ import annotations
-from typing import Type, TypeVar
-import typing
+
+from dataclasses import dataclass
+from typing import Type, TypeVar, Optional, ClassVar
 
 import tac
-from tac import Tac
-from tac_analysis_domain import AbstractDomain
+from tac import Const, Var
+from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy
+
+import graph_utils as gu
 
 T = TypeVar('T')
 
 
-class ConstantDomain(AbstractDomain):
-    @classmethod
-    def is_forward(cls) -> bool:
-        return True
+@dataclass
+class Bottom:
+    pass
 
-    def __init__(self, constants: typing.Optional[dict[tac.Var, tac.Const]] = ()) -> None:
+
+class ConstantDomain(AbstractDomain):
+    constants: dict[Var, Const] | Bottom
+
+    BOTTOM: ClassVar[Bottom]
+
+    @staticmethod
+    def name() -> str:
+        return "Constant"
+
+    @classmethod
+    def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy[T]:
+        return ForwardIterationStrategy(cfg)
+
+    def __init__(self, constants: Optional[dict[Var, Const]] = ()) -> None:
         super().__init__()
         if constants is None:
-            self.constants = None
+            self.constants = ConstantDomain.BOTTOM
         else:
             self.constants = constants or {}
 
@@ -39,16 +55,13 @@ class ConstantDomain(AbstractDomain):
     def top(cls: Type[T]) -> T:
         return ConstantDomain({})
 
-    def set_to_top(self) -> None:
-        self.constants = {}
-
     @classmethod
     def bottom(cls: Type[T]) -> T:
-        return ConstantDomain(None)
+        return ConstantDomain(ConstantDomain.BOTTOM)
 
     @property
     def is_bottom(self) -> bool:
-        return self.constants is None
+        return self.constants is ConstantDomain.BOTTOM
 
     def join(self: T, other: T) -> T:
         if self.is_bottom:
@@ -75,6 +88,12 @@ class ConstantDomain(AbstractDomain):
     def __str__(self) -> str:
         return 'ConstantDomain({})'.format(self.constants)
 
+    def __repr__(self) -> str:
+        return self.constants.__repr__()
 
-def hardcode_constants(ins, constants) -> Tac:
+
+ConstantDomain.BOTTOM = Bottom()
+
+
+def hardcode_constants(ins, constants) -> tac.Tac:
     return ins._replace(uses=tuple(uses))

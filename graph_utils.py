@@ -1,11 +1,67 @@
 from __future__ import annotations
 
-from typing import TypeVar, Generic, Callable, Any
+import math
+from dataclasses import dataclass
+from typing import TypeVar, Generic, Callable, Any, Iterator, TypeAlias
 import networkx as nx
 from itertools import chain
 
+from tac_analysis_domain import AbstractDomain
+
 T = TypeVar('T')
 Q = TypeVar('Q')
+
+
+@dataclass
+class ForwardBlock(Generic[T]):
+    _instructions: list[T]
+    pre: dict[str, AbstractDomain]
+    post: dict[str, AbstractDomain]
+
+    def __init__(self, instructions: list[T]):
+        self._instructions = instructions
+        self.pre = {}
+        self.post = {}
+
+    def __iter__(self) -> Iterator[T]:
+        return iter(self._instructions)
+
+    def __len__(self) -> int:
+        return len(self._instructions)
+
+    def __getitem__(self, index: int) -> T:
+        return self._instructions[index]
+
+    def __reversed__(self) -> Block[T]:
+        return BackwardBlock(self)
+
+
+@dataclass
+class BackwardBlock(Generic[T]):
+    block: Block[T]
+
+    def __iter__(self) -> Iterator[T]:
+        return iter(reversed(self.block._instructions))
+
+    def __len__(self) -> int:
+        return len(self.block)
+
+    def __getitem__(self, index: int) -> T:
+        return self.block[index]
+
+    @property
+    def pre(self) -> dict[str, AbstractDomain]:
+        return self.block.post
+
+    @property
+    def post(self) -> dict[str, AbstractDomain]:
+        return self.block.pre
+
+    def __reversed__(self) -> Block[T]:
+        return self.block
+
+
+Block: TypeAlias = ForwardBlock | BackwardBlock
 
 
 class Cfg(Generic[T]):
@@ -16,21 +72,40 @@ class Cfg(Generic[T]):
             self.graph = graph
         else:
             self.graph = nx.DiGraph(graph)
+
         if blocks is not None:
-            set_node_attributes(self, name='block', values=blocks)
+            nx.set_node_attributes(self, name='block', values={k: ForwardBlock(block) for k, block in blocks.items()})
+
+        # for label in graph.nodes:
+        #     self.graph.nodes[label]['block'] = ForwardBlock(graph.nodes[label]['block'])
+
+    @property
+    def entry_label(self) -> int:
+        return 0
+
+    @property
+    def exit_label(self) -> int:
+        return math.inf
 
     @property
     def entry(self):
-        return self.graph.nodes[0]
+        return self.graph.nodes[self.entry_label]
 
     @property
     def nodes(self):
         return self.graph.nodes
 
-    def __getitem__(self, label: int) -> list[T]:
+    @property
+    def labels(self):
+        return self.graph.nodes.keys()
+
+    def items(self) -> Iterator[tuple[int, Block[T]]]:
+        yield from ((label, self[label]) for label in self.labels)
+
+    def __getitem__(self, label: int) -> Block[T]:
         return self.graph.nodes[label]['block']
 
-    def __setitem__(self, label: int, block: list[T]) -> None:
+    def __setitem__(self, label: int, block: Block[T]) -> None:
         self.graph.nodes[label]['block'] = block
 
     def reverse(self: Cfg[T], copy) -> Cfg[T]:
@@ -45,10 +120,10 @@ class Cfg(Generic[T]):
         for label in sorted(self.graph.nodes()):
             print(label, ':', self[label])
 
-    def predecessors(self, label):
+    def predecessors(self, label) -> Iterator[int]:
         return self.graph.predecessors(label)
 
-    def successors(self, label):
+    def successors(self, label) -> Iterator[int]:
         return self.graph.successors(label)
 
     def copy(self: Cfg) -> Cfg:
@@ -74,23 +149,23 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
     starts = set(chain((n for n in g if g.in_degree(n) != 1),
                        chain.from_iterable(g.successors(n) for n in g
                                            if g.out_degree(n) > 1)))
-    blocks = nx.DiGraph()
+    blocks = Cfg(nx.DiGraph())
     for label in starts:
         n = label
-        block = []
+        instructions = []
         while True:
-            block += g.nodes[n][blockname]
+            instructions += g.nodes[n][blockname]
             if g.out_degree(n) != 1:
                 break
             next_n = next(iter(g.successors(n)))
             if g.in_degree(next_n) != 1:
                 break
             n = next_n
-        if label not in blocks:
-            blocks.add_node(label)
-        blocks.add_edges_from((label, suc) for suc in g.successors(n))
-        blocks.nodes[label][blockname] = block
-    return Cfg(blocks)
+        if label not in blocks.graph:
+            blocks.graph.add_node(label)
+        blocks.graph.add_edges_from((label, suc) for suc in g.successors(n))
+        blocks[label] = ForwardBlock(instructions)
+    return blocks
 
 
 def refine_to_chain(g, from_attr, to_attr):
@@ -115,7 +190,7 @@ def refine_to_chain(g, from_attr, to_attr):
     return res
 
 
-def node_data_map(cfg: Cfg[T], f: Callable[[int, list[T]], list[Q]]) -> Cfg[Q]:
+def node_data_map(cfg: Cfg[T], f: Callable[[int, Block[T]], Block[Q]]) -> Cfg[Q]:
     cfg: Cfg[Any] = cfg.copy()
     for n, data in cfg.nodes.items():
         data['block'] = f(n, data['block'])
@@ -138,7 +213,3 @@ if __name__ == '__main__':
 
 def single_source_dijkstra_path_length(cfg: Cfg, source: int, weight='weight'):
     return nx.single_source_dijkstra_path_length(cfg.graph, source, weight=weight)
-
-
-def set_node_attributes(cfg: Cfg, values, name):
-    return nx.set_node_attributes(cfg.graph, values, name)
