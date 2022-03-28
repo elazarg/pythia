@@ -247,15 +247,15 @@ def free_vars_expr(expr: Expr) -> set[Var]:
         case Subscr(): return free_vars_expr(expr.var)
         case Binary(): return free_vars_expr(expr.left) | free_vars_expr(expr.right)
         case Call(): return {expr.function} | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args))\
-                            | ({expr.kwargs} if expr.kwargs else set())
+                          | ({expr.kwargs} if expr.kwargs else set())
         case Yield(): return free_vars_expr(expr.value)
-        case _: raise NotImplementedError(f'free_vars_expr({expr})')
+        case _: raise NotImplementedError(f'free_vars_expr({repr(expr)})')
 
 
 def free_vars(tac: Tac) -> set[Var]:
     match tac:
         case Nop(): return set()
-        case Mov(): return {tac.rhs}
+        case Mov(): return free_vars_expr(tac.rhs)
         case Assign(): return free_vars_expr(tac.expr)
         case Import(): return set()
         case InplaceBinary(): return {tac.lhs, free_vars_expr(tac.right)}
@@ -299,6 +299,14 @@ def make_TAC(opname, val, stack_effect, stack_depth, starts_line=None) -> list[T
         return lst + make_TAC('BUILD_TUPLE', len(val), -len(val) + 1, stack_depth, starts_line)
     tac = make_TAC_no_dels(opname, val, stack_effect, stack_depth)
     return tac  # [t._replace(starts_line=starts_line) for t in tac]
+
+
+def make_global(field: str):
+    return Attribute(Var('GLOBALS'), field)
+
+
+def make_nonlocal(field: str):
+    return Attribute(Var('NONLOCAL'), field)
 
 
 def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
@@ -355,26 +363,26 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
         case 'FOR_ITER':
             return [For(stackvar(out), stackvar(stack_depth), val)]
         case 'LOAD':
+            lhs = stackvar(out)
             match op:
                 case 'ATTR':
-                    return [Assign(stackvar(out), Attribute(stackvar(stack_depth), val))]
+                    return [Assign(lhs, Attribute(stackvar(stack_depth), val))]
                 case 'METHOD':
-                    return [Assign(stackvar(out), Attribute(stackvar(stack_depth), val))]
+                    return [Assign(lhs, Attribute(stackvar(stack_depth), val))]
                 case 'FAST' | 'NAME':
-                    rhs = val
+                    return [Mov(lhs, Var(val))]
                 case 'CONST':
-                    rhs = Const(val)
+                    return [Mov(lhs, Const(val))]
                 case 'DEREF':
-                    rhs = Var('NONLOCAL.{}'.format(val))
+                    return [Assign(lhs, make_nonlocal(val))]
                 case 'GLOBAL':
-                    rhs = Var('GLOBALS.{}'.format(val))
+                    return [Assign(lhs, make_global(val))]
                 case _:
                     assert False, op
-            return [Mov(stackvar(out), rhs)]
         case 'STORE_FAST' | 'STORE_NAME':
             return [Mov(val, stackvar(stack_depth))]
         case 'STORE_GLOBAL':
-            return [Mov(Var('GLOBALS.{}'.format(val)), stackvar(stack_depth))]
+            return [Assign(make_global(val), stackvar(stack_depth))]
         case 'STORE_ATTR':
             return [Assign(Attribute(stackvar(stack_depth), val), stackvar(stack_depth - 1))]
         case 'STORE_SUBSCR':

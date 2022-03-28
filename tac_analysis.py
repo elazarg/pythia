@@ -59,7 +59,7 @@ def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
 
 def test():
     import code_examples
-    cfg = make_tacblock_cfg(code_examples.simple_loop, propagate_consts=True, liveness=True, simplify=True)
+    cfg = make_tacblock_cfg(code_examples.simple_loop, propagate_consts=False, liveness=True, simplify=False)
     for label, block in sorted(cfg.items()):
         print('pre', block.pre)
         print_block(label, block)
