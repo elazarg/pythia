@@ -380,7 +380,7 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
                 case _:
                     assert False, op
         case 'STORE_FAST' | 'STORE_NAME':
-            return [Mov(val, stackvar(stack_depth))]
+            return [Mov(Var(val), stackvar(stack_depth))]
         case 'STORE_GLOBAL':
             return [Assign(make_global(val), stackvar(stack_depth))]
         case 'STORE_ATTR':

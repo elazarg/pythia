@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import typing
-from dataclasses import dataclass
-from enum import Enum
 
 import graph_utils as gu
 import tac
