@@ -76,8 +76,11 @@ class Cfg(Generic[T]):
         if blocks is not None:
             nx.set_node_attributes(self, name='block', values={k: ForwardBlock(block) for k, block in blocks.items()})
 
-        # for label in graph.nodes:
-        #     self.graph.nodes[label]['block'] = ForwardBlock(graph.nodes[label]['block'])
+        # Connect all sink nodes to exit:
+        self.graph.add_node(self.exit_label, block=ForwardBlock([]))
+        sinks = {label for label in self.labels if self.graph.out_degree(label) == 0}
+        for label in sinks:
+            self.graph.add_edge(label, self.exit_label)
 
     @property
     def entry_label(self) -> int:

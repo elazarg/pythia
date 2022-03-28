@@ -73,7 +73,7 @@ class LivenessLattice:
 
 
 class LivenessDomain(AbstractDomain):
-    vars: defaultdict[Var, LivenessLattice] | None
+    vars: set[Var] | None = None
 
     BOTTOM: ClassVar[None] = None
 
@@ -81,17 +81,10 @@ class LivenessDomain(AbstractDomain):
     def name() -> str:
         return "Liveness"
 
-    def __init__(self, vars: dict[Var, LivenessLattice] | defaultdict[Var, LivenessLattice] | None) -> None:
+    def __init__(self, vars: set[Var] | None) -> None:
         super().__init__()
-        if vars is None:
-            self.vars = LivenessDomain.BOTTOM
-        elif isinstance(vars, defaultdict):
-            self.vars = vars
-        elif isinstance(vars, dict):
-            self.vars = defaultdict(LivenessLattice.top)
-            self.vars.update(vars)
-        else:
-            assert False, f"Unknown type {type(vars)}"
+        if vars is not None:
+            self.vars = vars.copy()
 
     def __le__(self, other):
         return self.join(other).vars == other.vars
@@ -107,23 +100,22 @@ class LivenessDomain(AbstractDomain):
 
     @classmethod
     def top(cls: Type[T]) -> T:
-        return LivenessDomain(defaultdict(LivenessLattice.top))
+        return LivenessDomain(set())
 
     @classmethod
     def bottom(cls: Type[T]) -> T:
-        return LivenessDomain(LivenessDomain.BOTTOM)
+        return LivenessDomain(None)
 
     @property
     def is_bottom(self) -> bool:
-        return self.vars is LivenessDomain.BOTTOM
+        return self.vars is None
 
     def join(self: T, other: T) -> T:
         if self.is_bottom:
             return other.copy()
         if other.is_bottom:
             return self.copy()
-        return LivenessDomain({k: v for k in self.vars.keys & other.vars
-                         if (v := self.vars[k].join(other.vars[k])) != LivenessLattice.top()})
+        return LivenessDomain(self.vars | other.vars)
 
     def transfer(self, ins: tac.Tac) -> None:
         if self.vars is None:
@@ -132,7 +124,10 @@ class LivenessDomain(AbstractDomain):
         self.vars |= tac.free_vars(ins)
 
     def __str__(self) -> str:
-        return 'ConstantDomain({})'.format(self.vars)
+        return f'LivenessDomain({self.vars})'
+
+    def __repr__(self) -> str:
+        return f'LivenessDomain({self.vars})'
 
     @classmethod
     def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy:

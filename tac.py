@@ -246,7 +246,8 @@ def free_vars_expr(expr: Expr) -> set[Var]:
         case Attribute(): return free_vars_expr(expr.var)
         case Subscr(): return free_vars_expr(expr.var)
         case Binary(): return free_vars_expr(expr.left) | free_vars_expr(expr.right)
-        case Call(): return {expr.function} | {free_vars_expr(arg) for arg in expr.args} | ({expr.kwargs} if expr.kwargs else set())
+        case Call(): return {expr.function} | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args))\
+                            | ({expr.kwargs} if expr.kwargs else set())
         case Yield(): return free_vars_expr(expr.value)
         case _: raise NotImplementedError(f'free_vars_expr({expr})')
 
@@ -255,7 +256,7 @@ def free_vars(tac: Tac) -> set[Var]:
     match tac:
         case Nop(): return set()
         case Mov(): return {tac.rhs}
-        case Assign(): return free_vars_expr(tac.rhs)
+        case Assign(): return free_vars_expr(tac.expr)
         case Import(): return set()
         case InplaceBinary(): return {tac.lhs, free_vars_expr(tac.right)}
         case Jump(): return free_vars_expr(tac.cond)
