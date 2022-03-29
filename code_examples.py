@@ -142,18 +142,13 @@ def get_mb_corename(maxiters, xmin, xmax, ymin, ymax, imgwd, imght):
     return "mb_%d_wd_%d_ht_%d_xa_%f_xb_%f_ya_%f_yb_%f_" % (maxiters, imgwd, imght, xmin, xmax, ymin, ymax)
 
 def extract_mb_filename(filename):
-    maxiters = xmin = xmax = ymin = ymax = imgwd = imght = ""
+    maxiters = xmin = ""
     filename_re = re.compile("bla bla bla")
     match = filename_re.match(filename)
     if match:
         maxiters = -int(match.group(1))
-        imgwd = int(match.group(2))
-        imght = int(match.group(3))
         xmin = float(match.group(4))
-        xmax = float(match.group(5))
-        ymin = float(match.group(6))
-        ymax = float(match.group(7))
-    return maxiters, xmin, xmax, ymin, ymax, imgwd, imght
+    return maxiters, xmin
     
 ########################################################################
 def write_mb(maxiters, xmin, xmax, ymin, ymax, imgwd, imght):
@@ -366,3 +361,10 @@ def simple_loop():
 
 if __name__ == "__main__":
     main()
+
+def bla():
+    x = "Bla bla"
+
+def method():
+    f = None
+    return f(1)

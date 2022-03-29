@@ -16,10 +16,10 @@ def make_tacblock_cfg(f, propagate_consts=True, liveness=True, propagate_assignm
     cfg = tac.make_tacblock_cfg(f)
     if simplify:
         cfg = gu.simplify_cfg(cfg)
-    if propagate_consts:
-        analyze(cfg, ConstantDomain)
     if liveness:
         analyze(cfg, LivenessDomain)
+    if propagate_consts:
+        analyze(cfg, ConstantDomain)
     return cfg
 
 
@@ -46,7 +46,14 @@ def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
         invariant = block.pre[name].copy()
         for ins in cfg[label]:
             invariant.transfer(ins)
-        block.post[name] = invariant.copy()
+
+        if Analysis is not LivenessDomain:
+            liveness = typing.cast(typing.Optional[LivenessDomain], block.post.get(LivenessDomain.name()))
+            if liveness:
+                invariant.keep_only_live_vars(liveness.vars)
+            del liveness
+
+        block.post[name] = invariant
 
         for succ in cfg.successors(label):
             next_block: gu.Block = cfg[succ]
@@ -57,7 +64,7 @@ def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
 
 def test():
     import code_examples
-    cfg = make_tacblock_cfg(code_examples.simple_loop, propagate_consts=False, liveness=True, simplify=False)
+    cfg = make_tacblock_cfg(code_examples.method, propagate_consts=True, liveness=True, simplify=True)
     for label, block in sorted(cfg.items()):
         print('pre', block.pre)
         print_block(label, block)

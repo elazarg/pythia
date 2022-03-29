@@ -43,6 +43,9 @@ class AbstractDomain(Protocol):
     def transfer(self, ins: T) -> None:
         ...
 
+    def keep_only_live_vars(self, vars: set):
+        pass
+
 
 @dataclass
 class ForwardIterationStrategy(Generic[T]):

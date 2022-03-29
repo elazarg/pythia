@@ -54,7 +54,7 @@ class Const:
     value: object
 
     def __str__(self):
-        return str(self.value)
+        return repr(self.value)
 
     def __repr__(self):
         return repr(self.value)
@@ -189,7 +189,7 @@ class InplaceBinary:
 @dataclass
 class Jump:
     jump_target: str
-    cond: Value = True
+    cond: Value = Const(True)
 
     def __str__(self):
         return f'IF {self.cond} GOTO {self.jump_target}'
@@ -258,7 +258,7 @@ def free_vars(tac: Tac) -> set[Var]:
         case Mov(): return free_vars_expr(tac.rhs)
         case Assign(): return free_vars_expr(tac.expr)
         case Import(): return set()
-        case InplaceBinary(): return {tac.lhs, free_vars_expr(tac.right)}
+        case InplaceBinary(): return {tac.lhs} | free_vars_expr(tac.right)
         case Jump(): return free_vars_expr(tac.cond)
         case For(): return free_vars_expr(tac.iterator)
         case Return(): return free_vars_expr(tac.value)
