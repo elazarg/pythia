@@ -132,6 +132,11 @@ class Cfg(Generic[T]):
     def copy(self: Cfg) -> Cfg:
         return Cfg(self.graph.copy())
 
+    def dominance_frontiers(self) -> dict[int, set[int]]:
+        doms = nx.dominance_frontiers(self.graph, self.entry_label)
+        print(sorted((u, sorted(df)) for u, df in doms.items()))
+        return doms
+
 
 def reverse_weights(g: nx.DiGraph, weight='weight'):
     g = g.reverse()
