@@ -365,6 +365,15 @@ if __name__ == "__main__":
 def bla():
     x = "Bla bla"
 
-def method():
-    f = None
-    return f(1)
+def loop():
+    x = 0
+    while x:
+        if global_var:
+            x = "break"
+            break
+        if global_var:
+            x = "continue"
+            continue
+        x = 2
+    print(3)
+    return x

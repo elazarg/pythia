@@ -133,9 +133,14 @@ class Cfg(Generic[T]):
         return Cfg(self.graph.copy())
 
     def dominance_frontiers(self) -> dict[int, set[int]]:
-        doms = nx.dominance_frontiers(self.graph, self.entry_label)
-        print(sorted((u, sorted(df)) for u, df in doms.items()))
-        return doms
+        return nx.dominance_frontiers(self.graph, self.entry_label)
+
+    def immediate_dominators(self) -> dict[int, set[int]]:
+        return nx.immediate_dominators(self.graph, self.entry_label)
+
+    def reverse_dom_tree(self) -> set[tuple[int, int]]:
+        dominators = nx.DiGraph((y, x) for x, y in self.immediate_dominators().items())
+        return {(y, x) for x, y in nx.transitive_closure(dominators).edges}
 
 
 def reverse_weights(g: nx.DiGraph, weight='weight'):

@@ -32,6 +32,25 @@ def print_3addr(cfg, no_dels=True) -> None:
     print('\n'.join(linearize_cfg(cfg, no_dels)))
 
 
+def fix_break(cfg):
+    reverse_dom_tree = cfg.reverse_dom_tree()
+    back_edges = set(cfg.graph.edges) & reverse_dom_tree
+    loop_heads = {label for _, label in back_edges}
+    for label, block in cfg.items():
+        if not block:
+            continue
+        if (ins := block[-1]).opname not in ['BREAK_LOOP', 'CONTINUE_LOOP']:
+            continue
+        loop_head = max(loop_heads & {target for source, target in reverse_dom_tree if source == label})
+        print(ins)
+        ins.opname = 'JUMP_ABSOLUTE'
+        match ins.opname:
+            case 'BREAK_LOOP': ins.argval = loop_head
+            case 'CONTINUE_LOOP': ins.argval = loop_head
+        print(ins)
+        print()
+
+
 def make_tacblock_cfg(f) -> gu.Cfg[Tac]:
     depths, cfg = bcode_cfg.make_bcode_block_cfg_from_function(f)
 
@@ -40,13 +59,7 @@ def make_tacblock_cfg(f) -> gu.Cfg[Tac]:
             make_TAC(bc.opname, bc.argval, bc.stack_effect(), depths[bc.offset], bc.starts_line)
             for bc in block)))
 
-    tac_blocks = gu.node_data_map(cfg, bcode_block_to_tac_block)
-
-    # this is simplistic kills analysis, that is not correct in general:
-    # tac = [Del(tuple(get_gens(tac) - get_uses(tac))] + tac
-    # if stack_effect < 0:
-    #     tac += [Del(stackvar(stack_depth + i)) for i in range(stack_effect + 1, 1)]
-    return tac_blocks
+    return gu.node_data_map(cfg, bcode_block_to_tac_block)
 
 
 @dataclass(frozen=True)
