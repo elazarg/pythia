@@ -43,8 +43,8 @@ def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
         block = cfg[label]
 
         invariant = block.pre[name].copy()
-        for ins in cfg[label]:
-            invariant.transfer(ins)
+        for index, tac in enumerate(cfg[label]):
+            invariant.transfer(tac, f'{label}.{index}')
 
         if Analysis is not LivenessDomain:
             liveness = typing.cast(typing.Optional[LivenessDomain], block.post.get(LivenessDomain.name()))
@@ -62,7 +62,7 @@ def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
 
 
 def test(f, print_analysis=False):
-    cfg = make_tacblock_cfg(f, [PointerDomain], simplify=False)
+    cfg = make_tacblock_cfg(f, [PointerDomain], simplify=True)
     for label, block in sorted(cfg.items()):
         if print_analysis:
             print('pre', block.pre)

@@ -462,13 +462,17 @@ def run(X, y):
 
 
 def simple_pointer():
-    x = A()
+    a = A()
+    x = X()
     if x:
         y = x
+        a.x = x
     else:
-        y = B()
+        y = Y()
+        a.x = y
     print(y)
     return x + y
+
 
 if __name__ == "__main__":
     run()

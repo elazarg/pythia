@@ -121,7 +121,7 @@ class LivenessDomain(AbstractDomain):
             return self.copy()
         return LivenessDomain(self.vars | other.vars)
 
-    def transfer(self, ins: tac.Tac) -> None:
+    def transfer(self, ins: tac.Tac, location: str) -> None:
         if self.vars is None:
             return
         self.vars -= tac.gens(ins)

@@ -44,7 +44,7 @@ class AbstractDomain(Protocol):
     def is_top(self) -> bool:
         ...
 
-    def transfer(self, ins: T) -> None:
+    def transfer(self, ins: T, location: str) -> None:
         ...
 
     def keep_only_live_vars(self, vars: set):

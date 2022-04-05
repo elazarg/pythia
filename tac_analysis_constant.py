@@ -72,7 +72,7 @@ class ConstantDomain(AbstractDomain):
             return self.copy()
         return ConstantDomain(dict(self.constants.items() & other.constants.items()))
 
-    def transfer(self, ins: tac.Tac) -> None:
+    def transfer(self, ins: tac.Tac, location: str) -> None:
         if self.is_bottom:
             return
         if isinstance(ins, tac.Mov):
