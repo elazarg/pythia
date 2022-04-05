@@ -62,7 +62,7 @@ def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
 
 
 def test(f, print_analysis=False):
-    cfg = make_tacblock_cfg(f, [LivenessDomain, PointerDomain], simplify=True)
+    cfg = make_tacblock_cfg(f, [PointerDomain], simplify=False)
     for label, block in sorted(cfg.items()):
         if print_analysis:
             print('pre', block.pre)
@@ -73,4 +73,4 @@ def test(f, print_analysis=False):
 
 if __name__ == '__main__':
     import code_examples
-    test(code_examples.gradient_descent, print_analysis=True)
+    test(code_examples.simple_pointer, print_analysis=True)

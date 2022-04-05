@@ -461,5 +461,14 @@ def run(X, y):
     return final_cost, predict(X, theta)
 
 
+def simple_pointer():
+    x = A()
+    if x:
+        y = x
+    else:
+        y = B()
+    print(y)
+    return x + y
+
 if __name__ == "__main__":
     run()

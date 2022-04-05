@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+from itertools import chain
 from typing import Type, TypeVar, Optional, ClassVar, Final
 
 import networkx as nx
@@ -37,7 +38,8 @@ class PointerDomain(AbstractDomain):
 
     BOTTOM: Final[ClassVar[Bottom]] = Bottom()
     TOP: Final[ClassVar[Top]] = Top()
-    LOCALS: Final[ClassVar[Object]] = Object(0)
+    LOCALS: Final[ClassVar[Object]] = Object(-1)
+    GLOBALS: Final[ClassVar[Object]] = Object(-2)
 
     @staticmethod
     def name() -> str:
@@ -67,7 +69,7 @@ class PointerDomain(AbstractDomain):
 
     @classmethod
     def initial(cls: Type[T]) -> T:
-        return PointerDomain({PointerDomain.LOCALS: {}})
+        return PointerDomain({PointerDomain.LOCALS: {}, PointerDomain.GLOBALS: {}})
 
     @classmethod
     def top(cls: Type[T]) -> T:
@@ -102,30 +104,22 @@ class PointerDomain(AbstractDomain):
     def transfer(self, ins: tac.Tac) -> None:
         if self.is_bottom or self.is_top:
             return
+        state = self.copy().pointers
         activation = self.pointers[self.LOCALS]
-        if isinstance(ins, tac.Mov):
-            activation[ins.lhs] = self.eval(ins.rhs)
-        elif isinstance(ins, tac.Assign):
-            if isinstance(ins.lhs, tac.Var) and (val := self.eval(ins.expr)) is not None:
-                activation[ins.lhs] = val
-            else:
-                for var in tac.gens(ins):
-                    if var in activation:
-                        del activation[var]
 
-    def eval(self, expr: tac.Expr) -> set[Object]:
-        match expr:
-            case tac.Const(): return set()
-            case tac.Var(): return self.pointers[self.LOCALS].get(expr, set()).copy()
-            case tac.Attribute(): return set()
-            case tac.Call():
-                if expr.function.name[0].isupper():
-                    return {Object(id(expr))}
-                return set()
-            case tac.Subscr(): return set()
-            case tac.Yield(): return set()
-            case tac.Binary(): return set()
-            case _: raise Exception(f"Unsupported expression {expr}")
+        for var in tac.gens(ins):
+            if var in activation:
+                del activation[var]
+
+        if isinstance(ins, tac.Mov):
+            activation[ins.lhs] = eval(ins.rhs, state)
+        elif isinstance(ins, tac.Assign):
+            val = eval(ins.expr, state)
+            if isinstance(ins.lhs, tac.Var):
+                activation[ins.lhs] = val
+            elif isinstance(ins.lhs, tac.Attribute):
+                for obj in eval(ins.lhs.var, state):
+                    self.pointers[obj][ins.lhs.attr] = val
 
     def __str__(self) -> str:
         return 'PointerDomain({})'.format(self.pointers)
@@ -138,3 +132,23 @@ class PointerDomain(AbstractDomain):
             return
         for var in self.pointers[self.LOCALS].keys() - alive_vars:
             del self.pointers[self.LOCALS][var]
+
+
+def eval(expr: tac.Expr, state: dict[Object, dict[tac.Var, set[Object]]]) -> set[Object]:
+    match expr:
+        case tac.Const(): return set()
+        case tac.Var(): return state[PointerDomain.LOCALS].get(expr, set()).copy()
+        case tac.Attribute():
+            if expr.var.name == 'GLOBALS':
+                return state[PointerDomain.GLOBALS].get(expr.attr, set()).copy()
+            else:
+                return set(chain.from_iterable(state[obj].get(expr.attr, set()).copy()
+                                               for obj in eval(expr.var, state)))
+        case tac.Call():
+            # if not expr.function.name[0].isupper():
+            #     return set()
+            return {Object(id(expr))}
+        case tac.Subscr(): return set()
+        case tac.Yield(): return set()
+        case tac.Binary(): return set()
+        case _: raise Exception(f"Unsupported expression {expr}")
