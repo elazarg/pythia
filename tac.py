@@ -63,6 +63,11 @@ def make_tacblock_cfg(f) -> gu.Cfg[Tac]:
 
 
 @dataclass(frozen=True)
+class Module:
+    name: str
+
+
+@dataclass(frozen=True)
 class Const:
     value: object
 
@@ -93,7 +98,7 @@ Value: TypeAlias = Var | Const
 @dataclass(frozen=True)
 class Attribute:
     var: Var
-    attr: str
+    attr: Var
 
     def __str__(self):
         return f'{self.var}.{self.attr}'
@@ -127,6 +132,9 @@ class Call:
     function: Var
     args: tuple[Value, ...]
     kwargs: Var = None
+
+    def location(self) -> int:
+        return id(self)
 
     def __str__(self):
         res = f'{self.function}{self.args}'
@@ -259,8 +267,9 @@ def free_vars_expr(expr: Expr) -> set[Var]:
         case Attribute(): return free_vars_expr(expr.var)
         case Subscr(): return free_vars_expr(expr.var)
         case Binary(): return free_vars_expr(expr.left) | free_vars_expr(expr.right)
-        case Call(): return {expr.function} | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args))\
-                          | ({expr.kwargs} if expr.kwargs else set())
+        case Call():
+            return {expr.function} | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args)) \
+                   | ({expr.kwargs} if expr.kwargs else set())
         case Yield(): return free_vars_expr(expr.value)
         case _: raise NotImplementedError(f'free_vars_expr({repr(expr)})')
 
@@ -315,11 +324,11 @@ def make_TAC(opname, val, stack_effect, stack_depth, starts_line=None) -> list[T
 
 
 def make_global(field: str):
-    return Attribute(Var('GLOBALS'), field)
+    return Attribute(Var('GLOBALS'), Var(field))
 
 
 def make_nonlocal(field: str):
-    return Attribute(Var('NONLOCAL'), field)
+    return Attribute(Var('NONLOCAL'), Var(field))
 
 
 def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
@@ -379,9 +388,9 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
             lhs = stackvar(out)
             match op:
                 case 'ATTR':
-                    return [Assign(lhs, Attribute(stackvar(stack_depth), val))]
+                    return [Assign(lhs, Attribute(stackvar(stack_depth), Var(val)))]
                 case 'METHOD':
-                    return [Assign(lhs, Attribute(stackvar(stack_depth), val))]
+                    return [Assign(lhs, Attribute(stackvar(stack_depth), Var(val)))]
                 case 'FAST' | 'NAME':
                     return [Mov(lhs, Var(val))]
                 case 'CONST':
@@ -397,7 +406,7 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
         case 'STORE_GLOBAL':
             return [Assign(make_global(val), stackvar(stack_depth))]
         case 'STORE_ATTR':
-            return [Assign(Attribute(stackvar(stack_depth), val), stackvar(stack_depth - 1))]
+            return [Assign(Attribute(stackvar(stack_depth), Var(val)), stackvar(stack_depth - 1))]
         case 'STORE_SUBSCR':
             return [Assign(Subscr(stackvar(stack_depth), stackvar(stack_depth - 1)), stackvar(stack_depth - 2))]
         case 'BINARY_SUBSCR':
@@ -428,7 +437,7 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
                 return [Assign(stackvar(out), Call(Var('SLICE'), args))]
             return [Assign(stackvar(out),
                            Call(Var(op), tuple(stackvar(i + 1) for i in range(stack_depth - val, stack_depth))))]
-        case 'CALL_FUNCTION':
+        case 'CALL_FUNCTION' | 'CALL_METHOD':
             nargs = val & 0xFF
             mid = [stackvar(i + 1) for i in range(stack_depth - nargs, stack_depth)]
             return [Assign(stackvar(out), Call(stackvar(stack_depth - nargs), tuple(mid)))]

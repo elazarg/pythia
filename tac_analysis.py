@@ -10,16 +10,15 @@ import tac
 from tac_analysis_domain import AbstractDomain, IterationStrategy
 from tac_analysis_liveness import LivenessDomain
 from tac_analysis_constant import ConstantDomain
+from tac_analysis_pointer import PointerDomain
 
 
-def make_tacblock_cfg(f, propagate_consts=True, liveness=True, propagate_assignments=True, simplify=True):
+def make_tacblock_cfg(f, analyses: typing.Iterable[AbstractDomain], simplify=True):
     cfg = tac.make_tacblock_cfg(f)
     if simplify:
         cfg = gu.simplify_cfg(cfg)
-    if liveness:
-        analyze(cfg, LivenessDomain)
-    if propagate_consts:
-        analyze(cfg, ConstantDomain)
+    for analysis in analyses:
+        analyze(cfg, analysis)
     return cfg
 
 
@@ -38,7 +37,7 @@ def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
     cfg: IterationStrategy = Analysis.view(_cfg)
 
     wl = [entry] = {cfg.entry_label}
-    cfg[entry].pre[name] = Analysis.top()
+    cfg[entry].pre[name] = Analysis.initial()
     while wl:
         label = wl.pop()
         block = cfg[label]
@@ -63,7 +62,7 @@ def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
 
 
 def test(f, print_analysis=False):
-    cfg = make_tacblock_cfg(f, propagate_consts=True, liveness=True, simplify=True)
+    cfg = make_tacblock_cfg(f, [LivenessDomain, PointerDomain], simplify=True)
     for label, block in sorted(cfg.items()):
         if print_analysis:
             print('pre', block.pre)
@@ -74,4 +73,4 @@ def test(f, print_analysis=False):
 
 if __name__ == '__main__':
     import code_examples
-    test(code_examples.loop)
+    test(code_examples.gradient_descent, print_analysis=True)

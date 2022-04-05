@@ -21,6 +21,10 @@ class AbstractDomain(Protocol):
         ...
 
     @classmethod
+    def initial(cls: Type[T]) -> T:
+        ...
+
+    @classmethod
     def top(cls: Type[T]) -> T:
         ...
 

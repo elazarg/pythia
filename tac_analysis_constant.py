@@ -46,11 +46,12 @@ class ConstantDomain(AbstractDomain):
     def __eq__(self, other):
         return self.constants == other.constants
 
-    def __ne__(self, other):
-        return self.constants != other.constants
-
     def copy(self: T) -> T:
         return ConstantDomain(self.constants)
+
+    @classmethod
+    def initial(cls: Type[T]) -> T:
+        return cls.top()
 
     @classmethod
     def top(cls: Type[T]) -> T:
@@ -88,6 +89,8 @@ class ConstantDomain(AbstractDomain):
                 for var in tac.gens(ins):
                     if var in self.constants:
                         del self.constants[var]
+        elif isinstance(ins, tac.Import):
+            self.constants[ins.lhs] = tac.Const(tac.Module(ins.modname))
 
     def eval(self, expr: tac.Expr) -> Optional[Const]:
         match expr:

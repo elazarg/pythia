@@ -99,6 +99,10 @@ class LivenessDomain(AbstractDomain):
         return LivenessDomain(self.vars)
 
     @classmethod
+    def initial(cls: Type[T]) -> T:
+        return cls.top()
+
+    @classmethod
     def top(cls: Type[T]) -> T:
         return LivenessDomain(set())
 
