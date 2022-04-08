@@ -127,7 +127,7 @@ class Binary:
         return f'{self.left} {self.op} {self.right}'
 
 
-@dataclass
+@dataclass(frozen=True)
 class Call:
     function: Var
     args: tuple[Value, ...]
@@ -164,7 +164,7 @@ class Nop:
     pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class Mov:
     """Assignments with no side effect other than setting the value of the LHS."""
     lhs: Var
@@ -174,7 +174,7 @@ class Mov:
         return f'{self.lhs} = {self.rhs}'
 
 
-@dataclass
+@dataclass(frozen=True)
 class Assign:
     """Assignments with no control-flow effect (other than exceptions)."""
     lhs: Signature
@@ -260,10 +260,10 @@ Tac = Nop | Mov | Assign | Import | InplaceBinary | Jump | For | Return | Raise 
 NOP = Nop()
 
 
-def free_vars_expr(expr: Expr) -> set[Var]:
+def free_vars_expr(expr: Expr, is_lhs=False) -> set[Var]:
     match expr:
         case Const(): return set()
-        case Var(): return {expr}
+        case Var(): return {expr} if not is_lhs else set()
         case Attribute(): return free_vars_expr(expr.var)
         case Subscr(): return free_vars_expr(expr.var)
         case Binary(): return free_vars_expr(expr.left) | free_vars_expr(expr.right)
@@ -278,7 +278,7 @@ def free_vars(tac: Tac) -> set[Var]:
     match tac:
         case Nop(): return set()
         case Mov(): return free_vars_expr(tac.rhs)
-        case Assign(): return free_vars_expr(tac.expr)
+        case Assign(): return free_vars_expr(tac.lhs, is_lhs=True) | free_vars_expr(tac.expr)
         case Import(): return set()
         case InplaceBinary(): return {tac.lhs} | free_vars_expr(tac.right)
         case Jump(): return free_vars_expr(tac.cond)

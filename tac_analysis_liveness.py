@@ -22,11 +22,13 @@ Here:
 """
 from __future__ import annotations
 
+import dataclasses
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import chain
 from typing import Type, TypeVar, ClassVar
 
+import graph_utils
 import tac
 from tac import Tac, Var
 from tac_analysis_domain import AbstractDomain, IterationStrategy, BackwardIterationStrategy
@@ -177,3 +179,32 @@ def single_block_gens(block, inb=frozenset()):
 
 def is_extended_identifier(name):
     return name.replace('.', '').isidentifier()
+
+
+def rewrite_remove_useless_movs(block: graph_utils.Block, label: int) -> None:
+    invariant: LivenessDomain = block.post[LivenessDomain.name()]
+    if invariant.is_bottom:
+        return
+    for i in reversed(range(len(block))):
+        ins = block[i]
+        if isinstance(ins, tac.Mov) and ins.lhs.is_stackvar and ins.lhs not in invariant.vars:
+            del block[i]
+            continue
+        if isinstance(ins, tac.Assign) and isinstance(ins.lhs, tac.Var)\
+                and ins.lhs.is_stackvar and ins.lhs.is_stackvar not in invariant.vars\
+                and isinstance(ins.expr, tac.Attribute):
+            del block[i]
+            continue
+        invariant.transfer(block[i], f'{label}.{i}')
+
+    # poor man's use-def
+    invariant: LivenessDomain = block.pre[LivenessDomain.name()]
+    if invariant.is_bottom:
+        return
+    for i in reversed(range(1, len(block))):
+        ins = block[i]
+        prev = block[i-1]
+        if isinstance(prev, tac.Assign) and isinstance(prev.lhs, tac.Var) and prev.lhs.is_stackvar:
+            if isinstance(ins, tac.Mov) and ins.rhs == prev.lhs and ins.rhs not in invariant.vars:
+                del block[i]
+                block[i-1] = dataclasses.replace(block[i-1], lhs=ins.lhs)

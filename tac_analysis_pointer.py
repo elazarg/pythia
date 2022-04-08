@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from itertools import chain
 from typing import Type, TypeVar, Optional, ClassVar, Final
 
-import networkx as nx
-
 import tac
 from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy
 

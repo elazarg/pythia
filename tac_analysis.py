@@ -8,9 +8,10 @@ import graph_utils as gu
 import tac
 
 from tac_analysis_domain import AbstractDomain, IterationStrategy
-from tac_analysis_liveness import LivenessDomain
+from tac_analysis_liveness import LivenessDomain, rewrite_remove_useless_movs
 from tac_analysis_constant import ConstantDomain
 from tac_analysis_pointer import PointerDomain
+from tac_analysis_alias import AliasDomain, rewrite_aliases
 
 
 def make_tacblock_cfg(f, analyses: typing.Iterable[AbstractDomain], simplify=True):
@@ -19,6 +20,7 @@ def make_tacblock_cfg(f, analyses: typing.Iterable[AbstractDomain], simplify=Tru
         cfg = gu.simplify_cfg(cfg)
     for analysis in analyses:
         analyze(cfg, analysis)
+    rewrite(cfg)
     return cfg
 
 
@@ -61,8 +63,14 @@ def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
                 wl.add(succ)
 
 
+def rewrite(cfg: gu.Cfg) -> None:
+    for label, block in cfg.items():
+        rewrite_aliases(block, label)
+        rewrite_remove_useless_movs(block, label)
+
+
 def test(f, print_analysis=False):
-    cfg = make_tacblock_cfg(f, [PointerDomain], simplify=True)
+    cfg = make_tacblock_cfg(f, [LivenessDomain, AliasDomain], simplify=True)
     for label, block in sorted(cfg.items()):
         if print_analysis:
             print('pre', block.pre)

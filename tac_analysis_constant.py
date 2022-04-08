@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 from dataclasses import dataclass
 from typing import Type, TypeVar, Optional, ClassVar
 
@@ -33,7 +32,7 @@ class ConstantDomain(AbstractDomain):
     def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy[T]:
         return ForwardIterationStrategy(cfg)
 
-    def __init__(self, constants: dict[Var, Const]) -> None:
+    def __init__(self, constants: dict[Var, Const] | Bottom) -> None:
         super().__init__()
         if constants is ConstantDomain.BOTTOM:
             self.constants = ConstantDomain.BOTTOM
@@ -146,7 +145,3 @@ class ConstantDomain(AbstractDomain):
 
 
 ConstantDomain.BOTTOM = Bottom()
-
-
-def hardcode_constants(ins, constants) -> tac.Tac:
-    return ins._replace(uses=tuple(uses))

@@ -32,6 +32,12 @@ class ForwardBlock(Generic[T]):
     def __getitem__(self, index: int) -> T:
         return self._instructions[index]
 
+    def __setitem__(self, index: int, item: T) -> None:
+        self._instructions[index] = item
+
+    def __delitem__(self, index: int) -> None:
+        del self._instructions[index]
+
     def __reversed__(self) -> Block[T]:
         return BackwardBlock(self)
 
