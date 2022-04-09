@@ -100,33 +100,42 @@ class AliasDomain(AbstractDomain):
 
 
 def rewrite_ins(ins: tac.Tac, pre: AliasDomain) -> tac.Tac:
+    def get(name):
+        return pre.alias.get(name, name)
     match ins:
         case tac.Mov():
-            if ins.rhs in pre.alias:
-                return dataclasses.replace(ins, rhs=pre.alias[ins.rhs])
-            return ins
+            return dataclasses.replace(ins, rhs=get(ins.rhs))
         case tac.Assign():
-            lhs = ins.lhs
-            if isinstance(ins.lhs, tac.Attribute) and ins.lhs.var in pre.alias:
-                lhs = dataclasses.replace(ins.lhs, var=pre.alias[ins.lhs.var])
-            ins = dataclasses.replace(ins, lhs=lhs)
-            if not (tac.free_vars_expr(ins.expr) & pre.alias.keys()):
-                return ins
-            expr = ins.expr
-            match ins.expr:
-                case tac.Var():
-                    expr = pre.alias[ins.expr]
-                case tac.Attribute():
-                    expr = dataclasses.replace(ins.expr, var=pre.alias[ins.expr.var])
-                case tac.Binary():
-                    expr = dataclasses.replace(ins.expr,
-                                       left=pre.alias.get(ins.expr.left, ins.expr.left),
-                                       right=pre.alias.get(ins.expr.right, ins.expr.right))
-                case tac.Call():
-                    expr = dataclasses.replace(ins.expr,
-                                               function=pre.alias.get(ins.expr.function, ins.expr.function),
-                                               args=tuple(pre.alias.get(arg, arg) for arg in ins.expr.args))
-            ins = dataclasses.replace(ins, expr=expr)
+            if tac.free_vars_expr(ins.expr) & pre.alias.keys():
+                expr = ins.expr
+                match ins.expr:
+                    case tac.Var():
+                        expr = get(ins.expr)
+                    case tac.Attribute():
+                        expr = dataclasses.replace(ins.expr, var=get(expr.var))
+                    case tac.Subscr():
+                        expr = dataclasses.replace(ins.expr, var=get(expr.var), index=get(expr.index))
+                    case tac.Binary():
+                        expr = dataclasses.replace(ins.expr,
+                                                   left=get(expr.left),
+                                                   right=get(expr.right))
+                    case tac.Call():
+                        expr = dataclasses.replace(ins.expr,
+                                                   function=get(expr.function),
+                                                   args=tuple(get(arg) for arg in expr.args))
+                ins = dataclasses.replace(ins, expr=expr)
+            if tac.free_vars_lval(ins.lhs) & pre.alias.keys():
+                lhs = ins.lhs
+                match lhs:
+                    case tac.Var():
+                        pass
+                    case tuple():
+                        pass
+                    case tac.Attribute():
+                        lhs = dataclasses.replace(lhs, var=get(lhs.var))
+                    case tac.Subscr():
+                        lhs = dataclasses.replace(lhs, var=get(lhs.var), index=get(lhs.index))
+                ins = dataclasses.replace(ins, lhs=lhs)
             return ins
         case _: pass
     return ins

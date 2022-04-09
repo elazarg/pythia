@@ -420,7 +420,7 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
         case 'STORE_ATTR':
             return [Assign(Attribute(stackvar(stack_depth), Var(val)), stackvar(stack_depth - 1))]
         case 'STORE_SUBSCR':
-            return [Assign(Subscr(stackvar(stack_depth), stackvar(stack_depth - 1)), stackvar(stack_depth - 2))]
+            return [Assign(Subscr(stackvar(stack_depth - 1), stackvar(stack_depth)), stackvar(stack_depth - 2))]
         case 'BINARY_SUBSCR':
             #
             # return [call(stackvar(out), 'BUILTINS.getattr', (stackvar(stack_depth - 1), "'__getitem__'")),
