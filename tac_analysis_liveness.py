@@ -130,10 +130,10 @@ class LivenessDomain(AbstractDomain):
         self.vars |= tac.free_vars(ins)
 
     def __str__(self) -> str:
-        return f'LivenessDomain({self.vars})'
+        return 'Liveness({})'.format(", ".join(f'{k}' for k in self.vars))
 
     def __repr__(self) -> str:
-        return f'LivenessDomain({self.vars})'
+        return 'Liveness({})'.format(", ".join(f'{k}' for k in self.vars))
 
     @classmethod
     def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy:
@@ -197,7 +197,9 @@ def rewrite_remove_useless_movs(block: graph_utils.Block, label: int) -> None:
             continue
         invariant.transfer(block[i], f'{label}.{i}')
 
-    # poor man's use-def
+
+# poor man's use-def
+def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> None:
     invariant: LivenessDomain = block.pre[LivenessDomain.name()]
     if invariant.is_bottom:
         return

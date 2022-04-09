@@ -90,10 +90,10 @@ class AliasDomain(AbstractDomain):
             self.alias[left] = right
 
     def __str__(self) -> str:
-        return 'AliasDomain({})'.format(", ".join(f'{k}={v}' for k, v in self.alias.items()))
+        return 'Alias({})'.format(", ".join(f'{k}={v}' for k, v in self.alias.items()))
 
     def __repr__(self) -> str:
-        return 'AliasDomain({})'.format(", ".join(f'{k}={v}' for k, v in self.alias.items()))
+        return str(self)
 
     def keep_only_live_vars(self, alive_vars: set[tac.Var]) -> None:
         self.alias = {k: v for k, v in self.alias.items() if k in alive_vars}

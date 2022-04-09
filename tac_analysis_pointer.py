@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
 from dataclasses import dataclass
 from itertools import chain
 from typing import Type, TypeVar, Optional, ClassVar, Final
@@ -76,7 +75,10 @@ class PointerDomain(AbstractDomain):
         return self.pointers == other.pointers
 
     def copy(self: T) -> T:
-        return PointerDomain(deepcopy(self.pointers))
+        if self.pointers == PointerDomain.BOTTOM:
+            return PointerDomain(PointerDomain.BOTTOM)
+        return PointerDomain({obj: {field: targets.copy() for field, targets in fields.items() if targets}
+                              for obj, fields in self.pointers.items()})
 
     @classmethod
     def initial(cls: Type[T]) -> T:
@@ -103,13 +105,13 @@ class PointerDomain(AbstractDomain):
             return other.copy()
         if other.is_bottom or self.is_top:
             return self.copy()
-        pointers = deepcopy(self.pointers)
+        pointers = self.copy().pointers
         for obj, fields in other.pointers.items():
             if obj in pointers:
                 for field, values in fields.items():
                     pointers[obj][field] = pointers[obj].get(field, set()) | values
             else:
-                pointers[obj] = deepcopy(fields)
+                pointers[obj] = {field: targets.copy() for field, targets in fields.items() if targets}
         return PointerDomain(pointers)
 
     def transfer(self, ins: tac.Tac, location: str) -> None:
@@ -133,9 +135,9 @@ class PointerDomain(AbstractDomain):
                     self.pointers.setdefault(obj, {})[ins.lhs.attr] = val
 
     def __str__(self) -> str:
-        return 'Pointer: ' + ', '.join(f'{source_obj.pretty(field)}->{target_obj}'
+        return 'Pointers(' + ', '.join(f'{source_obj.pretty(field)}->{target_obj}'
                                        for source_obj in self.pointers
-                                       for field, target_obj in self.pointers[source_obj].items())
+                                       for field, target_obj in self.pointers[source_obj].items()) + ")"
 
     def __repr__(self) -> str:
         return str(self)

@@ -74,67 +74,23 @@ class ConstantDomain(AbstractDomain):
     def transfer(self, ins: tac.Tac, location: str) -> None:
         if self.is_bottom:
             return
+        constants = self.constants.copy()
+        for var in tac.gens(ins):
+            if var in self.constants:
+                del self.constants[var]
         if isinstance(ins, tac.Mov):
             if isinstance(ins.rhs, tac.Const):
                 self.constants[ins.lhs] = ins.rhs
             elif ins.rhs in self.constants:  # and ins.target.is_stackvar:
-                self.constants[ins.lhs] = self.constants[ins.rhs]
-            elif ins.lhs in self.constants:
-                del self.constants[ins.lhs]
+                self.constants[ins.lhs] = constants[ins.rhs]
         elif isinstance(ins, tac.Assign):
-            if isinstance(ins.lhs, tac.Var) and (val := self.eval(ins.expr)) is not None:
+            if isinstance(ins.lhs, tac.Var) and (val := eval(constants, ins.expr)) is not None:
                 self.constants[ins.lhs] = val
-            else:
-                for var in tac.gens(ins):
-                    if var in self.constants:
-                        del self.constants[var]
         elif isinstance(ins, tac.Import):
             self.constants[ins.lhs] = tac.Const(tac.Module(ins.modname))
 
-    def eval(self, expr: tac.Expr) -> Optional[Const]:
-        match expr:
-            case tac.Const(): return expr
-            case tac.Var(): return self.constants.get(expr)
-            case tac.Attribute(): return None
-            case tac.Call(): return None
-            case tac.Subscr(): return None
-            case tac.Yield(): return None
-            case tac.Binary():
-                left = self.eval(expr.left)
-                right = self.eval(expr.right)
-                if left is not None and right is not None:
-                    try:
-                        return self.eval_binary(expr.op, left.value, right.value)
-                    except ValueError:
-                        return None
-                else:
-                    return None
-
-    def eval_binary(self, op: str, left: object, right: object) -> Optional[Const]:
-        match op:
-            case '+': return Const(left + right)
-            case '-': return Const(left - right)
-            case '*': return Const(left * right)
-            case '/': return Const(left / right)
-            case '%': return Const(left % right)
-            case '**': return Const(left ** right)
-            case '&': return Const(left & right)
-            case '|': return Const(left | right)
-            case '^': return Const(left ^ right)
-            case '<<': return Const(left << right)
-            case '>>': return Const(left >> right)
-            case '>': return Const(left > right)
-            case '<': return Const(left < right)
-            case '>=': return Const(left >= right)
-            case '<=': return Const(left <= right)
-            case '==': return Const(left == right)
-            case '!=': return Const(left != right)
-            case 'in': return Const(left in right)
-            case 'is': return Const(left is right)
-            case _: raise ValueError(f'unknown binary operator: {op}')
-
     def __str__(self) -> str:
-        return 'ConstantDomain({})'.format(self.constants)
+        return 'Constants({})'.format(", ".join(f'{k}={v}' for k, v in self.constants.items()))
 
     def __repr__(self) -> str:
         return self.constants.__repr__()
@@ -143,5 +99,48 @@ class ConstantDomain(AbstractDomain):
         for var in set(self.constants.keys()) - alive_vars:
             del self.constants[var]
 
+
+def eval(constants: dict[Var, Const], expr: tac.Expr) -> Optional[Const]:
+    match expr:
+        case tac.Const(): return expr
+        case tac.Var(): return constants.get(expr)
+        case tac.Attribute(): return None
+        case tac.Call(): return None
+        case tac.Subscr(): return None
+        case tac.Yield(): return None
+        case tac.Binary():
+            left = eval(constants, expr.left)
+            right = eval(constants, expr.right)
+            if left is not None and right is not None:
+                try:
+                    return eval_binary(expr.op, left.value, right.value)
+                except ValueError:
+                    return None
+            else:
+                return None
+
+
+def eval_binary(op: str, left: object, right: object) -> Optional[Const]:
+    match op:
+        case '+': return Const(left + right)
+        case '-': return Const(left - right)
+        case '*': return Const(left * right)
+        case '/': return Const(left / right)
+        case '%': return Const(left % right)
+        case '**': return Const(left ** right)
+        case '&': return Const(left & right)
+        case '|': return Const(left | right)
+        case '^': return Const(left ^ right)
+        case '<<': return Const(left << right)
+        case '>>': return Const(left >> right)
+        case '>': return Const(left > right)
+        case '<': return Const(left < right)
+        case '>=': return Const(left >= right)
+        case '<=': return Const(left <= right)
+        case '==': return Const(left == right)
+        case '!=': return Const(left != right)
+        case 'in': return Const(left in right)
+        case 'is': return Const(left is right)
+        case _: raise ValueError(f'unknown binary operator: {op}')
 
 ConstantDomain.BOTTOM = Bottom()

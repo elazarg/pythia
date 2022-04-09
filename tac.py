@@ -66,6 +66,9 @@ def make_tacblock_cfg(f) -> gu.Cfg[Tac]:
 class Module:
     name: str
 
+    def __repr__(self) -> str:
+        return f'Module({self.name})'
+
 
 @dataclass(frozen=True)
 class Const:
@@ -137,7 +140,7 @@ class Call:
         return id(self)
 
     def __str__(self):
-        res = f'{self.function}{self.args}'
+        res = f'{self.function}({", ".join(str(x) for x in self.args)})'
         if self.kwargs:
             res += f', kwargs={self.kwargs}'
         return res
@@ -260,25 +263,34 @@ Tac = Nop | Mov | Assign | Import | InplaceBinary | Jump | For | Return | Raise 
 NOP = Nop()
 
 
-def free_vars_expr(expr: Expr, is_lhs=False) -> set[Var]:
+def free_vars_expr(expr: Expr) -> set[Var]:
     match expr:
         case Const(): return set()
-        case Var(): return {expr} if not is_lhs else set()
-        case Attribute(): return free_vars_expr(expr.var)
-        case Subscr(): return free_vars_expr(expr.var)
+        case Var(): return {expr}
+        case Attribute(): return {expr.var}
+        case Subscr(): return free_vars_expr(expr.var) | free_vars_expr(expr.index)
         case Binary(): return free_vars_expr(expr.left) | free_vars_expr(expr.right)
         case Call():
-            return {expr.function} | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args)) \
+            return free_vars_expr(expr.function) | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args)) \
                    | ({expr.kwargs} if expr.kwargs else set())
         case Yield(): return free_vars_expr(expr.value)
         case _: raise NotImplementedError(f'free_vars_expr({repr(expr)})')
+
+
+def free_vars_lval(signature: Signature) -> set[Var]:
+    match signature:
+        case Var(): return set()
+        case Attribute(): return {signature.var}
+        case Subscr(): return free_vars_expr(signature.var) | free_vars_expr(signature.index)
+        case tuple(): return set(it.chain.from_iterable(free_vars_lval(arg) for arg in signature))
+        case _: raise NotImplementedError(f'free_vars_lval({repr(signature)})')
 
 
 def free_vars(tac: Tac) -> set[Var]:
     match tac:
         case Nop(): return set()
         case Mov(): return free_vars_expr(tac.rhs)
-        case Assign(): return free_vars_expr(tac.lhs, is_lhs=True) | free_vars_expr(tac.expr)
+        case Assign(): return free_vars_lval(tac.lhs) | free_vars_expr(tac.expr)
         case Import(): return set()
         case InplaceBinary(): return {tac.lhs} | free_vars_expr(tac.right)
         case Jump(): return free_vars_expr(tac.cond)

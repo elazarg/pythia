@@ -395,8 +395,6 @@ def cost_function(X, y, theta):
 
 def gradient_descent(X, y, theta, alpha, iters):
     import numpy as np
-    import pandas as pd
-    import matplotlib.pyplot as plt
 
     cost_array = np.zeros(iters)
     m = y.size
