@@ -13,6 +13,7 @@ from tac_analysis_liveness import LivenessDomain, rewrite_remove_useless_movs, r
 from tac_analysis_constant import ConstantDomain
 from tac_analysis_pointer import PointerDomain
 from tac_analysis_alias import AliasDomain, rewrite_aliases
+from tac_analysis_types import TypeDomain
 
 
 def make_tacblock_cfg(f, simplify=True):
@@ -68,6 +69,7 @@ def test(f, print_analysis=False):
     analyze(cfg, LivenessDomain)
     analyze(cfg, AliasDomain)
     analyze(cfg, ConstantDomain)
+    analyze(cfg, TypeDomain)
     for label, block in cfg.items():
         rewrite_aliases(block, label)
         rewrite_remove_useless_movs_pairs(block, label)
@@ -75,6 +77,7 @@ def test(f, print_analysis=False):
     analyze(cfg, LivenessDomain)
     analyze(cfg, ConstantDomain)
     analyze(cfg, PointerDomain)
+    analyze(cfg, TypeDomain)
 
     for label, block in sorted(cfg.items()):
         if math.isinf(label):
@@ -84,12 +87,14 @@ def test(f, print_analysis=False):
             print('\t', block.pre[LivenessDomain.name()])
             print('\t', block.pre[PointerDomain.name()])
             print('\t', block.pre[ConstantDomain.name()])
+            print('\t', block.pre[TypeDomain.name()])
         print_block(label, block)
         if print_analysis:
             print('Post:')
             print('\t', block.post[LivenessDomain.name()])
             print('\t', block.post[PointerDomain.name()])
             print('\t', block.post[ConstantDomain.name()])
+            print('\t', block.post[TypeDomain.name()])
             print()
 
 

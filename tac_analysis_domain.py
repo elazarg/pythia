@@ -8,16 +8,12 @@ T = TypeVar('T')
 
 # mix of domain and analysis-specific choice of operations
 # nothing here really works...
-class AbstractDomain(Protocol):
+class Lattice(Protocol):
     @staticmethod
     def name() -> str:
         raise NotImplementedError
 
     def copy(self: T) -> T:
-        ...
-
-    @classmethod
-    def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy[T]:
         ...
 
     @classmethod
@@ -44,11 +40,30 @@ class AbstractDomain(Protocol):
     def is_top(self) -> bool:
         ...
 
+
+class AbstractDomain(Lattice):
+    @classmethod
+    def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy[T]:
+        ...
+
     def transfer(self, ins: T, location: str) -> None:
         ...
 
     def keep_only_live_vars(self, vars: set):
         pass
+
+
+
+@dataclass(frozen=True)
+class Top:
+    def __str__(self):
+        return '⊤'
+
+
+@dataclass(frozen=True)
+class Bottom:
+    def __str__(self):
+        return '⊥'
 
 
 @dataclass

@@ -7,22 +7,17 @@ from typing import Type, TypeVar, Optional, ClassVar
 
 import tac
 from tac import Const, Var
-from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy
+from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Bottom
 
 import graph_utils as gu
 
 T = TypeVar('T')
 
 
-@dataclass
-class Bottom:
-    pass
-
-
 class ConstantDomain(AbstractDomain):
     constants: dict[Var, Const] | Bottom
 
-    BOTTOM: ClassVar[Bottom]
+    BOTTOM: ClassVar[Bottom] = Bottom()
 
     @staticmethod
     def name() -> str:
@@ -142,5 +137,3 @@ def eval_binary(op: str, left: object, right: object) -> Optional[Const]:
         case 'in': return Const(left in right)
         case 'is': return Const(left is right)
         case _: raise ValueError(f'unknown binary operator: {op}')
-
-ConstantDomain.BOTTOM = Bottom()

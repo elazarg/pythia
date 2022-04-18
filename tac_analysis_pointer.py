@@ -7,21 +7,11 @@ from itertools import chain
 from typing import Type, TypeVar, Optional, ClassVar, Final
 
 import tac
-from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy
+from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Lattice, Bottom, Top
 
 import graph_utils as gu
 
 T = TypeVar('T')
-
-
-@dataclass(frozen=True)
-class Top:
-    pass
-
-
-@dataclass(frozen=True)
-class Bottom:
-    pass
 
 
 @dataclass(frozen=True)
