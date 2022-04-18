@@ -128,11 +128,15 @@ class PointerDomain(AbstractDomain):
             activation[ins.lhs] = eval(ins.rhs)
         elif isinstance(ins, tac.Assign):
             val = eval(ins.expr)
-            if isinstance(ins.lhs, tac.Var):
-                activation[ins.lhs] = val
-            elif isinstance(ins.lhs, tac.Attribute):
-                for obj in eval(ins.lhs.var):
-                    self.pointers.setdefault(obj, {})[ins.lhs.attr] = val
+            match ins.lhs:
+                case tac.Var():
+                    activation[ins.lhs] = val
+                case tac.Attribute():
+                    for obj in eval(ins.lhs.var):
+                        self.pointers.setdefault(obj, {})[ins.lhs.attr] = val
+                case tac.Subscr():
+                    for obj in eval(ins.lhs.var):
+                        self.pointers.setdefault(obj, {})[tac.Var('*')] = val
 
     def __str__(self) -> str:
         return 'Pointers(' + ', '.join(f'{source_obj.pretty(field)}->{target_obj}'
@@ -151,16 +155,17 @@ class PointerDomain(AbstractDomain):
 
 def evaluator(state: dict[Object, dict[tac.Var, set[Object]]], location: str):
     location_object = Object(location)
+    LOCALS = state[PointerDomain.LOCALS]
 
     def inner(expr: tac.Expr) -> set[Object]:
         match expr:
             case tac.Const(): return set()
-            case tac.Var(): return state[PointerDomain.LOCALS].get(expr, set()).copy()
+            case tac.Var(): return LOCALS.get(expr, set()).copy()
             case tac.Attribute():
                 if expr.var.name == 'GLOBALS':
                     return state[PointerDomain.GLOBALS].get(expr.attr, set()).copy()
                 else:
-                    return set(chain.from_iterable(state[obj].get(expr.attr, set()).copy()
+                    return set(chain.from_iterable(state.get(obj, {}).get(expr.attr, set()).copy()
                                                    for obj in inner(expr.var)))
             case tac.Call():
                 # if not expr.function.name[0].isupper():
@@ -168,6 +173,9 @@ def evaluator(state: dict[Object, dict[tac.Var, set[Object]]], location: str):
                 return {location_object}
             case tac.Subscr(): return set()
             case tac.Yield(): return set()
-            case tac.Binary(): return set()
+            case tac.Binary():
+                if expr.left in LOCALS or expr.right in LOCALS:
+                    return {location_object}
+                return set()
             case _: raise Exception(f"Unsupported expression {expr}")
     return inner

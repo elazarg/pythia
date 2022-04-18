@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import typing
 
 import graph_utils as gu
@@ -76,6 +77,8 @@ def test(f, print_analysis=False):
     analyze(cfg, PointerDomain)
 
     for label, block in sorted(cfg.items()):
+        if math.isinf(label):
+            continue
         if print_analysis:
             print('Pre:')
             print('\t', block.pre[LivenessDomain.name()])
@@ -92,4 +95,4 @@ def test(f, print_analysis=False):
 
 if __name__ == '__main__':
     import code_examples
-    test(code_examples.gradient_descent, print_analysis=True)
+    test(code_examples.run, print_analysis=True)

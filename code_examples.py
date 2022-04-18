@@ -396,6 +396,7 @@ def cost_function(X, y, theta):
 def gradient_descent(X, y, theta, alpha, iters):
     import numpy as np
 
+
     cost_array = np.zeros(iters)
     m = y.size
     for i in range(iters):
@@ -427,35 +428,26 @@ def predict(X, theta):
 
 
 def run(X, y):
-    # Import data
+    import numpy as np
 
     y = np.concatenate(y)
-    # Normalize our features
-
-    # Normelize
     X = (X - X.mean()) / X.std()
-    # Add a 1 column to the start to allow vectorized gradient descent
     X = np.c_[np.ones(X.shape[0]), X]
 
-    # Set hyperparameters
     alpha = 0.1
     iterations = 10000
-    # Initialize Theta Values to 0
     theta = np.zeros(X.shape[1])
     initial_cost, _ = cost_function(X, y, theta)
 
-    #    print('With initial theta values of {0}, cost error is {1}'.format(theta, initial_cost))
-
-    # Run Gradient Descent
-    #    theta1, cost_num = gradient_descent(X1, y1, theta1, alpha, iterations)
-    theta, cost_num = gradient_descent(X, y, theta, alpha, iterations)
-
-    # Display cost chart
-    #    plotChart(iterations, cost_num)
+    cost_num = np.zeros(iterations)
+    m = y.size
+    for i in range(iterations):
+        cost, error = cost_function(X, y, theta)
+        theta = theta - (alpha * (1 / m) * np.dot(X.T, error))
+        cost_num[i] = cost
 
     final_cost, _ = cost_function(X, y, theta)
 
-    #    print('With final theta values of {0}, cost error is {1}'.format(theta, final_cost))
     return final_cost, predict(X, theta)
 
 

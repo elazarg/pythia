@@ -426,7 +426,7 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
             # return [call(stackvar(out), 'BUILTINS.getattr', (stackvar(stack_depth - 1), "'__getitem__'")),
             #        call(stackvar(out), stackvar(out), (stackvar(stack_depth),))]
             # IVY-Specific: :(
-            return [Assign(stackvar(out), Call(Var('BUILTINS.getitem'), (stackvar(stack_depth - 1), stackvar(stack_depth))))]
+            return [Assign(stackvar(out), Subscr(stackvar(stack_depth - 1), stackvar(stack_depth)))]
         case 'POP_BLOCK':
             return [NOP]
         case 'SETUP_LOOP':
