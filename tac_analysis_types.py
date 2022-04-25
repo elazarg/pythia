@@ -8,7 +8,7 @@ from typing import Type, TypeVar, Optional, ClassVar, Final
 
 import tac
 from tac import Const, Var
-from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Bottom, Top
+from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Bottom, Top, Lattice
 
 import graph_utils as gu
 
@@ -23,13 +23,21 @@ class ObjectType:
     def typeof(const: tac.Const):
         return ObjectType(type(const.value).__name__)
 
+    def __repr__(self):
+        return self.type
+
 
 @dataclass(frozen=True)
-class TypeLattice(AbstractDomain):
+class TypeLattice(Lattice):
     """
     Abstract domain for type analysis with lattice operations.
     For now, it is essentially constant domain
     """
+
+    @staticmethod
+    def name() -> str:
+        return "Type"
+
     value: ObjectType | Bottom | Top
 
     BOTTOM: Final[ClassVar[Bottom]] = Bottom()
