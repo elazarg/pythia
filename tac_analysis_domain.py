@@ -1,7 +1,9 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import TypeVar, Protocol, Type, Generic, TypeAlias
+from typing import TypeVar, Protocol, Type, Generic, TypeAlias, Final
 import graph_utils as gu
+
+import tac
 
 T = TypeVar('T')
 
@@ -53,7 +55,6 @@ class AbstractDomain(Lattice):
         pass
 
 
-
 @dataclass(frozen=True)
 class Top:
     def __str__(self):
@@ -97,3 +98,25 @@ class BackwardIterationStrategy(Generic[T]):
 
 
 IterationStrategy: TypeAlias = ForwardIterationStrategy | BackwardIterationStrategy
+
+@dataclass(frozen=True)
+class Object:
+    location: str
+
+    def __str__(self):
+        return f'@{self.location}'
+
+    def __repr__(self):
+        return f'@{self.location}'
+
+    def pretty(self, field: tac.Var) -> str:
+        if self == LOCALS:
+            if field.is_stackvar:
+                return '$' + field.name
+            return field.name
+        return f'{self}.{field.name}'
+
+
+LOCALS: Final[Object] = Object('locals()')
+
+GLOBALS: Final[Object] = Object('globals()')

@@ -132,7 +132,7 @@ class Binary:
 
 @dataclass(frozen=True)
 class Call:
-    function: Var
+    function: Var | Attribute
     args: tuple[Value, ...]
     kwargs: Var = None
 

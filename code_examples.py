@@ -326,6 +326,12 @@ def CreateScene(x):
     CreateSphere(imgx / 2.0, imgy / 2.0, imgz / 2, min(imgx / 2.0, imgy / 2.0, imgz / 2))
 
 
+def simple_type():
+    import numpy as np
+    x = np.zeros(1)
+    if x:
+        print(x)
+
 def getpass(prompt = 'Password: ', hideChar = ' '):
     if char == '\003':
         raise KeyboardInterrupt # ctrl + c

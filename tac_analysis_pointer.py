@@ -7,29 +7,12 @@ from itertools import chain
 from typing import Type, TypeVar, Optional, ClassVar, Final
 
 import tac
-from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Lattice, Bottom, Top
+from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Lattice, Bottom, Top,\
+    Object, LOCALS, GLOBALS
 
 import graph_utils as gu
 
 T = TypeVar('T')
-
-
-@dataclass(frozen=True)
-class Object:
-    location: str
-
-    def __str__(self):
-        return f'@{self.location}'
-
-    def __repr__(self):
-        return f'@{self.location}'
-
-    def pretty(self, field: tac.Var) -> str:
-        if self == PointerDomain.LOCALS:
-            if field.is_stackvar:
-                return '$' + field.name
-            return field.name
-        return f'{self}.{field.name}'
 
 
 @dataclass
@@ -38,8 +21,6 @@ class PointerDomain(AbstractDomain):
 
     BOTTOM: Final[ClassVar[Bottom]] = Bottom()
     TOP: Final[ClassVar[Top]] = Top()
-    LOCALS: Final[ClassVar[Object]] = Object('locals()')
-    GLOBALS: Final[ClassVar[Object]] = Object('globals()')
 
     @staticmethod
     def name() -> str:
@@ -72,7 +53,7 @@ class PointerDomain(AbstractDomain):
 
     @classmethod
     def initial(cls: Type[T]) -> T:
-        return PointerDomain({PointerDomain.LOCALS: {}, PointerDomain.GLOBALS: {}})
+        return PointerDomain({LOCALS: {}, GLOBALS: {}})
 
     @classmethod
     def top(cls: Type[T]) -> T:
@@ -108,7 +89,7 @@ class PointerDomain(AbstractDomain):
         if self.is_bottom or self.is_top:
             return
         eval = evaluator(self.copy().pointers, location)
-        activation = self.pointers[self.LOCALS]
+        activation = self.pointers[LOCALS]
 
         for var in tac.gens(ins):
             if var in activation:
@@ -139,21 +120,21 @@ class PointerDomain(AbstractDomain):
     def keep_only_live_vars(self, alive_vars: set[tac.Var]) -> None:
         if self.is_bottom or self.is_top:
             return
-        for var in self.pointers[self.LOCALS].keys() - alive_vars:
-            del self.pointers[self.LOCALS][var]
+        for var in self.pointers[LOCALS].keys() - alive_vars:
+            del self.pointers[LOCALS][var]
 
 
 def evaluator(state: dict[Object, dict[tac.Var, set[Object]]], location: str):
     location_object = Object(location)
-    LOCALS = state[PointerDomain.LOCALS]
+    locals_state = state[LOCALS]
 
     def inner(expr: tac.Expr) -> set[Object]:
         match expr:
             case tac.Const(): return set()
-            case tac.Var(): return LOCALS.get(expr, set()).copy()
+            case tac.Var(): return locals_state.get(expr, set()).copy()
             case tac.Attribute():
                 if expr.var.name == 'GLOBALS':
-                    return state[PointerDomain.GLOBALS].get(expr.attr, set()).copy()
+                    return state[GLOBALS].get(expr.attr, set()).copy()
                 else:
                     return set(chain.from_iterable(state.get(obj, {}).get(expr.attr, set()).copy()
                                                    for obj in inner(expr.var)))
@@ -164,7 +145,7 @@ def evaluator(state: dict[Object, dict[tac.Var, set[Object]]], location: str):
             case tac.Subscr(): return set()
             case tac.Yield(): return set()
             case tac.Binary():
-                if expr.left in LOCALS or expr.right in LOCALS:
+                if expr.left in locals_state or expr.right in locals_state:
                     return {location_object}
                 return set()
             case _: raise Exception(f"Unsupported expression {expr}")

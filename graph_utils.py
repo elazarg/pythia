@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import math
+import typing
 from dataclasses import dataclass
 from typing import TypeVar, Generic, Callable, Any, Iterator, TypeAlias
 import networkx as nx
 from itertools import chain
 
-from tac_analysis_domain import AbstractDomain
+if typing.TYPE_CHECKING:
+    from tac_analysis_domain import AbstractDomain
 
 T = TypeVar('T')
 Q = TypeVar('Q')

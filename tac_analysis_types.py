@@ -15,16 +15,78 @@ import graph_utils as gu
 T = TypeVar('T')
 
 
-@dataclass(frozen=True)
+@dataclass()
 class ObjectType:
-    type: str
+    name: str
+    methods: dict[Var, FunctionType]
 
     @staticmethod
     def typeof(const: tac.Const):
-        return ObjectType(type(const.value).__name__)
+        match const.value:
+            case int(): return INT
+            case float(): return FLOAT
+            case str(): return STRING
+            case bool(): return BOOL
+            case None: return NONE
+            case _:return ObjectType(type(const.value).__name__, {})
 
     def __repr__(self):
-        return self.type
+        return self.name
+
+
+@dataclass
+class FunctionType:
+    return_type: ObjectType
+
+    def __repr__(self):
+        return f'() -> {self.return_type}'
+
+
+@dataclass
+class ModuleType:
+    name: str
+    functions: dict[Var, FunctionType]
+
+    def __repr__(self):
+        return f'Module({self.name})'
+
+    def __eq__(self, other):
+        return isinstance(other, ModuleType) and self.name == other.name
+
+
+FLOAT = ObjectType('float', {})
+INT = ObjectType('int', {})
+STRING = ObjectType('str', {})
+BOOL = ObjectType('bool', {})
+NONE = ObjectType('None', {})
+
+NDARRAY = ObjectType('ndarray', {
+    Var('mean'): FunctionType(FLOAT),
+    Var('std'): FunctionType(FLOAT),
+    Var('size'): INT,
+})
+
+ARRAY_GEN = FunctionType(NDARRAY)
+
+NUMPY_MODULE = ModuleType('numpy', {
+    Var('array'): ARRAY_GEN,
+    Var('dot'): FunctionType(FLOAT),
+    Var('zeros'): ARRAY_GEN,
+    Var('ones'): ARRAY_GEN,
+    Var('concatenate'): ARRAY_GEN,
+    Var('empty'): ARRAY_GEN,
+    Var('empty_like'): ARRAY_GEN,
+    Var('full'): ARRAY_GEN,
+    Var('full_like'): ARRAY_GEN,
+    Var('arange'): ARRAY_GEN,
+    Var('linspace'): ARRAY_GEN,
+    Var('logspace'): ARRAY_GEN,
+    Var('geomspace'): ARRAY_GEN,
+    Var('meshgrid'): ARRAY_GEN,
+    Var('random'): ARRAY_GEN,
+    Var('rand'): ARRAY_GEN,
+    Var('randn'): ARRAY_GEN,
+})
 
 
 @dataclass(frozen=True)
@@ -38,7 +100,7 @@ class TypeLattice(Lattice):
     def name() -> str:
         return "Type"
 
-    value: ObjectType | Bottom | Top
+    value: ObjectType | FunctionType | ModuleType | Bottom | Top
 
     BOTTOM: Final[ClassVar[Bottom]] = Bottom()
     TOP: Final[ClassVar[Top]] = Top()
@@ -127,7 +189,11 @@ class TypeDomain(AbstractDomain):
         if other.is_bottom:
             return self.copy()
         res = TypeDomain.top()
-        res.types.update(dict(self.types.items() & other.types.items()))
+        for k in self.types.keys() | other.types.keys():
+            if k in self.types.keys() and k in other.types.keys():
+                res.types[k] = self.types[k].join(other.types[k])
+            else:
+                res.types[k] = TypeLattice.top()
         res.normalize()
         return res
 
@@ -141,10 +207,12 @@ class TypeDomain(AbstractDomain):
         if isinstance(ins, tac.Mov):
             self.types[ins.lhs] = eval(types, ins.rhs)
         elif isinstance(ins, tac.Assign):
-            if isinstance(ins.lhs, tac.Var):
-                self.types[ins.lhs] = eval(types, ins.expr)
+            self.types[ins.lhs] = eval(types, ins.expr)
         elif isinstance(ins, tac.Import):
-            self.types[ins.lhs] = TypeLattice(ObjectType('Module'))
+            if ins.modname == "numpy":
+                self.types[ins.lhs] = TypeLattice(NUMPY_MODULE)
+            else:
+                self.types[ins.lhs] = TypeLattice(ObjectType('Module', {}))
         self.normalize()
 
     def normalize(self) -> None:
@@ -169,7 +237,36 @@ class TypeDomain(AbstractDomain):
 
 
 def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
+    TOP = TypeLattice.top()
     match expr:
         case tac.Const(): return TypeLattice(ObjectType.typeof(expr))
-        case tac.Var(): return types.get(expr, TypeLattice.top())
-        case _: return TypeLattice.top()
+        case tac.Var(): return types.get(expr, TOP)
+        case tac.Attribute():
+            t = eval(types, expr.var)
+            if t == TOP or t == Bottom:
+                return t
+            match t.value:
+                case ModuleType() as m:
+                    if expr.attr in m.functions:
+                        return TypeLattice(m.functions[expr.attr])
+                    return TOP
+                case ObjectType() as obj:
+                    if expr.attr in obj.methods:
+                        return TypeLattice(obj.methods[expr.attr])
+                    else:
+                        print(f'{expr.attr} not in {obj.methods}')
+                    return TOP
+                case FunctionType():
+                    return TOP
+            return types.get(expr, TOP)
+        case tac.Subscr(): return types.get(expr, TOP)
+        case tac.Yield(): return TOP
+        case tac.Call():
+            function_signature = eval(types, expr.function)
+            if function_signature == TOP:
+                return TOP
+            if not isinstance(function_signature.value, FunctionType):
+                print(f'eval({expr.function}) == {function_signature} which is not a function')
+                return TypeLattice.bottom()
+            return TypeLattice(function_signature.value.return_type)
+        case _: return TOP

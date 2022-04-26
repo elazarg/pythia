@@ -62,9 +62,8 @@ def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
                 wl.add(succ)
 
 
-def test(f, print_analysis=False):
-    cfg = make_tacblock_cfg(f)
-    cfg = gu.simplify_cfg(cfg)
+def test(f, print_analysis=False, simplify=True):
+    cfg = make_tacblock_cfg(f, simplify=simplify)
 
     analyze(cfg, LivenessDomain)
     analyze(cfg, AliasDomain)
@@ -100,4 +99,4 @@ def test(f, print_analysis=False):
 
 if __name__ == '__main__':
     import code_examples
-    test(code_examples.run, print_analysis=True)
+    test(code_examples.run, print_analysis=True, simplify=True)
