@@ -183,20 +183,20 @@ def is_extended_identifier(name):
 
 
 def rewrite_remove_useless_movs(block: graph_utils.Block, label: int) -> None:
-    invariant: LivenessDomain = block.post[LivenessDomain.name()]
-    if invariant.is_bottom:
+    alive: LivenessDomain = typing.cast(LivenessDomain, block.post[LivenessDomain.name()])
+    if alive.is_bottom:
         return
     for i in reversed(range(len(block))):
         ins = block[i]
-        if isinstance(ins, tac.Mov) and ins.lhs.is_stackvar and ins.lhs not in invariant.vars:
+        if isinstance(ins, tac.Mov) and ins.lhs.is_stackvar and ins.lhs not in alive.vars:
             del block[i]
             continue
         if isinstance(ins, tac.Assign) and isinstance(ins.lhs, tac.Var)\
-                and ins.lhs.is_stackvar and ins.lhs.is_stackvar not in invariant.vars\
+                and ins.lhs.is_stackvar and ins.lhs.is_stackvar not in alive.vars\
                 and isinstance(ins.expr, tac.Attribute):
             del block[i]
             continue
-        invariant.transfer(block[i], f'{label}.{i}')
+        alive.transfer(block[i], f'{label}.{i}')
 
 
 # poor man's use-def

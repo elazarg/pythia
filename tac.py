@@ -352,7 +352,7 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
         case 'UNARY_ATTR':
             return [Assign(stackvar(stack_depth), Call(Var(op), (stackvar(stack_depth),)))]
         case 'UNARY_FUNC':
-            return [Assign(stackvar(out), Call(Var(op), (stackvar(stack_depth),)))]
+            return [Assign(stackvar(out), Call(Attribute(stackvar(stack_depth), Var(op)), ()))]
         case 'BINARY':
             lhs = stackvar(out)
             left = stackvar(stack_depth - 1)
@@ -520,9 +520,9 @@ UN_TO_OP = {
     # __abs__ ?
     'UNARY_POSITIVE': '__pos__',
     'UNARY_NEGATIVE': '__neg__',
-    'UNARY_NOT': 'not ',
+    'UNARY_NOT': '__bool__',  # not exactly the same semantics
     'UNARY_INVERT': '__invert__',
-    'GET_ITER': 'ITER ',
+    'GET_ITER': '__iter__',
     'GET_YIELD_FROM_ITER': 'YIELD_FROM_ITER '
 }
 
