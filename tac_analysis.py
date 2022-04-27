@@ -81,14 +81,14 @@ def test(f, print_analysis=False, simplify=True):
             continue
         if print_analysis:
             print('Pre:')
-            print('\t', block.pre[LivenessDomain.name()])
+            # print('\t', block.pre[LivenessDomain.name()])
             print('\t', block.pre[PointerDomain.name()])
             print('\t', block.pre[ConstantDomain.name()])
             print('\t', block.pre[TypeDomain.name()])
         print_block(label, block)
         if print_analysis:
             print('Post:')
-            print('\t', block.post[LivenessDomain.name()])
+            # print('\t', block.post[LivenessDomain.name()])
             print('\t', block.post[PointerDomain.name()])
             print('\t', block.post[ConstantDomain.name()])
             print('\t', block.post[TypeDomain.name()])

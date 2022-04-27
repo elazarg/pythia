@@ -443,10 +443,8 @@ def run(X, y):
     alpha = 0.1
     iterations = 10000
     theta = np.zeros(X.shape[1])
-    initial_cost, _ = cost_function(X, y, theta)
 
     cost_num = np.zeros(iterations)
-    m = y.size
     for i in range(iterations):
         m = y.size
         error = np.dot(X, theta.T) - y
@@ -454,10 +452,15 @@ def run(X, y):
         theta = theta - (alpha * (1 / m) * np.dot(X.T, error))
         cost_num[i] = cost
 
-    final_cost, _ = cost_function(X, y, theta)
+    m = y.size
+    error = np.dot(X, theta.T) - y
+    final_cost = 1 / (2 * m) * np.dot(error.T, error)
 
-    return final_cost, predict(X, theta)
+    return final_cost, (X, theta)
 
+def iteration():
+    for i in range(5):
+        print(i)
 
 def simple_pointer():
     a = A()

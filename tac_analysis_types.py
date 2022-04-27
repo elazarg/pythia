@@ -90,6 +90,19 @@ NUMPY_MODULE = ObjectType('/numpy', {
 
 })
 
+BUILTINS_MODULE = ObjectType('/builtins', {
+    Var('range'): FunctionType(ObjectType('range', {
+        Var('__iter__'): FunctionType(ObjectType('range_iterator', {
+            Var('__next__'): FunctionType(INT),
+        })),
+    })),
+})
+
+modules = {
+    'numpy': NUMPY_MODULE,
+    'builtins': BUILTINS_MODULE,
+}
+
 
 def binary_ops(left, right) -> FunctionType:
 
@@ -133,6 +146,12 @@ class TypeLattice(Lattice):
     @classmethod
     def top(cls) -> TypeLattice:
         return TypeLattice(TypeLattice.TOP)
+
+    def is_top(self) -> bool:
+        return self.value == TypeLattice.TOP
+
+    def is_bottom(self) -> bool:
+        return self.value == TypeLattice.BOTTOM
 
     @classmethod
     def bottom(cls) -> TypeLattice:
@@ -215,11 +234,10 @@ class TypeDomain(AbstractDomain):
             self.types[ins.lhs] = eval(types, ins.rhs)
         elif isinstance(ins, tac.Assign):
             self.types[ins.lhs] = eval(types, ins.expr)
+        elif isinstance(ins, tac.For):
+            self.transfer(ins.as_call(), location)
         elif isinstance(ins, tac.Import):
-            if ins.modname == "numpy":
-                self.types[ins.lhs] = TypeLattice(NUMPY_MODULE)
-            else:
-                self.types[ins.lhs] = TypeLattice(ObjectType('Module', {}))
+            self.types[ins.lhs] = TypeLattice(modules[ins.modname])
         self.normalize()
 
     def normalize(self) -> None:
@@ -247,10 +265,13 @@ def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
     TOP = TypeLattice.top()
     match expr:
         case tac.Const(): return TypeLattice(ObjectType.typeof(expr))
-        case tac.Var(): return types.get(expr, TOP)
+        case tac.Var():
+            if expr.name == 'GLOBALS':
+                return TypeLattice(modules['builtins'])
+            return types.get(expr, TOP)
         case tac.Attribute():
             t = eval(types, expr.var)
-            if t == TOP or t == Bottom:
+            if t.is_top() or t.is_bottom():
                 return t
             match t.value:
                 case ObjectType() as obj:
@@ -264,7 +285,9 @@ def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
             return types.get(expr, TOP)
         case tac.Subscr():
             array = eval(types, expr.var)
-            if array == TOP:
+            if array.is_bottom():
+                return TypeLattice.bottom()
+            if array.is_top():
                 return TOP
             f = array.value.fields.get(Var('__getitem__'))
             if f is None:

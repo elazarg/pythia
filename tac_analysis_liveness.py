@@ -186,6 +186,8 @@ def rewrite_remove_useless_movs(block: graph_utils.Block, label: int) -> None:
     alive: LivenessDomain = typing.cast(LivenessDomain, block.post[LivenessDomain.name()])
     if alive.is_bottom:
         return
+    if len(block) <= 1:
+        return
     for i in reversed(range(len(block))):
         ins = block[i]
         if isinstance(ins, tac.Mov) and ins.lhs.is_stackvar and ins.lhs not in alive.vars:

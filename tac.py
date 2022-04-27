@@ -228,6 +228,9 @@ class For:
     def __str__(self):
         return f'{self.lhs} = next({self.iterator}) HANDLE: GOTO {self.jump_target}'
 
+    def as_call(self) -> Assign:
+        return Assign(self.lhs, Call(Attribute(self.iterator, Var('__next__')), ()))
+
 
 @dataclass
 class Return:
