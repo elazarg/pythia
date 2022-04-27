@@ -18,7 +18,7 @@ T = TypeVar('T')
 @dataclass()
 class ObjectType:
     name: str
-    methods: dict[Var, FunctionType]
+    fields: dict[Var, FunctionType | ObjectType]
 
     @staticmethod
     def typeof(const: tac.Const):
@@ -28,7 +28,7 @@ class ObjectType:
             case str(): return STRING
             case bool(): return BOOL
             case None: return NONE
-            case _:return ObjectType(type(const.value).__name__, {})
+            case _: return ObjectType(type(const.value).__name__, {})
 
     def __repr__(self):
         return self.name
@@ -42,33 +42,31 @@ class FunctionType:
         return f'() -> {self.return_type}'
 
 
-@dataclass
-class ModuleType:
-    name: str
-    functions: dict[Var, FunctionType]
-
-    def __repr__(self):
-        return f'Module({self.name})'
-
-    def __eq__(self, other):
-        return isinstance(other, ModuleType) and self.name == other.name
-
-
 FLOAT = ObjectType('float', {})
 INT = ObjectType('int', {})
 STRING = ObjectType('str', {})
 BOOL = ObjectType('bool', {})
 NONE = ObjectType('None', {})
 
+
+def make_tuple(t: ObjectType) -> ObjectType:
+    return ObjectType('tuple', {
+        Var('__getitem__'): FunctionType(t),
+    })
+
+
 NDARRAY = ObjectType('ndarray', {
     Var('mean'): FunctionType(FLOAT),
     Var('std'): FunctionType(FLOAT),
+    Var('shape'): make_tuple(INT),
     Var('size'): INT,
+    Var('__getitem__'): FunctionType(FLOAT),
 })
+NDARRAY.fields[Var('T')] = NDARRAY
 
 ARRAY_GEN = FunctionType(NDARRAY)
 
-NUMPY_MODULE = ModuleType('numpy', {
+NUMPY_MODULE = ObjectType('/numpy', {
     Var('array'): ARRAY_GEN,
     Var('dot'): FunctionType(FLOAT),
     Var('zeros'): ARRAY_GEN,
@@ -83,10 +81,19 @@ NUMPY_MODULE = ModuleType('numpy', {
     Var('logspace'): ARRAY_GEN,
     Var('geomspace'): ARRAY_GEN,
     Var('meshgrid'): ARRAY_GEN,
-    Var('random'): ARRAY_GEN,
-    Var('rand'): ARRAY_GEN,
-    Var('randn'): ARRAY_GEN,
+    Var('c_'): ObjectType('ndarray', {
+        Var('__getitem__'): FunctionType(NDARRAY),
+    }),
+    Var('r_'): ObjectType('ndarray', {
+        Var('__getitem__'): FunctionType(NDARRAY),
+    }),
+
 })
+
+
+def binary_ops(left, right) -> FunctionType:
+
+    return FunctionType(ObjectType(op, {}))
 
 
 @dataclass(frozen=True)
@@ -100,7 +107,7 @@ class TypeLattice(Lattice):
     def name() -> str:
         return "Type"
 
-    value: ObjectType | FunctionType | ModuleType | Bottom | Top
+    value: ObjectType | FunctionType | Bottom | Top
 
     BOTTOM: Final[ClassVar[Bottom]] = Bottom()
     TOP: Final[ClassVar[Top]] = Top()
@@ -246,21 +253,24 @@ def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
             if t == TOP or t == Bottom:
                 return t
             match t.value:
-                case ModuleType() as m:
-                    if expr.attr in m.functions:
-                        return TypeLattice(m.functions[expr.attr])
-                    return TOP
                 case ObjectType() as obj:
-                    if expr.attr in obj.methods:
-                        return TypeLattice(obj.methods[expr.attr])
+                    if expr.attr in obj.fields:
+                        return TypeLattice(obj.fields[expr.attr])
                     else:
-                        print(f'{expr.attr} not in {obj.methods}')
+                        print(f'{expr.attr} not in {obj.fields}')
                     return TOP
                 case FunctionType():
                     return TOP
             return types.get(expr, TOP)
-        case tac.Subscr(): return types.get(expr, TOP)
-        case tac.Yield(): return TOP
+        case tac.Subscr():
+            array = eval(types, expr.var)
+            if array == TOP:
+                return TOP
+            f = array.value.fields.get(Var('__getitem__'))
+            if f is None:
+                print(f'eval({expr.var}) == {array} which is not an array')
+                return TypeLattice.bottom()
+            return TypeLattice(f.return_type)
         case tac.Call():
             function_signature = eval(types, expr.function)
             if function_signature == TOP:
@@ -269,4 +279,5 @@ def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
                 print(f'eval({expr.function}) == {function_signature} which is not a function')
                 return TypeLattice.bottom()
             return TypeLattice(function_signature.value.return_type)
+        case tac.Yield(): return TOP
         case _: return TOP

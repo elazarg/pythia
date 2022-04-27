@@ -124,7 +124,8 @@ def test():
     elems = pyclbr.readmodule_ex('code_examples')
     for name, val in elems.items():
         print(val.lineno, ':', name)
-    for b in dis.dis(code_examples.simple):
+    for b in get_instructions(code_examples.simple):
+
         print(b)
 
 

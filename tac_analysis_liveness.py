@@ -199,13 +199,14 @@ def rewrite_remove_useless_movs(block: graph_utils.Block, label: int) -> None:
 
 # poor man's use-def
 def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> None:
-    invariant: LivenessDomain = block.pre[LivenessDomain.name()]
-    if invariant.is_bottom:
+    alive: LivenessDomain = block.pre[LivenessDomain.name()]
+    if alive.is_bottom:
         return
     for i in reversed(range(1, len(block))):
         ins = block[i]
         prev = block[i-1]
         if (isinstance(prev, tac.Assign) and isinstance(prev.lhs, tac.Var) or isinstance(prev, tac.Import)) and prev.lhs.is_stackvar:
-            if isinstance(ins, tac.Mov) and ins.rhs == prev.lhs and ins.rhs not in invariant.vars:
+            if isinstance(ins, tac.Mov) and ins.rhs == prev.lhs and ins.rhs not in alive.vars:
                 del block[i]
                 block[i-1] = dataclasses.replace(block[i-1], lhs=ins.lhs)
+        alive.transfer(block[i], f'{label}.{i}')

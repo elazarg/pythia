@@ -448,7 +448,9 @@ def run(X, y):
     cost_num = np.zeros(iterations)
     m = y.size
     for i in range(iterations):
-        cost, error = cost_function(X, y, theta)
+        m = y.size
+        error = np.dot(X, theta.T) - y
+        cost = 1 / (2 * m) * np.dot(error.T, error)
         theta = theta - (alpha * (1 / m) * np.dot(X.T, error))
         cost_num[i] = cost
 

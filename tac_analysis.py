@@ -67,8 +67,6 @@ def test(f, print_analysis=False, simplify=True):
 
     analyze(cfg, LivenessDomain)
     analyze(cfg, AliasDomain)
-    analyze(cfg, ConstantDomain)
-    analyze(cfg, TypeDomain)
     for label, block in cfg.items():
         rewrite_aliases(block, label)
         rewrite_remove_useless_movs_pairs(block, label)
