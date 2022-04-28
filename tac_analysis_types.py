@@ -6,6 +6,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Type, TypeVar, Optional, ClassVar, Final
 
+import numpy as np
+
 import tac
 from tac import Const, Var
 from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Bottom, Top, Lattice
@@ -21,14 +23,17 @@ class ObjectType:
     fields: dict[Var, FunctionType | ObjectType]
 
     @staticmethod
+    def translate(t: type):
+        if t is int: return INT
+        if t is float: return FLOAT
+        if t is str: return STRING
+        if t is bool: return BOOL
+        if t is np.ndarray: return NDARRAY
+        return ObjectType(type(t).__name__, {})
+
+    @staticmethod
     def typeof(const: tac.Const):
-        match const.value:
-            case int(): return INT
-            case float(): return FLOAT
-            case str(): return STRING
-            case bool(): return BOOL
-            case None: return NONE
-            case _: return ObjectType(type(const.value).__name__, {})
+        return ObjectType.translate(type(const.value)) if const.value is not None else NONE
 
     def __repr__(self):
         return self.name
@@ -319,6 +324,15 @@ class TypeDomain(AbstractDomain):
     def keep_only_live_vars(self, alive_vars: set[tac.Var]) -> None:
         for var in set(self.types.keys()) - alive_vars:
             del self.types[var]
+
+    @classmethod
+    def read_initial(cls, annotations: dict[str, type]) -> TypeDomain:
+        result = TypeDomain.top()
+        result.types.update({
+            tac.Var(name): TypeLattice(ObjectType.translate(t))
+            for name, t in annotations.items()
+        })
+        return result
 
 
 unseen = defaultdict(set)

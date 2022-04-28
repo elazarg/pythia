@@ -9,7 +9,7 @@ import graph_utils as gu
 import tac
 import tac_analysis_types
 
-from tac_analysis_domain import AbstractDomain, IterationStrategy
+from tac_analysis_domain import AbstractDomain, IterationStrategy, Lattice
 from tac_analysis_liveness import LivenessDomain, rewrite_remove_useless_movs, rewrite_remove_useless_movs_pairs
 from tac_analysis_constant import ConstantDomain
 from tac_analysis_pointer import PointerDomain
@@ -30,7 +30,7 @@ def print_block(n, block):
         print('\t', ins)
 
 
-def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
+def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain], initial: Lattice = None) -> None:
     name = Analysis.name()
     for label in _cfg.labels:
         _cfg[label].pre[name] = Analysis.bottom()
@@ -39,7 +39,7 @@ def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
     cfg: IterationStrategy = Analysis.view(_cfg)
 
     wl = [entry] = {cfg.entry_label}
-    cfg[entry].pre[name] = Analysis.initial()
+    cfg[entry].pre[name] = initial or Analysis.initial()
     while wl:
         label = wl.pop()
         block = cfg[label]
@@ -63,7 +63,7 @@ def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain]) -> None:
                 wl.add(succ)
 
 
-def test(f, print_analysis=False, simplify=True):
+def test(f: type(test), print_analysis=False, simplify=True):
     cfg = make_tacblock_cfg(f, simplify=simplify)
 
     analyze(cfg, LivenessDomain)
@@ -74,8 +74,8 @@ def test(f, print_analysis=False, simplify=True):
         rewrite_remove_useless_movs(block, label)
     analyze(cfg, LivenessDomain)
     analyze(cfg, ConstantDomain)
+    analyze(cfg, TypeDomain, TypeDomain.read_initial(f.__annotations__))
     analyze(cfg, PointerDomain)
-    analyze(cfg, TypeDomain)
 
     for label, block in sorted(cfg.items()):
         if math.isinf(label):

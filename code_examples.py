@@ -1,3 +1,4 @@
+import numpy as np
 
 foo = 5
 def example(x):
@@ -433,7 +434,7 @@ def predict(X, theta):
     return predict_
 
 
-def run(X, y):
+def run(X: np.ndarray, y: np.ndarray):
     import numpy as np
 
     y = np.concatenate(y)
