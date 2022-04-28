@@ -7,6 +7,7 @@ import typing
 
 import graph_utils as gu
 import tac
+import tac_analysis_types
 
 from tac_analysis_domain import AbstractDomain, IterationStrategy
 from tac_analysis_liveness import LivenessDomain, rewrite_remove_useless_movs, rewrite_remove_useless_movs_pairs
@@ -81,18 +82,22 @@ def test(f, print_analysis=False, simplify=True):
             continue
         if print_analysis:
             print('Pre:')
-            # print('\t', block.pre[LivenessDomain.name()])
+            print('\t', block.pre[LivenessDomain.name()])
             print('\t', block.pre[PointerDomain.name()])
             print('\t', block.pre[ConstantDomain.name()])
             print('\t', block.pre[TypeDomain.name()])
         print_block(label, block)
         if print_analysis:
             print('Post:')
-            # print('\t', block.post[LivenessDomain.name()])
+            print('\t', block.post[LivenessDomain.name()])
             print('\t', block.post[PointerDomain.name()])
             print('\t', block.post[ConstantDomain.name()])
             print('\t', block.post[TypeDomain.name()])
             print()
+
+    print("Unseen:")
+    for k, v in tac_analysis_types.unseen.items():
+        print(k, v)
 
 
 if __name__ == '__main__':

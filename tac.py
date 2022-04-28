@@ -414,6 +414,9 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
                     return [Assign(lhs, make_nonlocal(val))]
                 case 'GLOBAL':
                     return [Assign(lhs, make_global(val))]
+                case 'CLOSURE':
+                    print("Uknown: LOAD CLOSURE")
+                    return [Assign(lhs, Const(None))]
                 case _:
                     assert False, op
         case 'STORE_FAST' | 'STORE_NAME':

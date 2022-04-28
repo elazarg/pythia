@@ -55,16 +55,31 @@ def make_tuple(t: ObjectType) -> ObjectType:
     })
 
 
+def iter_method(element_type: ObjectType) -> FunctionType:
+    return FunctionType(ObjectType(f'iterator[{element_type}]', {
+        Var('__next__'): FunctionType(element_type),
+    }))
+
+
 NDARRAY = ObjectType('ndarray', {
     Var('mean'): FunctionType(FLOAT),
     Var('std'): FunctionType(FLOAT),
     Var('shape'): make_tuple(INT),
     Var('size'): INT,
     Var('__getitem__'): FunctionType(FLOAT),
+    Var('__iter__'): iter_method(FLOAT),  # inaccurate
 })
+
 NDARRAY.fields[Var('T')] = NDARRAY
 
 ARRAY_GEN = FunctionType(NDARRAY)
+
+NDARRAY.fields[Var('astype')] = ARRAY_GEN
+
+
+DATAFRAME = ObjectType('DataFrame', {
+
+})
 
 NUMPY_MODULE = ObjectType('/numpy', {
     Var('array'): ARRAY_GEN,
@@ -81,32 +96,77 @@ NUMPY_MODULE = ObjectType('/numpy', {
     Var('logspace'): ARRAY_GEN,
     Var('geomspace'): ARRAY_GEN,
     Var('meshgrid'): ARRAY_GEN,
-    Var('c_'): ObjectType('ndarray', {
+    Var('max'): FunctionType(FLOAT),
+    Var('min'): FunctionType(FLOAT),
+    Var('sum'): FunctionType(FLOAT),
+    Var('setdiff1d'): ARRAY_GEN,
+    Var('unique'): ARRAY_GEN,
+    Var('append'): ARRAY_GEN,
+    Var('random'): ARRAY_GEN,
+    Var('argmax'): FunctionType(INT),
+    Var('c_'): ObjectType('slice_trick', {
         Var('__getitem__'): FunctionType(NDARRAY),
     }),
-    Var('r_'): ObjectType('ndarray', {
+    Var('r_'): ObjectType('slice_trick', {
         Var('__getitem__'): FunctionType(NDARRAY),
     }),
 
+})
+
+PANDAS_MODULE = ObjectType('/pandas', {
+    Var('DataFrame'): FunctionType(DATAFRAME),
 })
 
 BUILTINS_MODULE = ObjectType('/builtins', {
     Var('range'): FunctionType(ObjectType('range', {
-        Var('__iter__'): FunctionType(ObjectType('range_iterator', {
-            Var('__next__'): FunctionType(INT),
-        })),
+        Var('__iter__'): iter_method(INT),
     })),
+    Var('len'): FunctionType(INT),
+    Var('print'): FunctionType(NONE),
+    Var('abs'): FunctionType(FLOAT),
+    Var('round'): FunctionType(FLOAT),
+    Var('min'): FunctionType(FLOAT),
+    Var('max'): FunctionType(FLOAT),
+    Var('sum'): FunctionType(FLOAT),
+    Var('all'): FunctionType(BOOL),
+    Var('any'): FunctionType(BOOL),
+    Var('int'): FunctionType(INT),
+    Var('float'): FunctionType(FLOAT),
+    Var('str'): FunctionType(STRING),
+    Var('bool'): FunctionType(BOOL),
 })
 
 modules = {
-    'numpy': NUMPY_MODULE,
     'builtins': BUILTINS_MODULE,
+    'numpy': NUMPY_MODULE,
+    'pandas': PANDAS_MODULE,
 }
 
-
-def binary_ops(left, right) -> FunctionType:
-
-    return FunctionType(ObjectType(op, {}))
+BINARY = {
+    (INT.name, INT.name): {
+        '/': FLOAT,
+        **{op: INT for op in ['+', '-', '*', '**', '//', '%']},
+        **{op: INT for op in ['&', '|', '^', '<<', '>>']},
+        **{op: BOOL for op in ['<', '>', '<=', '>=', '==', '!=']},
+    },
+    (INT.name, FLOAT.name): {
+        **{op: FLOAT for op in ['+', '-', '*', '/', '**', '//', '%']},
+        **{op: BOOL for op in ['<', '>', '<=', '>=', '==', '!=']},
+    },
+    (FLOAT.name, INT.name): {
+        **{op: FLOAT for op in ['+', '-', '*', '/', '**', '//', '%']},
+        **{op: BOOL for op in ['<', '>', '<=', '>=', '==', '!=']},
+    },
+    (FLOAT.name, FLOAT.name): {
+        **{op: FLOAT for op in ['+', '-', '*', '/', '**', '//', '%']},
+        **{op: BOOL for op in ['<', '>', '<=', '>=', '==', '!=']},
+    },
+    (NDARRAY.name, NDARRAY.name): {op: NDARRAY for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (NDARRAY.name, INT.name): {op: NDARRAY for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (INT.name, NDARRAY.name): {op: NDARRAY for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (NDARRAY.name, FLOAT.name): {op: NDARRAY for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (FLOAT.name, NDARRAY.name): {op: NDARRAY for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+}
 
 
 @dataclass(frozen=True)
@@ -261,6 +321,9 @@ class TypeDomain(AbstractDomain):
             del self.types[var]
 
 
+unseen = defaultdict(set)
+
+
 def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
     TOP = TypeLattice.top()
     match expr:
@@ -278,7 +341,7 @@ def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
                     if expr.attr in obj.fields:
                         return TypeLattice(obj.fields[expr.attr])
                     else:
-                        print(f'{expr.attr} not in {obj.fields}')
+                        unseen[obj.name].add(expr.attr)
                     return TOP
                 case FunctionType():
                     return TOP
@@ -303,4 +366,12 @@ def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
                 return TypeLattice.bottom()
             return TypeLattice(function_signature.value.return_type)
         case tac.Yield(): return TOP
+        case tac.Binary():
+            left = eval(types, expr.left)
+            right = eval(types, expr.right)
+            if left.is_top() or right.is_top() or left.is_bottom() or right.is_bottom():
+                return TypeLattice.meet(left, right)
+            if (left.value.name, right.value.name) in BINARY:
+                return TypeLattice(BINARY[(left.value.name, right.value.name)][expr.op])
+            return TOP
         case _: return TOP

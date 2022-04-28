@@ -475,5 +475,154 @@ def simple_pointer():
     return x + y
 
 
+def do_work(featuers, target, model, k):
+    '''
+    The SDS algorithm, as in "Submodular Dictionary Selection for Sparse Representation", Krause and Cevher, ICML '10
+
+    INPUTS:
+    features -- the feature matrix
+    target -- the observations
+    model -- choose if the regression is linear or logistic
+    k -- upper-bound on the solution size
+    OUTPUTS:
+    float run_time -- the processing time to optimize the function
+    int rounds -- the number of parallel calls to the oracle function
+    float metric -- a goodness of fit metric for the solution quality
+    '''
+    import numpy as np
+    import pandas as pd
+    # save data to file
+    results = pd.DataFrame(
+        data={'k': np.zeros(k).astype('int'), 'time': np.zeros(k), 'rounds': np.zeros(k), 'metric': np.zeros(k)})
+
+    # define time and rounds
+    run_time = time.time()
+    rounds = 0
+    rounds_ind = 0
+
+    # define new solution
+    S = np.array([], int)
+
+    for idx in range(k):
+
+        # define and train model
+        stime = time.time()
+        grad, metric = oracle(features, target, S, model)
+        oracle_time = time.time()
+        rounds += 1
+
+        start_point = time.time()
+        # define vals
+        point = []
+        A = np.array(range(len(grad)))
+        for a in np.setdiff1d(A, S):
+            point = np.append(point, a)
+        out = [[point, len(np.setdiff1d(A, S))]]
+        #        print (type(out[0]))
+
+        #        print ("[time] pick a point: " +  str(time.time() - start_point))
+
+        out = np.array(out, dtype='object')
+        rounds_ind += np.max(out[:, -1])
+        np_max_time = time.time()
+        # save results to file
+        results.loc[idx, 'k'] = idx + 1
+        results.loc[idx, 'time'] = time.time() - run_time
+        results.loc[idx, 'rounds'] = int(rounds)
+        results.loc[idx, 'rounds_ind'] = rounds_ind
+        results.loc[idx, 'metric'] = metric
+
+        # get feasible points
+        points = np.array([])
+        points = np.append(points, np.array(out[0, 0]))
+        points = points.astype('int')
+        e = time.time()
+        # break if points are no longer feasible
+        if len(points) == 0: break
+
+        # otherwise add maximum point to current solution
+        a = points[0]
+        for i in points:
+            if grad[i] > grad[a]:
+                a = i
+
+        if grad[a] >= 0:
+            S = np.unique(np.append(S, i))
+        else:
+            break
+        f = time.time()
+    #        print ("[time] oracle_time " + str(oracle_time - stime))
+    #        print ("[time] np_max_time " + str(np_max_time - oracle_time))
+    #        print ("[time] round time " + str(f - stime))
+    #        print ("----- ")
+
+    # update current time
+    run_time = time.time() - run_time
+    print(results)
+    return results
+
+def pivoter():
+    n = 4
+    G = {0: set([1, 2, 3]), 1: set([2, 3]), 2: set([3]), 3: []}
+    ordering = range(n)
+    root_to_leaf_path = []
+
+    green = []  # [1,2]
+
+    root_to_leaf_path = green[:]
+
+    def CN():
+        global root_to_leaf_path
+        world = set(ordering)
+        for v in root_to_leaf_path:
+            world = world.intersection(G[v])
+        if len(world) == 0:
+            print("Clique: ", root_to_leaf_path)
+            return
+        for neighbour in world:
+            root_to_leaf_path.append(neighbour)
+            # print("before recurssion: ", root_to_leaf_path)
+            CN()
+            # print("after recurssion: ", root_to_leaf_path)
+            root_to_leaf_path = root_to_leaf_path[:-1]
+
+    if not is_a_dag(green):
+        print("Green is not a DAG")
+    else:
+        CN()
+
+def genetic(self, iterations):
+    import numpy as np
+    # Initialize new population
+    self._initialize()
+
+    for epoch in range(iterations):
+        population_fitness = self._calculate_fitness()
+
+        fittest_individual = self.population[np.argmax(population_fitness)]
+        highest_fitness = max(population_fitness)
+
+        # If we have found individual which matches the target => Done
+        if fittest_individual == self.target:
+            break
+
+        # Set the probability that the individual should be selected as a parent
+        # proportionate to the individual's fitness.
+        parent_probabilities = [fitness / sum(population_fitness) for fitness in population_fitness]
+
+        # Determine the next generation
+        new_population = []
+        for i in np.arange(0, self.population_size, 2):
+            # Select two parents randomly according to probabilities
+            parent1, parent2 = np.random.choice(self.population, size=2, p=parent_probabilities, replace=False)
+            # Perform crossover to produce offspring
+            child1, child2 = self._crossover(parent1, parent2)
+            # Save mutated offspring for next generation
+            new_population += [self._mutate(child1), self._mutate(child2)]
+
+        print("[%d Closest Candidate: '%s', Fitness: %.2f]" % (epoch, fittest_individual, highest_fitness))
+        self.population = new_population
+
+    print ("[%d Answer: '%s']" % (epoch, fittest_individual))
 if __name__ == "__main__":
     run()
