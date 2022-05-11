@@ -144,6 +144,7 @@ def evaluator(state: dict[Object, dict[tac.Var, set[Object]]], location: str):
                 return {location_object}
             case tac.Subscr(): return set()
             case tac.Yield(): return set()
+            case tac.Import(): return set()
             case tac.Binary():
                 if expr.left in locals_state or expr.right in locals_state:
                     return {location_object}

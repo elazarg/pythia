@@ -102,4 +102,4 @@ def test(f: type(test), print_analysis=False, simplify=True):
 
 if __name__ == '__main__':
     import code_examples
-    test(code_examples.run, print_analysis=True, simplify=True)
+    test(code_examples.feature_selection, print_analysis=True, simplify=True)

@@ -209,8 +209,14 @@ def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> N
     for i in reversed(range(1, len(block))):
         ins = block[i]
         prev = block[i-1]
-        if (isinstance(prev, tac.Assign) and isinstance(prev.lhs, tac.Var) or isinstance(prev, tac.Import)) and prev.lhs.is_stackvar:
-            if isinstance(ins, tac.Mov) and ins.rhs == prev.lhs and prev.lhs not in alive.vars:
-                del block[i]
-                block[i-1] = dataclasses.replace(block[i-1], lhs=ins.lhs)
+        if isinstance(prev, tac.Assign) and isinstance(prev.lhs, tac.Var) and prev.lhs.is_stackvar:
+            match ins:
+                case tac.Mov():
+                    if ins.rhs == prev.lhs and prev.lhs not in alive.vars:
+                        del block[i]
+                        block[i-1] = dataclasses.replace(block[i-1], lhs=ins.lhs)
+                case tac.InplaceBinary():
+                    if ins.right == prev.lhs and prev.lhs not in alive.vars:
+                        del block[i]
+                        block[i-1] = dataclasses.replace(ins, right=prev.expr)
         alive.transfer(block[i], f'{label}.{i}')

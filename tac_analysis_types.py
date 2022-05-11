@@ -86,6 +86,10 @@ DATAFRAME = ObjectType('DataFrame', {
 
 })
 
+TIME_MODULE = ObjectType('/time', {
+
+})
+
 NUMPY_MODULE = ObjectType('/numpy', {
     Var('array'): ARRAY_GEN,
     Var('dot'): FunctionType(FLOAT),
@@ -145,6 +149,7 @@ modules = {
     'builtins': BUILTINS_MODULE,
     'numpy': NUMPY_MODULE,
     'pandas': PANDAS_MODULE,
+    'time': TIME_MODULE,
 }
 
 BINARY = {
@@ -301,8 +306,6 @@ class TypeDomain(AbstractDomain):
             self.types[ins.lhs] = eval(types, ins.expr)
         elif isinstance(ins, tac.For):
             self.transfer(ins.as_call(), location)
-        elif isinstance(ins, tac.Import):
-            self.types[ins.lhs] = TypeLattice(modules[ins.modname])
         self.normalize()
 
     def normalize(self) -> None:
@@ -380,6 +383,8 @@ def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
                 return TypeLattice.bottom()
             return TypeLattice(function_signature.value.return_type)
         case tac.Yield(): return TOP
+        case tac.Import():
+            return TypeLattice(modules[expr.modname])
         case tac.Binary():
             left = eval(types, expr.left)
             right = eval(types, expr.right)

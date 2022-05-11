@@ -434,7 +434,7 @@ def predict(X, theta):
     return predict_
 
 
-def run(X: np.ndarray, y: np.ndarray):
+def feature_selection(X: np.ndarray, y: np.ndarray):
     import numpy as np
 
     y = np.concatenate(y)
@@ -490,6 +490,7 @@ def do_work(featuers, target, model, k):
     int rounds -- the number of parallel calls to the oracle function
     float metric -- a goodness of fit metric for the solution quality
     '''
+    import time
     import numpy as np
     import pandas as pd
     # save data to file
@@ -591,6 +592,18 @@ def pivoter():
         print("Green is not a DAG")
     else:
         CN()
+
+
+def CN(root_to_leaf_path, vertices):
+    world = vertices
+    for v in root_to_leaf_path:
+        world = world.intersection(G[v])
+    if len(world) == 0:
+        print("Clique: ", root_to_leaf_path)
+        return
+    for neighbour in world:
+        CN(root_to_leaf_path + [neighbour], vertices)
+
 
 def genetic(self, iterations):
     import numpy as np

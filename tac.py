@@ -151,7 +151,19 @@ class Yield:
     value: Value
 
 
-Expr: TypeAlias = Value | Attribute | Subscr | Binary | Call | Yield
+@dataclass
+class Import:
+    modname: str
+    feature: str = None
+
+    def __str__(self):
+        res = f'IMPORT {self.modname}'
+        if self.feature is not None:
+            res += f'.{self.feature}'
+        return res
+
+
+Expr: TypeAlias = Value | Attribute | Subscr | Binary | Call | Yield | Import
 
 
 def stackvar(x) -> Var:
@@ -185,19 +197,6 @@ class Assign:
 
     def __str__(self):
         return f'{self.lhs} = {self.expr}'
-
-
-@dataclass
-class Import:
-    lhs: Var
-    modname: str
-    feature: str = None
-
-    def __str__(self):
-        res = f'{self.lhs} = IMPORT {self.modname}'
-        if self.feature is not None:
-            res += f'.{self.feature}'
-        return res
 
 
 @dataclass
@@ -261,7 +260,7 @@ class Unsupported:
     name: str
 
 
-Tac = Nop | Mov | Assign | Import | InplaceBinary | Jump | For | Return | Raise | Del | Unsupported
+Tac = Nop | Mov | Assign | InplaceBinary | Jump | For | Return | Raise | Del | Unsupported
 
 NOP = Nop()
 
@@ -277,6 +276,7 @@ def free_vars_expr(expr: Expr) -> set[Var]:
             return free_vars_expr(expr.function) | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args)) \
                    | ({expr.kwargs} if expr.kwargs else set())
         case Yield(): return free_vars_expr(expr.value)
+        case Import(): return set()
         case _: raise NotImplementedError(f'free_vars_expr({repr(expr)})')
 
 
@@ -294,7 +294,6 @@ def free_vars(tac: Tac) -> set[Var]:
         case Nop(): return set()
         case Mov(): return free_vars_expr(tac.rhs)
         case Assign(): return free_vars_lval(tac.lhs) | free_vars_expr(tac.expr)
-        case Import(): return set()
         case InplaceBinary(): return {tac.lhs} | free_vars_expr(tac.right)
         case Jump(): return free_vars_expr(tac.cond)
         case For(): return free_vars_expr(tac.iterator)
@@ -316,7 +315,6 @@ def gens(tac: Tac) -> set[Var]:
                 case Attribute(): return set()
                 case Subscr(): return set()
                 case _: raise NotImplementedError(f'gens({tac})')
-        case Import(): return {tac.lhs}
         case InplaceBinary(): return {tac.lhs}
         case Jump(): return set()
         case For(): return {tac.lhs}
@@ -443,9 +441,9 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
             seq = tuple(stackvar(stack_depth + i) for i in reversed(range(val)))
             return [Assign(seq, stackvar(stack_depth))]
         case 'IMPORT_NAME':
-            return [Import(stackvar(out), val)]
+            return [Assign(stackvar(out), Import(val))]
         case 'IMPORT_FROM':
-            return [Import(stackvar(out), stackvar(stack_depth), val)]
+            return [Assign(stackvar(out), Import(stackvar(stack_depth), val))]
         case 'BUILD':
             if op == 'SLICE':
                 if val == 2:

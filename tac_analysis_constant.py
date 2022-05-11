@@ -81,8 +81,6 @@ class ConstantDomain(AbstractDomain):
         elif isinstance(ins, tac.Assign):
             if isinstance(ins.lhs, tac.Var) and (val := eval(constants, ins.expr)) is not None:
                 self.constants[ins.lhs] = val
-        elif isinstance(ins, tac.Import):
-            self.constants[ins.lhs] = tac.Const(tac.Module(ins.modname))
 
     def __str__(self) -> str:
         return 'Constants({})'.format(", ".join(f'{k}={v}' for k, v in self.constants.items()))
@@ -103,6 +101,7 @@ def eval(constants: dict[Var, Const], expr: tac.Expr) -> Optional[Const]:
         case tac.Call(): return None
         case tac.Subscr(): return None
         case tac.Yield(): return None
+        case tac.Import: return tac.Const(tac.Module(expr.modname))
         case tac.Binary():
             left = eval(constants, expr.left)
             right = eval(constants, expr.right)
