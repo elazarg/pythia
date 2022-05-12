@@ -146,6 +146,9 @@ BUILTINS_MODULE = ObjectType('/builtins', {
     Var('bool'): FunctionType(BOOL),
 })
 
+LOCALS_MODULE = ObjectType('LOCALS', { })
+NONLOCALS_MODULE = ObjectType('NONLOCALS', { })
+
 modules = {
     'builtins': BUILTINS_MODULE,
     'numpy': NUMPY_MODULE,
@@ -343,10 +346,17 @@ unseen = defaultdict(set)
 def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
     TOP = TypeLattice.top()
     match expr:
+        case tac.Scope():
+            if expr == tac.Scope.GLOBALS:
+                return TypeLattice(BUILTINS_MODULE)
+            elif expr == tac.Scope.LOCALS:
+                return TypeLattice(LOCALS_MODULE)
+            elif expr == tac.Scope.NONLOCALS:
+                return TypeLattice(NONLOCALS_MODULE)
+            else:
+                assert False
         case tac.Const(): return TypeLattice(ObjectType.typeof(expr))
         case tac.Var():
-            if expr.name == 'GLOBALS':
-                return TypeLattice(modules['builtins'])
             return types.get(expr, TOP)
         case tac.Attribute():
             t = eval(types, expr.var)

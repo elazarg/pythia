@@ -8,7 +8,7 @@ from typing import Type, TypeVar, Optional, ClassVar, Final
 
 import tac
 from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Lattice, Bottom, Top,\
-    Object, LOCALS, GLOBALS
+    Object, STACK, LOCALS, GLOBALS, NONLOCALS
 
 import graph_utils as gu
 
@@ -17,7 +17,7 @@ T = TypeVar('T')
 
 @dataclass
 class PointerDomain(AbstractDomain):
-    pointers: dict[Object, dict[tac.Var, set[Object]]] | Bottom | Top
+    pointers: dict[Object, dict[str, set[Object]]] | Bottom | Top
 
     BOTTOM: Final[ClassVar[Bottom]] = Bottom()
     TOP: Final[ClassVar[Top]] = Top()
@@ -30,7 +30,7 @@ class PointerDomain(AbstractDomain):
     def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy[T]:
         return ForwardIterationStrategy(cfg)
 
-    def __init__(self, pointers: dict[Object, dict[tac.Var, set[Object]]] | Bottom | Top) -> None:
+    def __init__(self, pointers: dict[Object, dict[str, set[Object]]] | Bottom | Top) -> None:
         super().__init__()
         if pointers == PointerDomain.BOTTOM:
             self.pointers = PointerDomain.BOTTOM
@@ -53,7 +53,7 @@ class PointerDomain(AbstractDomain):
 
     @classmethod
     def initial(cls: Type[T]) -> T:
-        return PointerDomain({LOCALS: {}, GLOBALS: {}})
+        return PointerDomain({STACK: {}, LOCALS: {}, GLOBALS: {}})
 
     @classmethod
     def top(cls: Type[T]) -> T:
@@ -89,7 +89,7 @@ class PointerDomain(AbstractDomain):
         if self.is_bottom or self.is_top:
             return
         eval = evaluator(self.copy().pointers, location)
-        activation = self.pointers[LOCALS]
+        activation = self.pointers[STACK]
 
         for var in tac.gens(ins):
             if var in activation:
@@ -105,7 +105,7 @@ class PointerDomain(AbstractDomain):
                         self.pointers.setdefault(obj, {})[ins.lhs.attr] = val
                 case tac.Subscr():
                     for obj in eval(ins.lhs.var):
-                        self.pointers.setdefault(obj, {})[tac.Var('*')] = val
+                        self.pointers.setdefault(obj, {})['*'] = val
 
     def __str__(self) -> str:
         return 'Pointers(' + ', '.join(f'{source_obj.pretty(field)}->{target_obj}'
@@ -122,17 +122,20 @@ class PointerDomain(AbstractDomain):
             del self.pointers[LOCALS][var]
 
 
-def evaluator(state: dict[Object, dict[tac.Var, set[Object]]], location: str):
+def evaluator(state: dict[Object, dict[str, set[Object]]], location: str):
     location_object = Object(location)
     locals_state = state[LOCALS]
 
     def inner(expr: tac.Expr) -> set[Object]:
         match expr:
+            case tac.Scope.NONLOCALS: return {NONLOCALS}
+            case tac.Scope.GLOBALS: return {GLOBALS}
+            case tac.Scope.LOCALS: return {LOCALS}
             case tac.Const(): return set()
             case tac.Var(): return locals_state.get(expr, set()).copy()
             case tac.Attribute():
-                if expr.var.name == 'GLOBALS':
-                    return state[GLOBALS].get(expr.attr, set()).copy()
+                if isinstance(expr.var, str):
+                    return state[Object(expr.var)].get(expr.attr, set()).copy()
                 else:
                     return set(chain.from_iterable(state.get(obj, {}).get(expr.attr, set()).copy()
                                                    for obj in inner(expr.var)))

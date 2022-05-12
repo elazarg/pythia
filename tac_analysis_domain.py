@@ -110,13 +110,14 @@ class Object:
         return f'@{self.location}'
 
     def pretty(self, field: tac.Var) -> str:
+        if self == STACK:
+            return f'${field.name}'
         if self == LOCALS:
-            if field.is_stackvar:
-                return '$' + field.name
-            return field.name
+            return f'{field.name}'
         return f'{self}.{field.name}'
 
 
-LOCALS: Final[Object] = Object('locals()')
-
-GLOBALS: Final[Object] = Object('globals()')
+STACK: Final[Object] = Object('STACK')
+LOCALS: Final[Object] = Object('LOCALS')
+NONLOCALS: Final[Object] = Object('NONLOCALS')
+GLOBALS: Final[Object] = Object('GLOBALS')

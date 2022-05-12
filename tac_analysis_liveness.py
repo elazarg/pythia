@@ -150,7 +150,7 @@ def single_block_uses(block):
 
 
 def undef(kills, gens):
-    return tuple(('_' if v in kills and tac.is_stackvar(v) else v)
+    return tuple(('_' if v in kills and isinstance(v, tac.Var) else v)
                  for v in gens)
 
 
@@ -211,7 +211,7 @@ def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> N
         merged_instruction = None
         killed_by_ins = tac.free_vars(ins) - (alive.vars - tac.gens(ins))
         if isinstance(prev, tac.Assign) and prev.assign_stack and prev.lhs in killed_by_ins:
-            # $0 = Var
+            # $0 = Expr
             # v = EXP($0)  # $0 is killed
             match ins:
                 case tac.Return():
@@ -221,7 +221,7 @@ def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> N
                     if ins.right == prev.lhs:
                         merged_instruction = dataclasses.replace(ins, right=prev.expr)
                 case tac.Assign():
-                    if isinstance(prev.expr, (tac.Var, tac.Const)) or isinstance(ins.expr, tac.Var):
+                    if isinstance(prev.expr, (tac.Var, tac.Const, tac.Attribute)) or isinstance(ins.expr, tac.Var):
                         expr = tac.subst_var_in_expr(ins.expr, prev.lhs, prev.expr)
                         merged_instruction = dataclasses.replace(ins, expr=expr)
         if merged_instruction is not None:
