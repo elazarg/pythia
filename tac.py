@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import itertools as it
+import dataclasses
 from dataclasses import dataclass
 from typing import Iterable, Optional, TypeAlias
 
@@ -153,7 +154,7 @@ class Yield:
 
 @dataclass
 class Import:
-    modname: str
+    modname: Var
     feature: str = None
 
     def __str__(self):
@@ -162,8 +163,17 @@ class Import:
             res += f'.{self.feature}'
         return res
 
+@dataclass
+class MakeFunction:
+    name: Value
+    code: Value
+    free_vars: set[Var] = frozenset()
+    annotations: dict[Var, str] = None
+    defaults: dict[Var, Var] = None
+    positional_only_defaults: dict[Var, Var] = None
 
-Expr: TypeAlias = Value | Attribute | Subscr | Binary | Call | Yield | Import
+
+Expr: TypeAlias = Value | Attribute | Subscr | Binary | Call | Yield | Import | MakeFunction
 
 
 def stackvar(x) -> Var:
@@ -180,23 +190,27 @@ class Nop:
 
 
 @dataclass(frozen=True)
-class Mov:
-    """Assignments with no side effect other than setting the value of the LHS."""
-    lhs: Var
-    rhs: Var | Const
-
-    def __str__(self):
-        return f'{self.lhs} = {self.rhs}'
-
-
-@dataclass(frozen=True)
 class Assign:
     """Assignments with no control-flow effect (other than exceptions)."""
-    lhs: Signature
+    lhs: Optional[Signature]
     expr: Expr
 
     def __str__(self):
+        if self.lhs is None:
+            return f'{self.expr}'
         return f'{self.lhs} = {self.expr}'
+
+    @property
+    def is_mov(self) -> bool:
+        return isinstance(self.lhs, Var) and isinstance(self.expr, (Var, Attribute, Const))
+
+    @property
+    def no_side_effect(self) -> bool:
+        return isinstance(self.lhs, Var) and isinstance(self.expr, (Subscr, Attribute, Var, Const))
+
+    @property
+    def assign_stack(self) -> bool:
+        return self.lhs is None or isinstance(self.lhs, Var) and is_stackvar(self.lhs)
 
 
 @dataclass
@@ -260,7 +274,7 @@ class Unsupported:
     name: str
 
 
-Tac = Nop | Mov | Assign | InplaceBinary | Jump | For | Return | Raise | Del | Unsupported
+Tac = Nop | Assign | InplaceBinary | Jump | For | Return | Raise | Del | Unsupported
 
 NOP = Nop()
 
@@ -277,6 +291,7 @@ def free_vars_expr(expr: Expr) -> set[Var]:
                    | ({expr.kwargs} if expr.kwargs else set())
         case Yield(): return free_vars_expr(expr.value)
         case Import(): return set()
+        case MakeFunction(): return {expr.name, expr.code}  # TODO: fix this
         case _: raise NotImplementedError(f'free_vars_expr({repr(expr)})')
 
 
@@ -286,13 +301,13 @@ def free_vars_lval(signature: Signature) -> set[Var]:
         case Attribute(): return {signature.var}
         case Subscr(): return free_vars_expr(signature.var) | free_vars_expr(signature.index)
         case tuple(): return set(it.chain.from_iterable(free_vars_lval(arg) for arg in signature))
+        case None: return set()
         case _: raise NotImplementedError(f'free_vars_lval({repr(signature)})')
 
 
 def free_vars(tac: Tac) -> set[Var]:
     match tac:
         case Nop(): return set()
-        case Mov(): return free_vars_expr(tac.rhs)
         case Assign(): return free_vars_lval(tac.lhs) | free_vars_expr(tac.expr)
         case InplaceBinary(): return {tac.lhs} | free_vars_expr(tac.right)
         case Jump(): return free_vars_expr(tac.cond)
@@ -307,13 +322,13 @@ def free_vars(tac: Tac) -> set[Var]:
 def gens(tac: Tac) -> set[Var]:
     match tac:
         case Nop(): return set()
-        case Mov(): return {tac.lhs}
         case Assign():
             match tac.lhs:
                 case Var(): return {tac.lhs}
                 case tuple(): return set(tac.lhs)
                 case Attribute(): return set()
                 case Subscr(): return set()
+                case None: return set()
                 case _: raise NotImplementedError(f'gens({tac})')
         case InplaceBinary(): return {tac.lhs}
         case Jump(): return set()
@@ -323,6 +338,44 @@ def gens(tac: Tac) -> set[Var]:
         case Del(): return set(tac.variables)
         case Unsupported(): return set()
         case _: raise NotImplementedError(f'gens({tac})')
+
+
+def subst_var_in_expr(expr: Expr, target: Var, new_var: Var) -> Expr:
+    match expr:
+        case Var():
+            return new_var if expr == target else expr
+        case MakeFunction():
+            if expr.name == target:
+                expr = dataclasses.replace(expr, name=new_var)
+            if expr.code == target:
+                expr = dataclasses.replace(expr, code=new_var)
+            return expr
+        case Attribute():
+            if expr.var == target:
+                return dataclasses.replace(expr, var=new_var)
+            return expr
+        case Call():
+            args = tuple(subst_var_in_expr(arg, target, new_var) for arg in expr.args)
+            function = new_var if expr.function == target else expr.function
+            return dataclasses.replace(expr, function=function, args=args)
+        case Subscr():
+            if expr.var == target:
+                expr = dataclasses.replace(expr, var=new_var)
+            if expr.index == target:
+                expr = dataclasses.replace(expr, index=new_var)
+            return expr
+        case Binary():
+            if expr.left == target:
+                expr = dataclasses.replace(expr, left=new_var)
+            if expr.right == target:
+                expr = dataclasses.replace(expr, right=new_var)
+            return expr
+        case Import():
+            assert False
+        case Yield():
+            return dataclasses.replace(expr, value=new_var)
+        case _:
+            assert False, f'subst_var_in_expr({expr}, {target}, {new_var})'
 
 
 def make_TAC(opname, val, stack_effect, stack_depth, starts_line=None) -> list[Tac]:
@@ -375,22 +428,22 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
             return []
         case 'ROT_TWO':
             fresh = stackvar(stack_depth + 1)
-            return [Mov(fresh, stackvar(stack_depth)),
-                    Mov(stackvar(stack_depth), stackvar(stack_depth - 1)),
-                    Mov(stackvar(stack_depth - 1), fresh),
+            return [Assign(fresh, stackvar(stack_depth)),
+                    Assign(stackvar(stack_depth), stackvar(stack_depth - 1)),
+                    Assign(stackvar(stack_depth - 1), fresh),
                     Del((fresh,))]
         case 'ROT_THREE':
             fresh = stackvar(stack_depth + 1)
-            return [Mov(fresh, stackvar(stack_depth - 2)),
-                    Mov(stackvar(stack_depth - 2), stackvar(stack_depth - 1)),
-                    Mov(stackvar(stack_depth - 1), stackvar(stack_depth)),
-                    Mov(stackvar(stack_depth), fresh),
+            return [Assign(fresh, stackvar(stack_depth - 2)),
+                    Assign(stackvar(stack_depth - 2), stackvar(stack_depth - 1)),
+                    Assign(stackvar(stack_depth - 1), stackvar(stack_depth)),
+                    Assign(stackvar(stack_depth), fresh),
                     Del((fresh,))]
         case 'DUP_TOP':
-            return [Mov(stackvar(out), stackvar(stack_depth))]
+            return [Assign(stackvar(out), stackvar(stack_depth))]
         case 'DUP_TOP_TWO':
-            return [Mov(stackvar(out), stackvar(stack_depth - 2)),
-                    Mov(stackvar(out + 1), stackvar(stack_depth - 1))]
+            return [Assign(stackvar(out), stackvar(stack_depth - 2)),
+                    Assign(stackvar(out + 1), stackvar(stack_depth - 1))]
         case 'RETURN_VALUE':
             return [Return(stackvar(stack_depth))]
         case 'YIELD_VALUE':
@@ -405,9 +458,9 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
                 case 'METHOD':
                     return [Assign(lhs, Attribute(stackvar(stack_depth), Var(val)))]
                 case 'FAST' | 'NAME':
-                    return [Mov(lhs, Var(val))]
+                    return [Assign(lhs, Var(val))]
                 case 'CONST':
-                    return [Mov(lhs, Const(val))]
+                    return [Assign(lhs, Const(val))]
                 case 'DEREF':
                     return [Assign(lhs, make_nonlocal(val))]
                 case 'GLOBAL':
@@ -418,7 +471,7 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
                 case _:
                     assert False, op
         case 'STORE_FAST' | 'STORE_NAME':
-            return [Mov(Var(val), stackvar(stack_depth))]
+            return [Assign(Var(val), stackvar(stack_depth))]
         case 'STORE_GLOBAL':
             return [Assign(make_global(val), stackvar(stack_depth))]
         case 'STORE_ATTR':
@@ -464,6 +517,34 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
             return res
         case "NOP":
             return []
+        case "MAKE_FUNCTION":
+            """
+            MAKE_FUNCTION(argc)
+            Pushes a new function object on the stack.
+            From bottom to top, the consumed stack must consist of values
+            if the argument carries a specified flag value:
+            
+            0x01   a tuple of default values for positional-only and positional-or-keyword parameters in positional order
+            0x02   a dictionary of keyword-only parameters’ default values
+            0x04   a tuple of strings containing parameters’ annotations
+            0x08   a tuple containing cells for free variables, making a closure
+            the code associated with the function (at TOS1)
+            the qualified name of the function (at TOS)
+            """
+            function = MakeFunction(stackvar(stack_depth), stackvar(stack_depth - 1))
+            i = 2
+            if val & 0x01:
+                function.defaults = stackvar(stack_depth - i)
+                i += 1
+            if val & 0x02:
+                function.kwdefaults = stackvar(stack_depth - i)
+                i += 1
+            if val & 0x04:
+                function.annotations = stackvar(stack_depth - i)
+                i += 1
+            if val & 0x08:
+                function.free_var_cells = stackvar(stack_depth - i)
+            return [Assign(stackvar(out), function)]
     return [Unsupported(name)]
 
 

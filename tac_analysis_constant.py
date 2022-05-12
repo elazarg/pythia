@@ -73,12 +73,7 @@ class ConstantDomain(AbstractDomain):
         for var in tac.gens(ins):
             if var in self.constants:
                 del self.constants[var]
-        if isinstance(ins, tac.Mov):
-            if isinstance(ins.rhs, tac.Const):
-                self.constants[ins.lhs] = ins.rhs
-            elif ins.rhs in self.constants:  # and ins.target.is_stackvar:
-                self.constants[ins.lhs] = constants[ins.rhs]
-        elif isinstance(ins, tac.Assign):
+        if isinstance(ins, tac.Assign):
             if isinstance(ins.lhs, tac.Var) and (val := eval(constants, ins.expr)) is not None:
                 self.constants[ins.lhs] = val
 

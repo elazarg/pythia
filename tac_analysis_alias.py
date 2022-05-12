@@ -82,12 +82,10 @@ class AliasDomain(AbstractDomain):
         self.alias = {stackvar: v for stackvar, v in self.alias.items()
                       if stackvar not in tac.gens(ins)
                       and stackvar not in tac.free_vars(ins)}
-        if isinstance(ins, tac.Mov):
-            left, right = (ins.lhs, ins.rhs) if ins.lhs.is_stackvar else (ins.rhs, ins.lhs)
-            self.alias[left] = right
-        elif isinstance(ins, tac.Assign) and isinstance(ins.expr, (tac.Var, tac.Attribute)) and isinstance(ins.lhs, tac.Var) and ins.lhs not in tac.free_vars_expr(ins.expr):
-            left, right = ins.lhs, ins.expr
-            self.alias[left] = right
+        if isinstance(ins, tac.Assign):
+            if isinstance(ins.expr, (tac.Var, tac.Attribute)) and isinstance(ins.lhs, tac.Var) and ins.lhs not in tac.free_vars_expr(ins.expr):
+                left, right = ins.lhs, ins.expr
+                self.alias[left] = right
 
     def __str__(self) -> str:
         return 'Alias({})'.format(", ".join(f'{k}={v}' for k, v in self.alias.items()))
@@ -103,8 +101,6 @@ def rewrite_ins(ins: tac.Tac, pre: AliasDomain) -> tac.Tac:
     def get(name):
         return pre.alias.get(name, name)
     match ins:
-        case tac.Mov():
-            return dataclasses.replace(ins, rhs=get(ins.rhs))
         case tac.Assign():
             if tac.free_vars_expr(ins.expr) & pre.alias.keys():
                 expr = ins.expr

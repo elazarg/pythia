@@ -190,14 +190,10 @@ def rewrite_remove_useless_movs(block: graph_utils.Block, label: int) -> None:
         return
     for i in reversed(range(len(block))):
         ins = block[i]
-        if isinstance(ins, tac.Mov) and ins.lhs.is_stackvar and ins.lhs not in alive.vars:
-            del block[i]
-            continue
-        if isinstance(ins, tac.Assign) and isinstance(ins.lhs, tac.Var)\
-                and ins.lhs.is_stackvar and ins.lhs.is_stackvar not in alive.vars\
-                and isinstance(ins.expr, tac.Attribute):
-            del block[i]
-            continue
+        if isinstance(ins, tac.Assign) and ins.assign_stack:
+            if ins.no_side_effect and ins.lhs not in alive.vars:
+                del block[i]
+                continue
         alive.transfer(block[i], f'{label}.{i}')
 
 
@@ -208,15 +204,32 @@ def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> N
         return
     for i in reversed(range(1, len(block))):
         ins = block[i]
+        if isinstance(ins, tac.Assign) and ins.assign_stack and ins.lhs not in alive.vars:
+            ins = block[i] = dataclasses.replace(ins, lhs=None)
+
         prev = block[i-1]
-        if isinstance(prev, tac.Assign) and isinstance(prev.lhs, tac.Var) and prev.lhs.is_stackvar:
+        merged_instruction = None
+        killed_by_ins = tac.free_vars(ins) - (alive.vars - tac.gens(ins))
+        if isinstance(prev, tac.Assign) and prev.assign_stack and prev.lhs in killed_by_ins:
+            # $0 = Var
+            # v = EXP($0)  # $0 is killed
             match ins:
-                case tac.Mov():
-                    if ins.rhs == prev.lhs and prev.lhs not in alive.vars:
-                        del block[i]
-                        block[i-1] = dataclasses.replace(block[i-1], lhs=ins.lhs)
+                case tac.Return():
+                    value = tac.subst_var_in_expr(ins.value, prev.lhs, prev.expr)
+                    merged_instruction = dataclasses.replace(ins, value=value)
                 case tac.InplaceBinary():
-                    if ins.right == prev.lhs and prev.lhs not in alive.vars:
-                        del block[i]
-                        block[i-1] = dataclasses.replace(ins, right=prev.expr)
-        alive.transfer(block[i], f'{label}.{i}')
+                    if ins.right == prev.lhs:
+                        merged_instruction = dataclasses.replace(ins, right=prev.expr)
+                case tac.Assign():
+                    if isinstance(prev.expr, (tac.Var, tac.Const)) or isinstance(ins.expr, tac.Var):
+                        expr = tac.subst_var_in_expr(ins.expr, prev.lhs, prev.expr)
+                        merged_instruction = dataclasses.replace(ins, expr=expr)
+        if merged_instruction is not None:
+            # print(f'{label}.{i}: {prev}; {ins} -> {merged_instruction}')
+            block[i] = merged_instruction
+            del block[i - 1]
+            if prev.lhs in tac.free_vars(merged_instruction):
+                print(f'{prev}; {ins}: {prev.lhs} in {merged_instruction}')
+        else:
+            print(f'{label}.{i}: {prev}; {ins} -> {merged_instruction}')
+            alive.transfer(ins, f'{label}.{i}')

@@ -476,6 +476,12 @@ def simple_pointer():
     return x + y
 
 
+def listcomp():
+    x = 5
+    z = (x for x in [1, 2, 3])
+    print(x)
+    print(z)
+
 def do_work(featuers, target, model, k):
     '''
     The SDS algorithm, as in "Submodular Dictionary Selection for Sparse Representation", Krause and Cevher, ICML '10
@@ -640,3 +646,8 @@ def genetic(self, iterations):
     print ("[%d Answer: '%s']" % (epoch, fittest_individual))
 if __name__ == "__main__":
     run()
+
+def selection(X: np.ndarray, y: np.ndarray):
+    X = (X - X.mean()) / X.std()
+    X = np.c_[np.ones(X.shape[0]), X]
+    return X

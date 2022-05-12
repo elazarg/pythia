@@ -22,8 +22,7 @@ def calculate_stack_depth(cfg: Cfg) -> dict[int, int]:
     return res
 
 
-def make_bcode_block_cfg(instructions: Iterable[bcode.BCode]) -> tuple[dict[int, int], Cfg]:
-    instructions = list(instructions)
+def make_bcode_block_cfg(instructions: list[bcode.BCode]) -> tuple[dict[int, int], Cfg]:
     dbs = {ins.offset: ins for ins in instructions}
     edges = [(b.offset, dbs[j].offset, {'stack_effect': stack_effect})
              for b in dbs.values()

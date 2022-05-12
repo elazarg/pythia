@@ -42,6 +42,7 @@ class ObjectType:
 @dataclass
 class FunctionType:
     return_type: ObjectType
+    new: bool = True
 
     def __repr__(self):
         return f'() -> {self.return_type}'
@@ -134,8 +135,8 @@ BUILTINS_MODULE = ObjectType('/builtins', {
     Var('print'): FunctionType(NONE),
     Var('abs'): FunctionType(FLOAT),
     Var('round'): FunctionType(FLOAT),
-    Var('min'): FunctionType(FLOAT),
-    Var('max'): FunctionType(FLOAT),
+    Var('min'): FunctionType(FLOAT, new=False),
+    Var('max'): FunctionType(FLOAT, new=False),
     Var('sum'): FunctionType(FLOAT),
     Var('all'): FunctionType(BOOL),
     Var('any'): FunctionType(BOOL),
@@ -300,9 +301,7 @@ class TypeDomain(AbstractDomain):
         for var in tac.gens(ins):
             if var in self.types:
                 del self.types[var]
-        if isinstance(ins, tac.Mov):
-            self.types[ins.lhs] = eval(types, ins.rhs)
-        elif isinstance(ins, tac.Assign):
+        if isinstance(ins, tac.Assign):
             self.types[ins.lhs] = eval(types, ins.expr)
         elif isinstance(ins, tac.For):
             self.transfer(ins.as_call(), location)

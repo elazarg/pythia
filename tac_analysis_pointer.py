@@ -95,9 +95,7 @@ class PointerDomain(AbstractDomain):
             if var in activation:
                 del activation[var]
 
-        if isinstance(ins, tac.Mov):
-            activation[ins.lhs] = eval(ins.rhs)
-        elif isinstance(ins, tac.Assign):
+        if isinstance(ins, tac.Assign):
             val = eval(ins.expr)
             match ins.lhs:
                 case tac.Var():
@@ -149,5 +147,6 @@ def evaluator(state: dict[Object, dict[tac.Var, set[Object]]], location: str):
                 if expr.left in locals_state or expr.right in locals_state:
                     return {location_object}
                 return set()
+            case tac.MakeFunction(): return set()
             case _: raise Exception(f"Unsupported expression {expr}")
     return inner

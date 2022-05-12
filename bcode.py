@@ -89,32 +89,8 @@ class BCode(dis.Instruction):
             self, repr(self.argrepr))
 
 
-def update_break_instruction(ins_iter: Iterator[dis.Instruction]) -> Iterator[BCode]:
-    """BREAK_LOOP is problematic:
-    (a) It does not contain the target.
-    (b) Both stack effect and target depends on whether it is inside FOR or inside WHILE.
-    The right way to fix it is from inside the graph, but for most purposes
-    running over the code will suffice; It's hard to do so from cfg, since its structure depends on the analysis...
-    RAISE_VARARGS is obviously problematic too. We want to jump to all `except` clauses
-    and out of the function; but more importantly, its POP_BLOCK should be matched appropriately.
-    """
-    for ins in ins_iter:
-        # if ins.opname == 'SETUP_LOOP':
-        #     stack.append([ins, 'WHILE '])
-        # if ins.opname == 'POP_BLOCK':
-        #     stack.pop()
-        # if ins.opname == 'FOR_ITER':
-        #     stack[-1][-1] = 'FOR '
-        # if ins.opname == 'BREAK_LOOP':
-        #     last = stack[-1]
-        #     to = last[0].argval
-        #     ins = ins._replace(argrepr='{}to {}'.format(last[-1], to))
-        yield BCode(*ins)
-    # assert len(stack) == 0
-
-
-def get_instructions(f) -> Iterator[BCode]:
-    return update_break_instruction(dis.get_instructions(f))
+def get_instructions(f) -> list[BCode]:
+    return [BCode(*ins) for ins in dis.get_instructions(f)]
 
 
 def test():

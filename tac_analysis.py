@@ -26,8 +26,9 @@ def make_tacblock_cfg(f, simplify=True):
 
 def print_block(n, block):
     print(n, ':')
-    for ins in block:
-        print('\t', ins)
+    for i, ins in enumerate(block):
+        label = f'{n}.{i}'
+        print(f'\t{label:6}\t', ins)
 
 
 def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain], initial: Lattice = None) -> None:
@@ -69,9 +70,9 @@ def test(f: type(test), print_analysis=False, simplify=True):
     analyze(cfg, LivenessDomain)
     analyze(cfg, AliasDomain)
     for label, block in cfg.items():
-        rewrite_aliases(block, label)
         rewrite_remove_useless_movs_pairs(block, label)
-        rewrite_remove_useless_movs(block, label)
+        # rewrite_aliases(block, label)
+        # rewrite_remove_useless_movs(block, label)
     analyze(cfg, LivenessDomain)
     analyze(cfg, ConstantDomain)
     analyze(cfg, TypeDomain, TypeDomain.read_initial(f.__annotations__))
@@ -102,4 +103,6 @@ def test(f: type(test), print_analysis=False, simplify=True):
 
 if __name__ == '__main__':
     import code_examples
+    import dis
+    print(dis.dis(code_examples.listcomp))
     test(code_examples.feature_selection, print_analysis=True, simplify=True)
