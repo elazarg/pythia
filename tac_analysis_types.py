@@ -20,7 +20,7 @@ T = TypeVar('T')
 @dataclass()
 class ObjectType:
     name: str
-    fields: dict[Var, FunctionType | ObjectType]
+    fields: dict[str, FunctionType | ObjectType]
 
     @staticmethod
     def translate(t: type):
@@ -57,30 +57,30 @@ NONE = ObjectType('None', {})
 
 def make_tuple(t: ObjectType) -> ObjectType:
     return ObjectType('tuple', {
-        Var('__getitem__'): FunctionType(t),
+        '__getitem__': FunctionType(t),
     })
 
 
 def iter_method(element_type: ObjectType) -> FunctionType:
     return FunctionType(ObjectType(f'iterator[{element_type}]', {
-        Var('__next__'): FunctionType(element_type),
+        '__next__': FunctionType(element_type),
     }))
 
 
 NDARRAY = ObjectType('ndarray', {
-    Var('mean'): FunctionType(FLOAT),
-    Var('std'): FunctionType(FLOAT),
-    Var('shape'): make_tuple(INT),
-    Var('size'): INT,
-    Var('__getitem__'): FunctionType(FLOAT),
-    Var('__iter__'): iter_method(FLOAT),  # inaccurate
+    'mean': FunctionType(FLOAT),
+    'std': FunctionType(FLOAT),
+    'shape': make_tuple(INT),
+    'size': INT,
+    '__getitem__': FunctionType(FLOAT),
+    '__iter__': iter_method(FLOAT),  # inaccurate
 })
 
-NDARRAY.fields[Var('T')] = NDARRAY
+NDARRAY.fields['T'] = NDARRAY
 
 ARRAY_GEN = FunctionType(NDARRAY)
 
-NDARRAY.fields[Var('astype')] = ARRAY_GEN
+NDARRAY.fields['astype'] = ARRAY_GEN
 
 
 DATAFRAME = ObjectType('DataFrame', {
@@ -92,61 +92,62 @@ TIME_MODULE = ObjectType('/time', {
 })
 
 NUMPY_MODULE = ObjectType('/numpy', {
-    Var('array'): ARRAY_GEN,
-    Var('dot'): FunctionType(FLOAT),
-    Var('zeros'): ARRAY_GEN,
-    Var('ones'): ARRAY_GEN,
-    Var('concatenate'): ARRAY_GEN,
-    Var('empty'): ARRAY_GEN,
-    Var('empty_like'): ARRAY_GEN,
-    Var('full'): ARRAY_GEN,
-    Var('full_like'): ARRAY_GEN,
-    Var('arange'): ARRAY_GEN,
-    Var('linspace'): ARRAY_GEN,
-    Var('logspace'): ARRAY_GEN,
-    Var('geomspace'): ARRAY_GEN,
-    Var('meshgrid'): ARRAY_GEN,
-    Var('max'): FunctionType(FLOAT),
-    Var('min'): FunctionType(FLOAT),
-    Var('sum'): FunctionType(FLOAT),
-    Var('setdiff1d'): ARRAY_GEN,
-    Var('unique'): ARRAY_GEN,
-    Var('append'): ARRAY_GEN,
-    Var('random'): ARRAY_GEN,
-    Var('argmax'): FunctionType(INT),
-    Var('c_'): ObjectType('slice_trick', {
-        Var('__getitem__'): FunctionType(NDARRAY),
+    'array': ARRAY_GEN,
+    'dot': FunctionType(FLOAT),
+    'zeros': ARRAY_GEN,
+    'ones': ARRAY_GEN,
+    'concatenate': ARRAY_GEN,
+    'empty': ARRAY_GEN,
+    'empty_like': ARRAY_GEN,
+    'full': ARRAY_GEN,
+    'full_like': ARRAY_GEN,
+    'arange': ARRAY_GEN,
+    'linspace': ARRAY_GEN,
+    'logspace': ARRAY_GEN,
+    'geomspace': ARRAY_GEN,
+    'meshgrid': ARRAY_GEN,
+    'max': FunctionType(FLOAT),
+    'min': FunctionType(FLOAT),
+    'sum': FunctionType(FLOAT),
+    'setdiff1d': ARRAY_GEN,
+    'unique': ARRAY_GEN,
+    'append': ARRAY_GEN,
+    'random': ARRAY_GEN,
+    'argmax': FunctionType(INT),
+    'c_': ObjectType('slice_trick', {
+        '__getitem__': FunctionType(NDARRAY),
     }),
-    Var('r_'): ObjectType('slice_trick', {
-        Var('__getitem__'): FunctionType(NDARRAY),
+    'r_': ObjectType('slice_trick', {
+        '__getitem__': FunctionType(NDARRAY),
     }),
 
 })
 
 PANDAS_MODULE = ObjectType('/pandas', {
-    Var('DataFrame'): FunctionType(DATAFRAME),
+    'DataFrame': FunctionType(DATAFRAME),
 })
 
 BUILTINS_MODULE = ObjectType('/builtins', {
-    Var('range'): FunctionType(ObjectType('range', {
-        Var('__iter__'): iter_method(INT),
+    'range': FunctionType(ObjectType('range', {
+        '__iter__': iter_method(INT),
     })),
-    Var('len'): FunctionType(INT),
-    Var('print'): FunctionType(NONE),
-    Var('abs'): FunctionType(FLOAT),
-    Var('round'): FunctionType(FLOAT),
-    Var('min'): FunctionType(FLOAT, new=False),
-    Var('max'): FunctionType(FLOAT, new=False),
-    Var('sum'): FunctionType(FLOAT),
-    Var('all'): FunctionType(BOOL),
-    Var('any'): FunctionType(BOOL),
-    Var('int'): FunctionType(INT),
-    Var('float'): FunctionType(FLOAT),
-    Var('str'): FunctionType(STRING),
-    Var('bool'): FunctionType(BOOL),
+    'len': FunctionType(INT),
+    'print': FunctionType(NONE),
+    'abs': FunctionType(FLOAT),
+    'round': FunctionType(FLOAT),
+    'min': FunctionType(FLOAT, new=False),
+    'max': FunctionType(FLOAT, new=False),
+    'sum': FunctionType(FLOAT),
+    'all': FunctionType(BOOL),
+    'any': FunctionType(BOOL),
+    'int': FunctionType(INT),
+    'float': FunctionType(FLOAT),
+    'str': FunctionType(STRING),
+    'bool': FunctionType(BOOL),
 })
 
 LOCALS_MODULE = ObjectType('LOCALS', { })
+GLOBALS_MODULE = ObjectType('LOCALS', { })
 NONLOCALS_MODULE = ObjectType('NONLOCALS', { })
 
 modules = {
@@ -305,7 +306,13 @@ class TypeDomain(AbstractDomain):
             if var in self.types:
                 del self.types[var]
         if isinstance(ins, tac.Assign):
-            self.types[ins.lhs] = eval(types, ins.expr)
+            rhs = eval(types, ins.expr)
+            match ins.lhs:
+                case tac.Attribute(var=tac.Scope.LOCALS): LOCALS_MODULE.fields[ins.lhs.attr] = rhs.value
+                case tac.Attribute(var=tac.Scope.GLOBALS): GLOBALS_MODULE.fields[ins.lhs.attr] = rhs.value
+                case tac.Attribute(var=tac.Scope.NONLOCALS): NONLOCALS_MODULE.fields[ins.lhs.attr] = rhs.value
+                case tac.Var():
+                    self.types[ins.lhs] = eval(types, ins.expr)
         elif isinstance(ins, tac.For):
             self.transfer(ins.as_call(), location)
         self.normalize()
@@ -334,7 +341,7 @@ class TypeDomain(AbstractDomain):
     def read_initial(cls, annotations: dict[str, type]) -> TypeDomain:
         result = TypeDomain.top()
         result.types.update({
-            tac.Var(name): TypeLattice(ObjectType.translate(t))
+            tac.make_local(name): TypeLattice(ObjectType.translate(t))
             for name, t in annotations.items()
         })
         return result

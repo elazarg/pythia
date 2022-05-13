@@ -102,7 +102,7 @@ def rewrite_ins(ins: tac.Tac, pre: AliasDomain) -> tac.Tac:
         return pre.alias.get(name, name)
     match ins:
         case tac.Assign():
-            if tac.free_vars_expr(ins.expr) & pre.alias.keys():
+            if tac.free_vars_expr(ins.expr).keys() & pre.alias.keys():
                 expr = ins.expr
                 match ins.expr:
                     case tac.Var():

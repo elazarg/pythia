@@ -128,7 +128,7 @@ class LivenessDomain(AbstractDomain):
         if self.vars is None:
             return
         self.vars -= tac.gens(ins)
-        self.vars |= tac.free_vars(ins)
+        self.vars |= tac.free_vars(ins).keys()
 
     def __str__(self) -> str:
         return 'Alive({})'.format(", ".join(f'{k}' for k in self.vars))
@@ -209,7 +209,7 @@ def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> N
 
         prev = block[i-1]
         merged_instruction = None
-        killed_by_ins = tac.free_vars(ins) - (alive.vars - tac.gens(ins))
+        killed_by_ins = tac.free_vars(ins).keys() - (alive.vars - tac.gens(ins))
         if isinstance(prev, tac.Assign) and prev.assign_stack and prev.lhs in killed_by_ins:
             # $0 = Expr
             # v = EXP($0)  # $0 is killed
@@ -217,19 +217,16 @@ def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> N
                 case tac.Return():
                     value = tac.subst_var_in_expr(ins.value, prev.lhs, prev.expr)
                     merged_instruction = dataclasses.replace(ins, value=value)
-                case tac.InplaceBinary():
-                    if ins.right == prev.lhs:
-                        merged_instruction = dataclasses.replace(ins, right=prev.expr)
+                case tac.InplaceBinary(right=prev.lhs):
+                    merged_instruction = dataclasses.replace(ins, right=prev.expr)
                 case tac.Assign():
-                    if isinstance(prev.expr, (tac.Var, tac.Const, tac.Attribute)) or isinstance(ins.expr, tac.Var):
+                    if isinstance(prev.expr, (tac.Var, tac.Const, tac.Attribute)) or tac.free_vars(ins)[prev.lhs] == 1:
                         expr = tac.subst_var_in_expr(ins.expr, prev.lhs, prev.expr)
                         merged_instruction = dataclasses.replace(ins, expr=expr)
         if merged_instruction is not None:
             # print(f'{label}.{i}: {prev}; {ins} -> {merged_instruction}')
             block[i] = merged_instruction
             del block[i - 1]
-            if prev.lhs in tac.free_vars(merged_instruction):
-                print(f'{prev}; {ins}: {prev.lhs} in {merged_instruction}')
         else:
             print(f'{label}.{i}: {prev}; {ins} -> {merged_instruction}')
             alive.transfer(ins, f'{label}.{i}')

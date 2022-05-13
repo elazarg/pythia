@@ -5,7 +5,7 @@ import enum
 import itertools as it
 import dataclasses
 from dataclasses import dataclass
-from typing import Iterable, Optional, TypeAlias, Literal
+from typing import Iterable, Optional, TypeAlias, Literal, Counter
 
 import bcode
 import bcode_cfg
@@ -277,67 +277,73 @@ Tac = Nop | Assign | InplaceBinary | Jump | For | Return | Raise | Del | Unsuppo
 NOP = Nop()
 
 
-def free_vars_expr(expr: Expr) -> set[Var]:
+def free_vars_expr(expr: Expr) -> Counter[Var]:
     match expr:
-        case Const(): return set()
-        case Var(): return {expr}
-        case Attribute(): return free_vars_expr(expr.var)
+        case Const(): return Counter[Var]()
+        case Var(): return Counter[Var]([expr])
+        case Attribute():
+            if isinstance(expr.var, Scope):
+                return Counter[Var]([expr])
+            return free_vars_expr(expr.var)
         case Subscr(): return free_vars_expr(expr.var) | free_vars_expr(expr.index)
         case Binary(): return free_vars_expr(expr.left) | free_vars_expr(expr.right)
         case Call():
-            return free_vars_expr(expr.function) | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args)) \
-                   | ({expr.kwargs} if expr.kwargs else set())
+            return free_vars_expr(expr.function) | Counter[Var](it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args)) \
+                   | Counter[Var]([expr.kwargs] if expr.kwargs else [])
         case Yield(): return free_vars_expr(expr.value)
-        case Import(): return set()
-        case MakeFunction(): return {expr.name, expr.code}  # TODO: fix this
-        case Scope(): return set()
+        case Import(): return Counter[Var]()
+        case MakeFunction(): return free_vars_expr(expr.name) | free_vars_expr(expr.code)  # TODO: fix this
+        case Scope(): return Counter[Var]()
         case _: raise NotImplementedError(f'free_vars_expr({repr(expr)})')
 
 
-def free_vars_lval(signature: Signature) -> set[Var]:
+def free_vars_lval(signature: Signature) -> Counter[Var]:
     match signature:
-        case Var(): return set()
+        case Var(): return Counter[Var]()
         case Attribute(): return free_vars_expr(signature.var)
         case Subscr(): return free_vars_expr(signature.var) | free_vars_expr(signature.index)
-        case tuple(): return set(it.chain.from_iterable(free_vars_lval(arg) for arg in signature))
-        case None: return set()
-        case Scope(): return set()
+        case tuple(): return Counter[Var](it.chain.from_iterable(free_vars_lval(arg) for arg in signature))
+        case None: return Counter[Var]()
+        case Scope(): return Counter[Var]()
         case _: raise NotImplementedError(f'free_vars_lval({repr(signature)})')
 
 
-def free_vars(tac: Tac) -> set[Var]:
-    match tac:
-        case Nop(): return set()
-        case Assign(): return free_vars_lval(tac.lhs) | free_vars_expr(tac.expr)
-        case InplaceBinary(): return {tac.lhs} | free_vars_expr(tac.right)
-        case Jump(): return free_vars_expr(tac.cond)
-        case For(): return free_vars_expr(tac.iterator)
-        case Return(): return free_vars_expr(tac.value)
-        case Raise(): return free_vars_expr(tac.value)
-        case Del(): return set(tac.variables)
-        case Unsupported(): return set()
-        case _: raise NotImplementedError(f'{tac}')
+def free_vars(ins: Tac) -> Counter[Var]:
+    match ins:
+        case Nop(): return Counter[Var]()
+        case Assign(): return free_vars_lval(ins.lhs) | free_vars_expr(ins.expr)
+        case InplaceBinary(): return free_vars_lval(ins.lhs) | free_vars_expr(ins.right)
+        case Jump(): return free_vars_expr(ins.cond)
+        case For(): return free_vars_expr(ins.iterator)
+        case Return(): return free_vars_expr(ins.value)
+        case Raise(): return free_vars_expr(ins.value)
+        case Del(): return Counter[Var](it.chain.from_iterable(free_vars_lval(v) for v in ins.variables))
+        case Unsupported(): return Counter[Var]()
+        case _: raise NotImplementedError(f'{ins}')
 
 
-def gens(tac: Tac) -> set[Var]:
-    match tac:
+def gens(ins: Tac) -> set[Var | Attribute]:
+    match ins:
         case Nop(): return set()
         case Assign():
-            match tac.lhs:
-                case Var(): return {tac.lhs}
-                case tuple(): return set(tac.lhs)
-                case Attribute(): return set()
+            match ins.lhs:
+                case Var(): return {ins.lhs}
+                case tuple(): return set(ins.lhs)
+                case Attribute():
+                    if isinstance(ins.lhs.var, Scope):
+                        return {ins.lhs}
+                    return set()
                 case Subscr(): return set()
                 case None: return set()
-                case _: raise NotImplementedError(f'gens({tac})')
-        case InplaceBinary(): return {tac.lhs}
+                case _: raise NotImplementedError(f'gens({ins})')
+        case InplaceBinary(): return {ins.lhs}
         case Jump(): return set()
-        case For(): return {tac.lhs}
+        case For(): return {ins.lhs}
         case Return(): return set()
         case Raise(): return set()
-        case Del(): return set(tac.variables)
+        case Del(): return set(ins.variables)
         case Unsupported(): return set()
-        case _: raise NotImplementedError(f'gens({tac})')
+        case _: raise NotImplementedError(f'gens({ins})')
 
 
 def subst_var_in_expr(expr: Expr, target: Var, new_var: Var | Attribute) -> Expr:
