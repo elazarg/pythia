@@ -228,8 +228,8 @@ def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> N
             # print(f'{label}.{i}: {prev}; {ins} -> {merged_instruction}')
             block[i] = merged_instruction
             del block[i - 1]
-            if prev.lhs in tac.free_vars(merged_instruction):
-                print(f'{prev}; {ins}: {prev.lhs} in {merged_instruction}')
+            # if prev.lhs in tac.free_vars(merged_instruction):
+            #     print(f'{prev}; {ins}: {prev.lhs} in {merged_instruction}')
         else:
-            print(f'{label}.{i}: {prev}; {ins} -> {merged_instruction}')
+            # print(f'{label}.{i}: {prev}; {ins} -> {merged_instruction}')
             alive.transfer(ins, f'{label}.{i}')

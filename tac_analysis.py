@@ -71,8 +71,8 @@ def test(f: type(test), print_analysis=False, simplify=True):
     analyze(cfg, AliasDomain)
     for label, block in cfg.items():
         rewrite_remove_useless_movs_pairs(block, label)
-        # rewrite_aliases(block, label)
-        # rewrite_remove_useless_movs(block, label)
+        rewrite_aliases(block, label)
+        rewrite_remove_useless_movs(block, label)
     analyze(cfg, LivenessDomain)
     analyze(cfg, ConstantDomain)
     analyze(cfg, TypeDomain, TypeDomain.read_initial(f.__annotations__))
@@ -104,5 +104,5 @@ def test(f: type(test), print_analysis=False, simplify=True):
 if __name__ == '__main__':
     import code_examples
     import dis
-    print(dis.dis(code_examples.listcomp))
+    # print(dis.dis(code_examples.listcomp))
     test(code_examples.feature_selection, print_analysis=True, simplify=True)

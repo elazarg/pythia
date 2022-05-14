@@ -137,16 +137,16 @@ def evaluator(state: dict[Object, dict[tac.Var, set[Object]]], location: str):
                     return set(chain.from_iterable(state.get(obj, {}).get(expr.attr, set()).copy()
                                                    for obj in inner(expr.var)))
             case tac.Call():
-                # if not expr.function.name[0].isupper():
-                #     return set()
+                if not expr.is_allocation:
+                    return set()
                 return {location_object}
             case tac.Subscr(): return set()
             case tac.Yield(): return set()
             case tac.Import(): return set()
             case tac.Binary():
-                if expr.left in locals_state or expr.right in locals_state:
-                    return {location_object}
-                return set()
+                if not expr.is_allocation:
+                    return set()
+                return {location_object}
             case tac.MakeFunction(): return set()
             case _: raise Exception(f"Unsupported expression {expr}")
     return inner

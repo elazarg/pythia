@@ -155,28 +155,28 @@ modules = {
 
 BINARY = {
     (INT.name, INT.name): {
-        '/': FLOAT,
-        **{op: INT for op in ['+', '-', '*', '**', '//', '%']},
-        **{op: INT for op in ['&', '|', '^', '<<', '>>']},
-        **{op: BOOL for op in ['<', '>', '<=', '>=', '==', '!=']},
+        '/': FunctionType(FLOAT, new=False),
+        **{op: FunctionType(INT, new=False) for op in ['+', '-', '*', '**', '//', '%']},
+        **{op: FunctionType(INT, new=False) for op in ['&', '|', '^', '<<', '>>']},
+        **{op: FunctionType(BOOL, new=False) for op in ['<', '>', '<=', '>=', '==', '!=']},
     },
     (INT.name, FLOAT.name): {
-        **{op: FLOAT for op in ['+', '-', '*', '/', '**', '//', '%']},
-        **{op: BOOL for op in ['<', '>', '<=', '>=', '==', '!=']},
+        **{op: FunctionType(FLOAT, new=False) for op in ['+', '-', '*', '/', '**', '//', '%']},
+        **{op: FunctionType(BOOL, new=False) for op in ['<', '>', '<=', '>=', '==', '!=']},
     },
     (FLOAT.name, INT.name): {
-        **{op: FLOAT for op in ['+', '-', '*', '/', '**', '//', '%']},
-        **{op: BOOL for op in ['<', '>', '<=', '>=', '==', '!=']},
+        **{op: FunctionType(FLOAT, new=False) for op in ['+', '-', '*', '/', '**', '//', '%']},
+        **{op: FunctionType(BOOL, new=False) for op in ['<', '>', '<=', '>=', '==', '!=']},
     },
     (FLOAT.name, FLOAT.name): {
-        **{op: FLOAT for op in ['+', '-', '*', '/', '**', '//', '%']},
-        **{op: BOOL for op in ['<', '>', '<=', '>=', '==', '!=']},
+        **{op: FunctionType(FLOAT, new=False) for op in ['+', '-', '*', '/', '**', '//', '%']},
+        **{op: FunctionType(BOOL, new=False) for op in ['<', '>', '<=', '>=', '==', '!=']},
     },
-    (NDARRAY.name, NDARRAY.name): {op: NDARRAY for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
-    (NDARRAY.name, INT.name): {op: NDARRAY for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
-    (INT.name, NDARRAY.name): {op: NDARRAY for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
-    (NDARRAY.name, FLOAT.name): {op: NDARRAY for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
-    (FLOAT.name, NDARRAY.name): {op: NDARRAY for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (NDARRAY.name, NDARRAY.name): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (NDARRAY.name, INT.name): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (INT.name, NDARRAY.name): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (NDARRAY.name, FLOAT.name): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (FLOAT.name, NDARRAY.name): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
 }
 
 
@@ -380,6 +380,7 @@ def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
             if not isinstance(function_signature.value, FunctionType):
                 print(f'eval({expr.function}) == {function_signature} which is not a function')
                 return TypeLattice.bottom()
+            expr.is_allocation = function_signature.value.new
             return TypeLattice(function_signature.value.return_type)
         case tac.Yield(): return TOP
         case tac.Import():
@@ -390,6 +391,8 @@ def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
             if left.is_top() or right.is_top() or left.is_bottom() or right.is_bottom():
                 return TypeLattice.meet(left, right)
             if (left.value.name, right.value.name) in BINARY:
-                return TypeLattice(BINARY[(left.value.name, right.value.name)][expr.op])
+                ftype = BINARY[(left.value.name, right.value.name)][expr.op]
+                expr.is_allocation = ftype.new
+                return TypeLattice(ftype.return_type)
             return TOP
         case _: return TOP

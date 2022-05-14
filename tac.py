@@ -126,16 +126,21 @@ class Binary:
     left: Value
     op: str
     right: Value
+    is_allocation: bool = False
 
     def __str__(self):
-        return f'{self.left} {self.op} {self.right}'
+        res = f'{self.left} {self.op} {self.right}'
+        if self.is_allocation:
+            res += ' #  new'
+        return res
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class Call:
     function: Var | Attribute
     args: tuple[Value, ...]
     kwargs: Var = None
+    is_allocation: bool = False
 
     def location(self) -> int:
         return id(self)
@@ -144,6 +149,8 @@ class Call:
         res = f'{self.function}({", ".join(str(x) for x in self.args)})'
         if self.kwargs:
             res += f', kwargs={self.kwargs}'
+        if self.is_allocation:
+            res += ' #  new'
         return res
 
 
