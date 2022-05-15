@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from itertools import chain
-from typing import Type, TypeVar, Optional, ClassVar, Final
+from typing import Type, TypeVar, Optional, ClassVar, Final, Callable
 
 import tac
 from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Lattice, Bottom, Top,\
@@ -122,7 +122,7 @@ class PointerDomain(AbstractDomain):
             del self.pointers[LOCALS][var]
 
 
-def evaluator(state: dict[Object, dict[tac.Var, set[Object]]], location: str):
+def evaluator(state: dict[Object, dict[tac.Var, set[Object]]], location: str) -> Callable[[tac.Expr], set[Object]]:
     location_object = Object(location)
     locals_state = state[LOCALS]
 

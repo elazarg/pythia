@@ -190,8 +190,7 @@ def rewrite_remove_useless_movs(block: graph_utils.Block, label: int) -> None:
         return
     for i in reversed(range(len(block))):
         ins = block[i]
-        if isinstance(ins, tac.Assign) and ins.assign_stack:
-            if ins.no_side_effect and ins.lhs not in alive.vars:
+        if isinstance(ins, tac.Assign) and ins.no_side_effect and ins.lhs not in alive.vars:
                 del block[i]
                 continue
         alive.transfer(block[i], f'{label}.{i}')
@@ -215,15 +214,13 @@ def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> N
             # v = EXP($0)  # $0 is killed
             match ins:
                 case tac.Return():
-                    value = tac.subst_var_in_expr(ins.value, prev.lhs, prev.expr)
-                    merged_instruction = dataclasses.replace(ins, value=value)
+                    merged_instruction = tac.subst_var_in_ins(ins, prev.lhs, prev.expr)
                 case tac.InplaceBinary():
                     if ins.right == prev.lhs:
-                        merged_instruction = dataclasses.replace(ins, right=prev.expr)
+                        merged_instruction = tac.subst_var_in_ins(ins, prev.lhs, prev.expr)
                 case tac.Assign():
                     if isinstance(prev.expr, (tac.Var, tac.Const)) or isinstance(ins.expr, tac.Var):
-                        expr = tac.subst_var_in_expr(ins.expr, prev.lhs, prev.expr)
-                        merged_instruction = dataclasses.replace(ins, expr=expr)
+                        merged_instruction = tac.subst_var_in_ins(ins, prev.lhs, prev.expr)
         if merged_instruction is not None:
             # print(f'{label}.{i}: {prev}; {ins} -> {merged_instruction}')
             block[i] = merged_instruction

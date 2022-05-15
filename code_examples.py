@@ -423,7 +423,8 @@ def plotChart(iterations, cost_num):
     plt.show()
 
 
-def predict(X, theta):
+def predict(X: np.ndarray, theta: np.ndarray):
+    import numpy as np
     predict_ = np.zeros((len(X), 1))
     for j in range(len(X)):
         x = X[j]
@@ -610,6 +611,9 @@ def CN(root_to_leaf_path, vertices):
     for neighbour in world:
         CN(root_to_leaf_path + [neighbour], vertices)
 
+def simple_list():
+    x = [1, 2, 3]
+    return x
 
 def genetic(self, iterations):
     import numpy as np

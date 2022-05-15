@@ -49,6 +49,7 @@ class FunctionType:
 
 
 FLOAT = ObjectType('float', {})
+OBJECT = ObjectType('object', {})
 INT = ObjectType('int', {})
 STRING = ObjectType('str', {})
 BOOL = ObjectType('bool', {})
@@ -74,6 +75,24 @@ NDARRAY = ObjectType('ndarray', {
     Var('size'): INT,
     Var('__getitem__'): FunctionType(FLOAT),
     Var('__iter__'): iter_method(FLOAT),  # inaccurate
+})
+
+
+LIST = ObjectType('list', {
+    Var('__getitem__'): FunctionType(OBJECT),
+    Var('__iter__'): iter_method(OBJECT),
+    Var('__len__'): FunctionType(INT),
+    Var('__contains__'): FunctionType(BOOL),
+    Var('clear'): FunctionType(NONE),
+    Var('copy'): FunctionType(NONE),
+    Var('count'): FunctionType(INT),
+    Var('extend'): FunctionType(NONE),
+    Var('index'): FunctionType(INT),
+    Var('insert'): FunctionType(NONE),
+    Var('pop'): FunctionType(OBJECT),
+    Var('remove'): FunctionType(NONE),
+    Var('reverse'): FunctionType(NONE),
+    Var('sort'): FunctionType(NONE),
 })
 
 NDARRAY.fields[Var('T')] = NDARRAY
@@ -374,6 +393,8 @@ def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
                 return TypeLattice.bottom()
             return TypeLattice(f.return_type)
         case tac.Call():
+            if expr.function == Var('LIST'):
+                return TypeLattice(LIST)
             function_signature = eval(types, expr.function)
             if function_signature == TOP:
                 return TOP

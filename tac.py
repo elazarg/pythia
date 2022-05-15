@@ -213,7 +213,7 @@ class Assign:
 
     @property
     def no_side_effect(self) -> bool:
-        return isinstance(self.lhs, Var) and isinstance(self.expr, (Subscr, Attribute, Var, Const))
+        return self.assign_stack and isinstance(self.expr, (Subscr, Attribute, Var, Const))
 
     @property
     def assign_stack(self) -> bool:
@@ -381,8 +381,53 @@ def subst_var_in_expr(expr: Expr, target: Var, new_var: Var) -> Expr:
             assert False
         case Yield():
             return dataclasses.replace(expr, value=new_var)
+        case Const():
+            return expr
         case _:
-            assert False, f'subst_var_in_expr({expr}, {target}, {new_var})'
+            raise NotImplementedError(f'subst_var_in_expr({expr}, {target}, {new_var})')
+
+
+def subst_var_in_signature(signature: Signature, target: Var, new_var: Var) -> Signature:
+    match signature:
+        case Var():
+            return signature
+        case tuple():
+            return tuple(subst_var_in_signature(arg, target, new_var) for arg in signature)
+        case Attribute():
+            if signature.var == target:
+                return dataclasses.replace(signature, var=new_var)
+            return signature
+        case Subscr():
+            if signature.var == target:
+                signature = dataclasses.replace(signature, var=new_var)
+            if signature.index == target:
+                signature = dataclasses.replace(signature, index=new_var)
+            return signature
+    return signature
+
+
+def subst_var_in_ins(ins: Tac, target: Var, new_var: Var) -> Tac:
+    match ins:
+        case Assign():
+            return dataclasses.replace(ins,
+                                       lhs=subst_var_in_signature(ins.lhs, target, new_var),
+                                       expr=subst_var_in_expr(ins.expr, target, new_var))
+        case InplaceBinary():
+            return dataclasses.replace(ins,
+                                       lhs=subst_var_in_signature(ins.lhs, target, new_var),
+                                       right=subst_var_in_expr(ins.right, target, new_var))
+        case Return():
+            return dataclasses.replace(ins, value=subst_var_in_expr(ins.value, target, new_var))
+        case Yield():
+            return dataclasses.replace(ins, value=subst_var_in_expr(ins.value, target, new_var))
+        case For():
+            return dataclasses.replace(ins,
+                                       lhs=subst_var_in_signature(ins.lhs, target, new_var),
+                                       iterator=subst_var_in_expr(ins.iterator, target, new_var))
+        case Raise():
+            return dataclasses.replace(ins,
+                                       value=subst_var_in_expr(ins.value, target, new_var))
+    return ins
 
 
 def make_TAC(opname, val, stack_effect, stack_depth, starts_line=None) -> list[Tac]:
