@@ -69,8 +69,8 @@ def iter_method(element_type: ObjectType) -> FunctionType:
 
 
 NDARRAY = ObjectType('ndarray', {
-    Var('mean'): FunctionType(FLOAT),
-    Var('std'): FunctionType(FLOAT),
+    Var('mean'): FunctionType(FLOAT, new=False),
+    Var('std'): FunctionType(FLOAT, new=False),
     Var('shape'): make_tuple(INT),
     Var('size'): INT,
     Var('__getitem__'): FunctionType(FLOAT),
@@ -79,20 +79,20 @@ NDARRAY = ObjectType('ndarray', {
 
 
 LIST = ObjectType('list', {
-    Var('__getitem__'): FunctionType(OBJECT),
+    Var('__getitem__'): FunctionType(OBJECT, new=False),
     Var('__iter__'): iter_method(OBJECT),
-    Var('__len__'): FunctionType(INT),
-    Var('__contains__'): FunctionType(BOOL),
-    Var('clear'): FunctionType(NONE),
-    Var('copy'): FunctionType(NONE),
-    Var('count'): FunctionType(INT),
+    Var('__len__'): FunctionType(INT, new=False),
+    Var('__contains__'): FunctionType(BOOL, new=False),
+    Var('clear'): FunctionType(NONE, new=False),
+    Var('copy'): FunctionType(NONE, new=False),
+    Var('count'): FunctionType(INT, new=False),
     Var('extend'): FunctionType(NONE),
-    Var('index'): FunctionType(INT),
-    Var('insert'): FunctionType(NONE),
+    Var('index'): FunctionType(INT, new=False),
+    Var('insert'): FunctionType(NONE, new=False),
     Var('pop'): FunctionType(OBJECT),
-    Var('remove'): FunctionType(NONE),
-    Var('reverse'): FunctionType(NONE),
-    Var('sort'): FunctionType(NONE),
+    Var('remove'): FunctionType(NONE, new=False),
+    Var('reverse'): FunctionType(NONE, new=False),
+    Var('sort'): FunctionType(NONE, new=False),
 })
 
 NDARRAY.fields[Var('T')] = NDARRAY
@@ -112,7 +112,7 @@ TIME_MODULE = ObjectType('/time', {
 
 NUMPY_MODULE = ObjectType('/numpy', {
     Var('array'): ARRAY_GEN,
-    Var('dot'): FunctionType(FLOAT),
+    Var('dot'): FunctionType(FLOAT, new=False),
     Var('zeros'): ARRAY_GEN,
     Var('ones'): ARRAY_GEN,
     Var('concatenate'): ARRAY_GEN,
@@ -125,14 +125,14 @@ NUMPY_MODULE = ObjectType('/numpy', {
     Var('logspace'): ARRAY_GEN,
     Var('geomspace'): ARRAY_GEN,
     Var('meshgrid'): ARRAY_GEN,
-    Var('max'): FunctionType(FLOAT),
-    Var('min'): FunctionType(FLOAT),
-    Var('sum'): FunctionType(FLOAT),
+    Var('max'): FunctionType(FLOAT, new=False),
+    Var('min'): FunctionType(FLOAT, new=False),
+    Var('sum'): FunctionType(FLOAT, new=False),
     Var('setdiff1d'): ARRAY_GEN,
     Var('unique'): ARRAY_GEN,
     Var('append'): ARRAY_GEN,
     Var('random'): ARRAY_GEN,
-    Var('argmax'): FunctionType(INT),
+    Var('argmax'): FunctionType(INT, new=False),
     Var('c_'): ObjectType('slice_trick', {
         Var('__getitem__'): FunctionType(NDARRAY),
     }),
@@ -150,19 +150,19 @@ BUILTINS_MODULE = ObjectType('/builtins', {
     Var('range'): FunctionType(ObjectType('range', {
         Var('__iter__'): iter_method(INT),
     })),
-    Var('len'): FunctionType(INT),
-    Var('print'): FunctionType(NONE),
-    Var('abs'): FunctionType(FLOAT),
-    Var('round'): FunctionType(FLOAT),
+    Var('len'): FunctionType(INT, new=False),
+    Var('print'): FunctionType(NONE, new=False),
+    Var('abs'): FunctionType(FLOAT, new=False),
+    Var('round'): FunctionType(FLOAT, new=False),
     Var('min'): FunctionType(FLOAT, new=False),
     Var('max'): FunctionType(FLOAT, new=False),
-    Var('sum'): FunctionType(FLOAT),
-    Var('all'): FunctionType(BOOL),
-    Var('any'): FunctionType(BOOL),
-    Var('int'): FunctionType(INT),
-    Var('float'): FunctionType(FLOAT),
-    Var('str'): FunctionType(STRING),
-    Var('bool'): FunctionType(BOOL),
+    Var('sum'): FunctionType(FLOAT, new=False),
+    Var('all'): FunctionType(BOOL, new=False),
+    Var('any'): FunctionType(BOOL, new=False),
+    Var('int'): FunctionType(INT, new=False),
+    Var('float'): FunctionType(FLOAT, new=False),
+    Var('str'): FunctionType(STRING, new=False),
+    Var('bool'): FunctionType(BOOL, new=False),
 })
 
 modules = {

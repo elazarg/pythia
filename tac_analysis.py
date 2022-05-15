@@ -96,9 +96,12 @@ def test(f: type(test), print_analysis=False, simplify=True):
             print('\t', block.post[TypeDomain.name()])
             print()
 
-    print("Unseen:")
-    for k, v in tac_analysis_types.unseen.items():
-        print(k, v)
+    if tac_analysis_types.unseen:
+        print("Unseen:")
+        for k, v in tac_analysis_types.unseen.items():
+            print(k, v)
+
+    # cfg.draw()
 
 
 if __name__ == '__main__':

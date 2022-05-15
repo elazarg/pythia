@@ -33,25 +33,6 @@ def print_3addr(cfg, no_dels=True) -> None:
     print('\n'.join(linearize_cfg(cfg, no_dels)))
 
 
-def fix_break(cfg):
-    reverse_dom_tree = cfg.reverse_dom_tree()
-    back_edges = set(cfg.graph.edges) & reverse_dom_tree
-    loop_heads = {label for _, label in back_edges}
-    for label, block in cfg.items():
-        if not block:
-            continue
-        if (ins := block[-1]).opname not in ['BREAK_LOOP', 'CONTINUE_LOOP']:
-            continue
-        loop_head = max(loop_heads & {target for source, target in reverse_dom_tree if source == label})
-        print(ins)
-        ins.opname = 'JUMP_ABSOLUTE'
-        match ins.opname:
-            case 'BREAK_LOOP': ins.argval = loop_head
-            case 'CONTINUE_LOOP': ins.argval = loop_head
-        print(ins)
-        print()
-
-
 def make_tacblock_cfg(f) -> gu.Cfg[Tac]:
     depths, cfg = bcode_cfg.make_bcode_block_cfg_from_function(f)
 
@@ -146,7 +127,10 @@ class Call:
         return id(self)
 
     def __str__(self):
-        res = f'{self.function}({", ".join(str(x) for x in self.args)})'
+        res = ''
+        if self.function != Var('TUPLE'):
+            res += f'{self.function}'
+        res += f'({", ".join(str(x) for x in self.args)})'
         if self.kwargs:
             res += f', kwargs={self.kwargs}'
         if self.is_allocation:

@@ -120,7 +120,7 @@ def rewrite_ins(ins: tac.Tac, pre: AliasDomain) -> tac.Tac:
                                                    function=get(expr.function),
                                                    args=tuple(get(arg) for arg in expr.args))
                 ins = dataclasses.replace(ins, expr=expr)
-            if tac.free_vars_lval(ins.lhs) & pre.alias.keys():
+            if isinstance(ins.lhs, tac.Var) and tac.free_vars_lval(ins.lhs) & pre.alias.keys():
                 lhs = ins.lhs
                 match lhs:
                     case tac.Var():

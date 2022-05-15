@@ -219,8 +219,11 @@ def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> N
                     if ins.right == prev.lhs:
                         merged_instruction = tac.subst_var_in_ins(ins, prev.lhs, prev.expr)
                 case tac.Assign():
-                    if isinstance(prev.expr, (tac.Var, tac.Const)) or isinstance(ins.expr, tac.Var):
+                    if isinstance(prev.expr, (tac.Var, tac.Const)):
                         merged_instruction = tac.subst_var_in_ins(ins, prev.lhs, prev.expr)
+                    elif isinstance(ins.expr, tac.Var):
+                        expr = tac.subst_var_in_expr(ins.expr, prev.lhs, prev.expr)
+                        merged_instruction = dataclasses.replace(ins, expr=expr)
         if merged_instruction is not None:
             # print(f'{label}.{i}: {prev}; {ins} -> {merged_instruction}')
             block[i] = merged_instruction
