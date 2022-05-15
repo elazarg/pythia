@@ -1,5 +1,4 @@
 import dis
-from typing import Iterator
 
 
 class BCode(dis.Instruction):

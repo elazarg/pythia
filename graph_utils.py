@@ -181,6 +181,8 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
             next_n = next(iter(g.successors(n)))
             if g.in_degree(next_n) != 1:
                 break
+            if len(instructions) and type(instructions[-1]).__name__ == 'Jump':
+                del instructions[-1]
             n = next_n
         if label not in blocks.graph:
             blocks.graph.add_node(label)

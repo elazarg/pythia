@@ -572,6 +572,15 @@ def do_work(featuers, target, model, k):
     print(results)
     return results
 
+def jumps():
+    a = x
+    while a:
+        if b:
+            S = 2
+        else:
+            break
+    print(1)
+
 def pivoter():
     n = 4
     G = {0: set([1, 2, 3]), 1: set([2, 3]), 2: set([3]), 3: []}

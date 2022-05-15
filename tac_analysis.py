@@ -106,6 +106,6 @@ def test(f: type(test), print_analysis=False, simplify=True):
 
 if __name__ == '__main__':
     import code_examples
-    import dis
-    # print(dis.dis(code_examples.listcomp))
-    test(code_examples.feature_selection, print_analysis=True, simplify=True)
+    # import dis
+    # print(dis.dis(code_examples.jumps))
+    test(code_examples.do_work, print_analysis=True, simplify=True)
