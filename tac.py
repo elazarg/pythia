@@ -13,7 +13,7 @@ import graph_utils as gu
 
 
 def test() -> None:
-    code = disassemble.read_function_from_file('__pycache__/code_examples.cpython-310.pyc', 'simple')
+    code = disassemble.read_function('__pycache__/code_examples.cpython-310.pyc', 'simple')
     cfg = gu.simplify_cfg(make_tacblock_cfg(code))
     print_3addr(cfg)
     cfg.draw()

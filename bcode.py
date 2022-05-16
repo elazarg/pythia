@@ -95,7 +95,7 @@ def get_instructions(f) -> list[BCode]:
 
 
 def test():
-    code = disassemble.read_function_from_file('code_examples.py', 'simple')
+    code = disassemble.read_function('code_examples.py', 'simple')
     for b in get_instructions(code):
         print(b)
 
