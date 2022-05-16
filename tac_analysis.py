@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import typing
 
+import disassemble
 import graph_utils as gu
 import tac
 import tac_analysis_types
@@ -75,7 +76,7 @@ def test(f: type(test), print_analysis=False, simplify=True):
         rewrite_remove_useless_movs(block, label)
     analyze(cfg, LivenessDomain)
     analyze(cfg, ConstantDomain)
-    analyze(cfg, TypeDomain, TypeDomain.read_initial(f.__annotations__))
+    analyze(cfg, TypeDomain)  # , TypeDomain.read_initial(f.__annotations__))
     analyze(cfg, PointerDomain)
 
     for label, block in sorted(cfg.items()):
@@ -108,4 +109,5 @@ if __name__ == '__main__':
     import code_examples
     # import dis
     # print(dis.dis(code_examples.jumps))
-    test(code_examples.do_work, print_analysis=True, simplify=True)
+    code = disassemble.read_function_from_file('__pycache__/code_examples.cpython-310.pyc', 'feature_selection')
+    test(code, print_analysis=True, simplify=True)

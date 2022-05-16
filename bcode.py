@@ -1,5 +1,7 @@
 import dis
 
+import disassemble
+
 
 class BCode(dis.Instruction):
     __slots__ = ()
@@ -93,14 +95,8 @@ def get_instructions(f) -> list[BCode]:
 
 
 def test():
-    import code_examples
-    import pyclbr
-
-    elems = pyclbr.readmodule_ex('code_examples')
-    for name, val in elems.items():
-        print(val.lineno, ':', name)
-    for b in get_instructions(code_examples.simple):
-
+    code = disassemble.read_function_from_file('__pycache__/code_examples.cpython-310.pyc', 'simple')
+    for b in get_instructions(code):
         print(b)
 
 

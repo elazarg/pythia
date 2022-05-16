@@ -8,12 +8,13 @@ from typing import Iterable, Optional, TypeAlias
 
 import bcode
 import bcode_cfg
+import disassemble
 import graph_utils as gu
 
 
 def test() -> None:
-    import code_examples
-    cfg = gu.simplify_cfg(make_tacblock_cfg(code_examples.calc_mandelbrot_vals))
+    code = disassemble.read_function_from_file('__pycache__/code_examples.cpython-310.pyc', 'simple')
+    cfg = gu.simplify_cfg(make_tacblock_cfg(code))
     print_3addr(cfg)
     cfg.draw()
 
