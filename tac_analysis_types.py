@@ -6,8 +6,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Type, TypeVar, Optional, ClassVar, Final
 
-import numpy as np
-
 import tac
 from tac import Const, Var
 from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Bottom, Top, Lattice
