@@ -164,12 +164,13 @@ BUILTINS_MODULE = ObjectType('/builtins', {
     Var('bool'): FunctionType(BOOL, new=False),
 })
 
-modules = {
-    'builtins': BUILTINS_MODULE,
-    'numpy': NUMPY_MODULE,
-    'pandas': PANDAS_MODULE,
-    'time': TIME_MODULE,
-}
+GLOBALS_OBJECT = ObjectType('globals()', {
+    Var('numpy'): NUMPY_MODULE,
+    Var('np'): NUMPY_MODULE,
+    Var('pandas'): PANDAS_MODULE,
+    Var('time'): TIME_MODULE,
+})
+GLOBALS_OBJECT.fields.update(BUILTINS_MODULE.fields)
 
 BINARY = {
     (INT.name, INT.name): {
@@ -364,7 +365,7 @@ def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
         case tac.Const(): return TypeLattice(ObjectType.typeof(expr))
         case tac.Var():
             if expr.name == 'GLOBALS':
-                return TypeLattice(modules['builtins'])
+                return TypeLattice(GLOBALS_OBJECT)
             return types.get(expr, TOP)
         case tac.Attribute():
             t = eval(types, expr.var)
@@ -404,7 +405,7 @@ def eval(types: dict[Var, TypeLattice], expr: tac.Expr) -> TypeLattice:
             return TypeLattice(function_signature.value.return_type)
         case tac.Yield(): return TOP
         case tac.Import():
-            return TypeLattice(modules[expr.modname])
+            return TypeLattice(GLOBALS_OBJECT.fields[Var(expr.modname)])
         case tac.Binary():
             left = eval(types, expr.left)
             right = eval(types, expr.right)

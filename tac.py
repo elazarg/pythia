@@ -146,7 +146,7 @@ class Yield:
 
 @dataclass
 class Import:
-    modname: Var
+    modname: str
     feature: str = None
 
     def __str__(self):
@@ -533,7 +533,7 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
         case 'IMPORT_NAME':
             return [Assign(stackvar(out), Import(val))]
         case 'IMPORT_FROM':
-            return [Assign(stackvar(out), Import(stackvar(stack_depth), val))]
+            return [Assign(stackvar(out), Import(stack_depth, val))]
         case 'BUILD':
             if op == 'SLICE':
                 if val == 2:

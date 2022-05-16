@@ -436,8 +436,6 @@ def predict(X: np.ndarray, theta: np.ndarray):
 
 
 def feature_selection(X: np.ndarray, y: np.ndarray):
-    import numpy as np
-
     y = np.concatenate(y)
     X = (X - X.mean()) / X.std()
     X = np.c_[np.ones(X.shape[0]), X]
