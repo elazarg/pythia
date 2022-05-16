@@ -3,6 +3,7 @@ from __future__ import annotations
 import builtins
 import marshal
 import dis
+import compileall
 import struct
 from dataclasses import dataclass
 
@@ -24,9 +25,17 @@ def read_pyc_file(path: str) -> builtins.code:
         return code
 
 
+def do_compile(file_path):
+    with open(file_path, 'rb') as file:
+        bytecode = file.read()
+
+    return compile(bytecode, file_path, 'exec', dont_inherit=True, flags=0, optimize=0)
+
+
 def read_function_from_file(file_path, function_name):
     """Read a function from a file."""
-    code = read_pyc_file(file_path)
+    code = do_compile(file_path)
+
     for const in code.co_consts:
         if hasattr(const, 'co_code'):
             if const.co_name == function_name:

@@ -109,5 +109,5 @@ if __name__ == '__main__':
     import code_examples
     # import dis
     # print(dis.dis(code_examples.jumps))
-    code = disassemble.read_function_from_file('__pycache__/code_examples.cpython-310.pyc', 'feature_selection')
+    code = disassemble.read_function_from_file('code_examples.py', 'feature_selection')
     test(code, print_analysis=True, simplify=True)
