@@ -2,16 +2,7 @@ from __future__ import annotations
 
 import builtins
 import marshal
-import dis
-import compileall
 import struct
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class ObjectFile:
-    size: int
-    code: builtins.code
 
 
 # Based on https://stackoverflow.com/a/67428655/2289509
@@ -40,3 +31,4 @@ def read_function_from_file(file_path, function_name):
         if hasattr(const, 'co_code'):
             if const.co_name == function_name:
                 return const
+    raise ValueError(f'Could not find function {function_name} in {file_path}')
