@@ -40,14 +40,14 @@ def analyze(_cfg: gu.Cfg, analysis: Cartesian, annotations: dict[str, str]) -> N
     cfg: IterationStrategy = analysis.view(_cfg)
 
     wl = [entry] = {cfg.entry_label}
-    cfg[entry].pre[name].set_initial(annotations)
+    cfg[entry].pre[name] = analysis.initial(annotations)
     while wl:
         label = wl.pop()
         block = cfg[label]
 
         invariant = block.pre[name].copy()
         for index, tac in enumerate(cfg[label]):
-            invariant.transfer(tac, f'{label}.{index}')
+            analysis.transfer(invariant, tac, f'{label}.{index}')
 
         # if analysis.name() is not "Alive":
         #     liveness = typing.cast(typing.Optional[LivenessDomain], block.post.get(LivenessDomain.name()))
@@ -59,8 +59,9 @@ def analyze(_cfg: gu.Cfg, analysis: Cartesian, annotations: dict[str, str]) -> N
 
         for succ in cfg.successors(label):
             next_block: gu.Block = cfg[succ]
-            if not (invariant <= (pre := next_block.pre[name])):
-                next_block.pre[name] = pre.join(invariant)
+            pre = next_block.pre[name]
+            if not analysis.is_less_than(invariant, pre):
+                next_block.pre[name] = analysis.join(invariant, pre)
                 wl.add(succ)
 
 

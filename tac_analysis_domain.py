@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TypeVar, Protocol, Type, Generic, TypeAlias, Final
+from typing import TypeVar, Protocol, Type, Generic, TypeAlias, Final, Callable
 import graph_utils as gu
 
 import tac
@@ -114,128 +114,177 @@ BOTTOM = Bottom()
 TOP = Top()
 
 
-def transfer(lattice: Lattice[T], expr: tac.Expr | tac.Predefined, values: defaultdict[tac.Name, T]) -> T:
-    match expr:
-        case tac.Call(): return lattice.call(
-            function=values[expr.function],
-            args=[values[arg] for arg in expr.args]
-        )
-        case tac.Binary(): return lattice.binary(
-            left=values[expr.left],
-            right=values[expr.right],
-            op=expr.op
-        )
-        case tac.Predefined(): return lattice.predefined(expr)
-        case tac.Const(): return lattice.const(expr.value)
-        case tac.Attribute(): return lattice.attribute(values[expr.var], expr.attr.name)
-        case tac.Subscript(): return lattice.subscr(values[expr.var], values[expr.index])
-        case tac.Yield(): return TOP
-        case tac.Import(): return lattice.imported(expr.modname)
-        case tac.Var(): return values[expr]
-        case str(): assert False, f'unexpected string {expr}'
-        case _: assert False, f'unexpected expr {expr}'
+class Map(Generic[T]):
+    map: defaultdict[tac.Var, T]
+
+    def __init__(self):
+        self.map = defaultdict(lambda: TOP)
+
+    def __getitem__(self, key):
+        return self.map[key]
+
+    def __setitem__(self, key, value):
+        self.map[key] = value
+
+    def __iter__(self):
+        return iter(self.map)
+
+    def __contains__(self, key):
+        return key in self.map
+
+    def __len__(self):
+        return len(self.map)
+
+    def __eq__(self, other):
+        return isinstance(other, Map) and self.map == other.map
+
+    def __delitem__(self, key):
+        del self.map[key]
+
+    def __repr__(self):
+        items = ', '.join(f'{k}={v}' for k, v in self.items())
+        return f'Map({items})'
+
+    def __str__(self):
+        items = ', '.join(f'{k}={v}' for k, v in self.items())
+        return f'Map({items})'
+
+    def items(self):
+        return self.map.items()
+
+    def keys(self):
+        return self.map.keys()
+
+    def copy(self):
+        res = Map()
+        res.map.update(self.map.copy())
+        return res
+
+    def update(self, dictionary: dict[tac.Var, T]):
+        self.map.update(dictionary)
+
+
+MapDomain: TypeAlias = Map[T] | Bottom
+
+
+def normalize(values: MapDomain[T]) -> MapDomain:
+    if isinstance(values, Bottom):
+        return BOTTOM
+    result = values.copy()
+    for k, v in values.items():
+        if isinstance(v, Bottom):
+            return BOTTOM
+        if isinstance(v, Top):
+            del result[k]
+    return result
 
 
 class Cartesian(Generic[T]):
     lattice: Lattice[T]
-    values: defaultdict[tac.Name, T] | Bottom
 
     # TODO: this does not belong here
     def view(self, cfg: gu.Cfg[T]):
         return ForwardIterationStrategy(cfg)
 
-    def __init__(self, lattice: Lattice[T], values: dict[tac.Name, T] | Bottom = BOTTOM):
+    def __init__(self, lattice: Lattice[T]):
         super().__init__()
         self.lattice = lattice
-        if isinstance(values, Bottom):
-            self.values = BOTTOM
-        else:
-            self.values = defaultdict(lambda: TOP)
-            for c in tac.Predefined:
-                if (value := lattice.predefined(c)) is not None:
-                    self.values[c] = value
-            self.values.update(values)
-
-    def set_initial(self, annotations: dict[str, str]):
-        if self.is_bottom:
-            self.__init__(self.lattice, {})
-        else:
-            self.values.clear()
-        self.values.update({
-            name: self.lattice.annotation(t)
-            for name, t in annotations.items()
-        })
 
     @staticmethod
     def name() -> str:
         return "Cartesian"
 
-    def __le__(self, other):
-        return self.join(other).values == other.values
+    def is_less_than(self, left: T, right: T) -> bool:
+        return self.join(left, right) == right
 
-    def __eq__(self, other):
-        return self.values == other.values
+    def is_equivalent(self, left, right) -> bool:
+        return self.is_less_than(left, right) and self.is_less_than(right, left)
 
     def copy(self: T) -> T:
-        return Cartesian(self.lattice, self.values.copy())
+        return Cartesian(self.lattice)
 
-    @property
-    def is_bottom(self) -> bool:
-        return isinstance(self.values, Bottom)
+    def is_bottom(self, values) -> bool:
+        return isinstance(values, Bottom)
 
-    def top(self) -> T:
-        return Cartesian(self.lattice, {})
+    def initial(self, annotations: dict[str, str]) -> MapDomain[T]:
+        result = Map()
+        result.update({
+            name: self.lattice.annotation(t)
+            for name, t in annotations.items()
+        })
+        return result
 
-    def bottom(self) -> T:
-        return Cartesian(self.lattice, BOTTOM)
+    def top(self) -> MapDomain[T]:
+        return self.initial({})
 
-    def join(self: T, other: T) -> T:
-        if self.is_bottom:
-            return other.copy()
-        if other.is_bottom:
-            return self.copy()
+    def bottom(self) -> MapDomain[T]:
+        return BOTTOM
+
+    def join(self, left: MapDomain[T], right: MapDomain[T]) -> MapDomain[T]:
+        if self.is_bottom(left):
+            return right.copy()
+        if self.is_bottom(right):
+            return left.copy()
         res = self.top()
-        for k in self.values.keys() | other.values.keys():
-            if k in self.values.keys() and k in other.values.keys():
-                res.values[k] = self.join(self.values[k], other.values[k])
+        for k in left.keys() | right.keys():
+            if k in left.keys() and k in right.keys():
+                res[k] = self.lattice.join(left[k], right[k])
             else:
-                res.values[k] = TOP
-        res.normalize()
-        return res
+                del res[k]
+        return normalize(res)
 
-    def transfer(self, ins: tac.Tac, location: str) -> None:
-        if self.is_bottom:
-            return
-        values = self.values.copy()
-        for var in tac.gens(ins):
-            if var in self.values:
-                del self.values[var]
+    @staticmethod
+    def transformer(lattice: Lattice[T], values: Map[T]) -> Callable[[tac.Expr], T]:
+        def eval(expr: tac.Expr | tac.Predefined) -> T:
+            match expr:
+                case tac.Call():
+                    return lattice.call(
+                        function=eval(expr.function),
+                        args=[eval(arg) for arg in expr.args]
+                    )
+                case tac.Binary():
+                    return lattice.binary(
+                        left=eval(expr.left),
+                        right=eval(expr.right),
+                        op=expr.op
+                    )
+                case tac.Predefined():
+                    return lattice.predefined(expr)
+                case tac.Const():
+                    return lattice.const(expr.value)
+                case tac.Attribute():
+                    return lattice.attribute(eval(expr.var), expr.attr.name)
+                case tac.Subscript():
+                    return lattice.subscr(eval(expr.var), eval(expr.index))
+                case tac.Yield():
+                    return TOP
+                case tac.Import():
+                    return lattice.imported(expr.modname)
+                case tac.Var():
+                    return values[expr]
+                case str():
+                    assert False, f'unexpected string {expr}'
+                case _:
+                    assert False, f'unexpected expr {expr}'
+
+        return eval
+
+    def transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
+        if isinstance(values, Bottom):
+            return BOTTOM
+        transformer = Cartesian.transformer(self.lattice, values.copy())
+        for var in tac.gens(ins) & values.keys():
+            del values[var]
         if isinstance(ins, tac.For):
             ins = ins.as_call()
         if isinstance(ins, tac.Assign):
             if isinstance(ins.lhs, (tac.Var, tac.Predefined)):
-                self.values[ins.lhs] = transfer(self.lattice, ins.expr, values)
-        self.normalize()
+                values[ins.lhs] = transformer(ins.expr)
+        return normalize(values)
 
-    def normalize(self) -> None:
-        for k, v in list(self.values.items()):
-            if isinstance(v, Bottom):
-                self.values = BOTTOM
-                return
-            if isinstance(v, Top):
-                del self.values[k]
-
-    def __str__(self) -> str:
-        if self.is_bottom:
-            return f'Vars({BOTTOM})'
-        return 'Vars({})'.format(", ".join(f'{k}: {v}' for k, v in self.values.items()))
-
-    def __repr__(self) -> str:
-        return self.values.__repr__()
-
-    def keep_only_live_vars(self, alive_vars: set[tac.Var]) -> None:
-        for var in set(self.values.keys()) - alive_vars:
-            del self.values[var]
+    def keep_only_live_vars(self, values: MapDomain[T], alive_vars: set[tac.Var]) -> None:
+        for var in set(values.keys()) - alive_vars:
+            del values[var]
 
 
 class AbstractAnalysis(Protocol[T]):
