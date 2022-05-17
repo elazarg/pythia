@@ -68,7 +68,7 @@ def analyze(_cfg: gu.Cfg, analysis: Cartesian, annotations: dict[tac.Var, str]) 
 
 def test(f: type(test), print_analysis=False, simplify=True):
     cfg = make_tacblock_cfg(f, simplify=simplify)
-
+    annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
     # analyze(cfg, LivenessDomain)
     # analyze(cfg, AliasDomain)
     # for label, block in cfg.items():
@@ -77,8 +77,8 @@ def test(f: type(test), print_analysis=False, simplify=True):
     #     rewrite_remove_useless_movs(block, label)
     # analyze(cfg, LivenessDomain)
     # analyze(cfg, ConstantDomain)
-    analyze(cfg, Cartesian(ConstLattice()), {tac.Var(k): v for k, v in f.__annotations__.items()})
-    # analyze(cfg, Cartesian(TypeLattice()), {tac.Var(k): v for k, v in f.__annotations__.items()})
+    analyze(cfg, Cartesian(ConstLattice()), annotations)
+    analyze(cfg, Cartesian(TypeLattice()), annotations)
     # analyze(cfg, PointerDomain)
 
     for label, block in sorted(cfg.items()):
@@ -86,17 +86,13 @@ def test(f: type(test), print_analysis=False, simplify=True):
             continue
         if print_analysis:
             print('Pre:')
-            # print('\t', block.pre[LivenessDomain.name()])
-            # print('\t', block.pre[PointerDomain.name()])
-            print('\t', block.pre[Cartesian.name()])
-            # print('\t', block.pre[TypeLattice.name()])
+            for k in block.pre:
+                print(f'\t{k}:', block.pre[k])
         print_block(label, block)
         if print_analysis:
             print('Post:')
-            # print('\t', block.post[LivenessDomain.name()])
-            # print('\t', block.post[PointerDomain.name()])
-            print('\t', block.post[Cartesian.name()])
-            # print('\t', block.post[TypeLattice.name()])
+            for k in block.post:
+                print(f'\t{k}:', block.post[k])
             print()
 
     if tac_analysis_types.unseen:

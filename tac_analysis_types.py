@@ -194,8 +194,7 @@ class TypeLattice(Lattice[TypeElement]):
     Abstract domain for type analysis with lattice operations.
     """
 
-    @staticmethod
-    def name() -> str:
+    def name(self) -> str:
         return "Type"
 
     def join(self, left: TypeElement, right: TypeElement) -> TypeElement:

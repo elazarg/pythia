@@ -32,7 +32,7 @@ import typing
 import graph_utils
 import tac
 from tac import Tac, Var
-from tac_analysis_domain import IterationStrategy, BackwardIterationStrategy
+from tac_analysis_domain import IterationStrategy, BackwardIterationStrategy, Top, Bottom, Lattice, TOP, BOTTOM
 import graph_utils as gu
 
 T = TypeVar('T')
@@ -47,32 +47,71 @@ def update_liveness(ins, inv) -> Tac:
             del inv[v]
 
 
+Liveness = bool | Top | Bottom
+
+
 @dataclass(frozen=True)
-class LivenessLattice:
-    is_alive: bool = False
+class LivenessLattice(Lattice[Liveness]):
+    def join(self, left: Liveness, right: Liveness) -> Liveness:
+        if self.is_bottom(left) or self.is_top(right):
+            return right
+        if self.is_bottom(right) or self.is_top(left):
+            return left
+        if left == right:
+            return left
+        return self.top()
+
+    def meet(self, left: Liveness, right: Liveness) -> Liveness:
+        if self.is_top(left) or self.is_bottom(right):
+            return left
+        if self.is_top(right) or self.is_bottom(left):
+            return right
+        if left == right:
+            return left
+        return self.bottom()
+
+    def top(self) -> Liveness:
+        return TOP
+
+    def is_top(self, elem: Liveness) -> bool:
+        return isinstance(elem, Top)
+
+    def is_bottom(self, elem: Liveness) -> bool:
+        return isinstance(elem, Bottom)
 
     @classmethod
-    def bottom(cls: Type[T]) -> T:
-        return LivenessLattice(False)
+    def bottom(cls) -> Liveness:
+        return BOTTOM
+
+    def call(self, function: Liveness, args: list[Liveness]) -> Liveness:
+        return self.top()
+
+    def binary(self, left: Liveness, right: Liveness, op: str) -> Liveness:
+        if self.is_bottom(left) or self.is_bottom(right):
+            return self.bottom()
+        return self.top()
+
+    def predefined(self, name: tac.Predefined) -> typing.Optional[Liveness]:
+        return False
+
+    def const(self, value: object) -> Liveness:
+        return False
+
+    def attribute(self, var: Liveness, attr: str) -> Liveness:
+        return False
+
+    def subscr(self, array: Liveness, index: Liveness) -> Liveness:
+        return False
+
+    def annotation(self, code: str) -> Liveness:
+        return True
+
+    def imported(self, modname: str) -> Liveness:
+        return False
 
     @classmethod
-    def top(cls: Type[T]) -> T:
-        return LivenessLattice(True)
-
-    def is_bottom(self) -> bool:
-        return not self.is_alive
-
-    def is_top(self) -> bool:
-        return self.is_alive
-
-    def __le__(self, other: LivenessLattice) -> bool:
-        return other.is_alive or not self.is_alive
-
-    def meet(self, other: LivenessLattice) -> LivenessLattice:
-        return LivenessLattice(min(self.is_alive, other.is_alive))
-
-    def join(self, other: LivenessLattice) -> LivenessLattice:
-        return LivenessLattice(max(self.is_alive, other.is_alive))
+    def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy:
+        return BackwardIterationStrategy(cfg)
 
 
 class LivenessDomain(AbstractDomain):
@@ -219,7 +258,7 @@ def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> N
                     if ins.right == prev.lhs:
                         merged_instruction = tac.subst_var_in_ins(ins, prev.lhs, prev.expr)
                 case tac.Assign():
-                    if isinstance(prev.expr, (tac.Var, tac.Const)):
+                    if isinstance(prev.expr, (tac.Var, tac.Liveness)):
                         merged_instruction = tac.subst_var_in_ins(ins, prev.lhs, prev.expr)
                     elif isinstance(ins.expr, tac.Var):
                         expr = tac.subst_var_in_expr(ins.expr, prev.lhs, prev.expr)

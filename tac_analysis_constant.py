@@ -18,8 +18,7 @@ class ConstLattice(Lattice[Const]):
     Abstract domain for type analysis with lattice operations.
     """
 
-    @staticmethod
-    def name() -> str:
+    def name(self) -> str:
         return "Const"
 
     def join(self, left: Const, right: Const) -> Const:

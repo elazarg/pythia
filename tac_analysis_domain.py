@@ -91,6 +91,8 @@ class Lattice(Protocol[T]):
     def annotation(self, string: str) -> T:
         ...
 
+    def name(self) -> str:
+        ...
 
 @dataclass(frozen=True)
 class Top:
@@ -196,9 +198,8 @@ class Cartesian(Generic[T]):
         super().__init__()
         self.lattice = lattice
 
-    @staticmethod
-    def name() -> str:
-        return "Cartesian"
+    def name(self) -> str:
+        return f"Cartesian({self.lattice.name()})"
 
     def is_less_than(self, left: T, right: T) -> bool:
         return self.join(left, right) == right
