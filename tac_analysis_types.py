@@ -1,6 +1,6 @@
 # Data flow analysis and stuff.
 
-from __future__ import annotations
+from __future__ import annotations as _
 
 from collections import defaultdict
 from dataclasses import dataclass
@@ -8,7 +8,8 @@ from typing import Type, TypeVar, Optional, ClassVar, Final
 
 import tac
 from tac import Const, Var
-from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Bottom, Top, Lattice
+from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Bottom, Top, Lattice, \
+    AbstractAnalysis
 
 import graph_utils as gu
 
@@ -254,106 +255,28 @@ class TypeLattice(Lattice):
         return str(self.value)
 
 
-class TypeDomain(AbstractDomain):
-    types: defaultdict[Var, TypeLattice] | Bottom
+def read_initial(annotations: dict[str, str]) -> TypeDomain:
+    result = TypeDomain.top()
+    result.types.update({
+        tac.Var(name): TypeLattice(ObjectType.translate(t))
+        for name, t in annotations.items()
+    })
+    return result
 
-    BOTTOM: ClassVar[Bottom] = Bottom()
 
-    @staticmethod
-    def name() -> str:
-        return "Type"
-
-    @classmethod
-    def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy[T]:
-        return ForwardIterationStrategy(cfg)
-
-    def __init__(self, types: defaultdict[Var, TypeLattice] | Bottom) -> None:
+class TypeAnalysis(AbstractAnalysis):
+    def __init__(self, annotations: dict[str, str]) -> None:
         super().__init__()
-        if types is TypeDomain.BOTTOM:
-            self.types = TypeDomain.BOTTOM
-        else:
-            self.types = types.copy()
+        self.initial = read_initial(annotations)
 
-    def __le__(self, other):
-        return self.join(other).types == other.types
+    def initial(self) -> TypeDomain:
+        return self.top()
 
-    def __eq__(self, other):
-        return self.types == other.types
-
-    def copy(self: T) -> T:
-        return TypeDomain(self.types)
-
-    @classmethod
-    def initial(cls: Type[T]) -> T:
-        return cls.top()
-
-    @classmethod
-    def top(cls: Type[T]) -> T:
+    def top(self) -> TypeDomain:
         return TypeDomain(defaultdict(TypeLattice.top))
 
-    @classmethod
-    def bottom(cls: Type[T]) -> T:
+    def bottom(self) -> TypeDomain:
         return TypeDomain(TypeDomain.BOTTOM)
-
-    @property
-    def is_bottom(self) -> bool:
-        return self.types is TypeDomain.BOTTOM
-
-    def join(self: T, other: T) -> T:
-        if self.is_bottom:
-            return other.copy()
-        if other.is_bottom:
-            return self.copy()
-        res = TypeDomain.top()
-        for k in self.types.keys() | other.types.keys():
-            if k in self.types.keys() and k in other.types.keys():
-                res.types[k] = self.types[k].join(other.types[k])
-            else:
-                res.types[k] = TypeLattice.top()
-        res.normalize()
-        return res
-
-    def transfer(self, ins: tac.Tac, location: str) -> None:
-        if self.is_bottom:
-            return
-        types = self.types.copy()
-        for var in tac.gens(ins):
-            if var in self.types:
-                del self.types[var]
-        if isinstance(ins, tac.Assign):
-            self.types[ins.lhs] = eval(types, ins.expr)
-        elif isinstance(ins, tac.For):
-            self.transfer(ins.as_call(), location)
-        self.normalize()
-
-    def normalize(self) -> None:
-        for k, v in list(self.types.items()):
-            if v == TypeLattice.BOTTOM:
-                self.types = TypeDomain.BOTTOM
-                return
-            if v == TypeLattice.top():
-                del self.types[k]
-
-    def __str__(self) -> str:
-        if self.is_bottom:
-            return f'Types({TypeDomain.BOTTOM})'
-        return 'Types({})'.format(", ".join(f'{k}: {v.value}' for k, v in self.types.items()))
-
-    def __repr__(self) -> str:
-        return self.types.__repr__()
-
-    def keep_only_live_vars(self, alive_vars: set[tac.Var]) -> None:
-        for var in set(self.types.keys()) - alive_vars:
-            del self.types[var]
-
-    @classmethod
-    def read_initial(cls, annotations: dict[str, str]) -> TypeDomain:
-        result = TypeDomain.top()
-        result.types.update({
-            tac.Var(name): TypeLattice(ObjectType.translate(t))
-            for name, t in annotations.items()
-        })
-        return result
 
 
 unseen = defaultdict(set)

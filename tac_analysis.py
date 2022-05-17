@@ -10,7 +10,7 @@ import graph_utils as gu
 import tac
 import tac_analysis_types
 
-from tac_analysis_domain import AbstractDomain, IterationStrategy, Lattice
+from tac_analysis_domain import AbstractDomain, IterationStrategy, Lattice, AbstractAnalysis
 from tac_analysis_liveness import LivenessDomain, rewrite_remove_useless_movs, rewrite_remove_useless_movs_pairs
 from tac_analysis_constant import ConstantDomain
 from tac_analysis_pointer import PointerDomain
@@ -32,16 +32,17 @@ def print_block(n, block):
         print(f'\t{label:6}\t', ins)
 
 
-def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain], initial: Lattice = None) -> None:
-    name = Analysis.name()
-    for label in _cfg.labels:
-        _cfg[label].pre[name] = Analysis.bottom()
-        _cfg[label].post[name] = Analysis.bottom()
 
-    cfg: IterationStrategy = Analysis.view(_cfg)
+def analyze(_cfg: gu.Cfg, analysis: AbstractAnalysis, initial: Lattice = None) -> None:
+    name = analysis.name()
+    for label in _cfg.labels:
+        _cfg[label].pre[name] = analysis.bottom()
+        _cfg[label].post[name] = analysis.bottom()
+
+    cfg: IterationStrategy = analysis.view(_cfg)
 
     wl = [entry] = {cfg.entry_label}
-    cfg[entry].pre[name] = initial or Analysis.initial()
+    cfg[entry].pre[name] = initial or analysis.initial()
     while wl:
         label = wl.pop()
         block = cfg[label]
@@ -50,7 +51,7 @@ def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain], initial: Lattic
         for index, tac in enumerate(cfg[label]):
             invariant.transfer(tac, f'{label}.{index}')
 
-        if Analysis is not LivenessDomain:
+        if analysis.name() is not "Alive":
             liveness = typing.cast(typing.Optional[LivenessDomain], block.post.get(LivenessDomain.name()))
             if liveness:
                 invariant.keep_only_live_vars(liveness.vars)
@@ -76,7 +77,7 @@ def test(f: type(test), print_analysis=False, simplify=True):
         rewrite_remove_useless_movs(block, label)
     analyze(cfg, LivenessDomain)
     analyze(cfg, ConstantDomain)
-    analyze(cfg, TypeDomain, TypeDomain.read_initial(f.__annotations__))
+    analyze(cfg, tac_analysis_types.TypeAnalysis(f.__annotations__))
     analyze(cfg, PointerDomain)
 
     for label, block in sorted(cfg.items()):
