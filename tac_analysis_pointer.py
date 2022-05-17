@@ -103,7 +103,7 @@ class PointerDomain(AbstractDomain):
                 case tac.Attribute():
                     for obj in eval(ins.lhs.var):
                         self.pointers.setdefault(obj, {})[ins.lhs.attr] = val
-                case tac.Subscr():
+                case tac.Subscript():
                     for obj in eval(ins.lhs.var):
                         self.pointers.setdefault(obj, {})[tac.Var('*')] = val
 
@@ -140,7 +140,7 @@ def evaluator(state: dict[Object, dict[tac.Var, set[Object]]], location: str) ->
                 if not expr.is_allocation:
                     return set()
                 return {location_object}
-            case tac.Subscr(): return set()
+            case tac.Subscript(): return set()
             case tac.Yield(): return set()
             case tac.Import(): return set()
             case tac.Binary():

@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+import enum
 import itertools as it
 import dataclasses
 from dataclasses import dataclass
@@ -53,6 +54,22 @@ class Module:
         return f'Module({self.name})'
 
 
+class Predefined(enum.Enum):
+    GLOBALS = 0
+    LOCALS = 1
+    NONLOCALS = 2
+    LIST = 3
+    TUPLE = 4
+    SLICE = 5
+
+    def __str__(self):
+        return self.name
+
+    @classmethod
+    def lookup(cls, op):
+        return cls.__members__[op]
+
+
 @dataclass(frozen=True)
 class Const:
     value: object
@@ -79,11 +96,12 @@ class Var:
 
 
 Value: TypeAlias = Var | Const
+Name: TypeAlias = Var | Predefined
 
 
 @dataclass(frozen=True)
 class Attribute:
-    var: Var
+    var: Name
     attr: Var
 
     def __str__(self):
@@ -91,7 +109,7 @@ class Attribute:
 
 
 @dataclass(frozen=True)
-class Subscr:
+class Subscript:
     var: Var
     index: Value
 
@@ -100,7 +118,7 @@ class Subscr:
 
 
 # Simplified version of the real binding construct in Python.
-Signature: TypeAlias = Var | tuple[Var] | Attribute | Subscr
+Signature: TypeAlias = Var | tuple[Var] | Attribute | Subscript
 
 
 @dataclass
@@ -165,7 +183,7 @@ class MakeFunction:
     positional_only_defaults: dict[Var, Var] = None
 
 
-Expr: TypeAlias = Value | Attribute | Subscr | Binary | Call | Yield | Import | MakeFunction
+Expr: TypeAlias = Value | Attribute | Subscript | Binary | Call | Yield | Import | MakeFunction
 
 
 def stackvar(x) -> Var:
@@ -198,7 +216,7 @@ class Assign:
 
     @property
     def no_side_effect(self) -> bool:
-        return self.assign_stack and isinstance(self.expr, (Subscr, Attribute, Var, Const))
+        return self.assign_stack and isinstance(self.expr, (Subscript, Attribute, Var, Const))
 
     @property
     def assign_stack(self) -> bool:
@@ -276,7 +294,7 @@ def free_vars_expr(expr: Expr) -> set[Var]:
         case Const(): return set()
         case Var(): return {expr}
         case Attribute(): return {expr.var}
-        case Subscr(): return free_vars_expr(expr.var) | free_vars_expr(expr.index)
+        case Subscript(): return free_vars_expr(expr.var) | free_vars_expr(expr.index)
         case Binary(): return free_vars_expr(expr.left) | free_vars_expr(expr.right)
         case Call():
             return free_vars_expr(expr.function) | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args)) \
@@ -291,7 +309,7 @@ def free_vars_lval(signature: Signature) -> set[Var]:
     match signature:
         case Var(): return set()
         case Attribute(): return {signature.var}
-        case Subscr(): return free_vars_expr(signature.var) | free_vars_expr(signature.index)
+        case Subscript(): return free_vars_expr(signature.var) | free_vars_expr(signature.index)
         case tuple(): return set(it.chain.from_iterable(free_vars_lval(arg) for arg in signature))
         case None: return set()
         case _: raise NotImplementedError(f'free_vars_lval({repr(signature)})')
@@ -319,7 +337,7 @@ def gens(tac: Tac) -> set[Var]:
                 case Var(): return {tac.lhs}
                 case tuple(): return set(tac.lhs)
                 case Attribute(): return set()
-                case Subscr(): return set()
+                case Subscript(): return set()
                 case None: return set()
                 case _: raise NotImplementedError(f'gens({tac})')
         case InplaceBinary(): return {tac.lhs}
@@ -350,7 +368,7 @@ def subst_var_in_expr(expr: Expr, target: Var, new_var: Var) -> Expr:
             args = tuple(subst_var_in_expr(arg, target, new_var) for arg in expr.args)
             function = new_var if expr.function == target else expr.function
             return dataclasses.replace(expr, function=function, args=args)
-        case Subscr():
+        case Subscript():
             if expr.var == target:
                 expr = dataclasses.replace(expr, var=new_var)
             if expr.index == target:
@@ -382,7 +400,7 @@ def subst_var_in_signature(signature: Signature, target: Var, new_var: Var) -> S
             if signature.var == target:
                 return dataclasses.replace(signature, var=new_var)
             return signature
-        case Subscr():
+        case Subscript():
             if signature.var == target:
                 signature = dataclasses.replace(signature, var=new_var)
             if signature.index == target:
@@ -427,11 +445,11 @@ def make_TAC(opname, val, stack_effect, stack_depth, starts_line=None) -> list[T
 
 
 def make_global(field: str):
-    return Attribute(Var('GLOBALS'), Var(field))
+    return Attribute(Predefined.GLOBALS, Var(field))
 
 
 def make_nonlocal(field: str):
-    return Attribute(Var('NONLOCAL'), Var(field))
+    return Attribute(Predefined.NONLOCALS, Var(field))
 
 
 def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
@@ -514,13 +532,13 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
         case 'STORE_ATTR':
             return [Assign(Attribute(stackvar(stack_depth), Var(val)), stackvar(stack_depth - 1))]
         case 'STORE_SUBSCR':
-            return [Assign(Subscr(stackvar(stack_depth - 1), stackvar(stack_depth)), stackvar(stack_depth - 2))]
+            return [Assign(Subscript(stackvar(stack_depth - 1), stackvar(stack_depth)), stackvar(stack_depth - 2))]
         case 'BINARY_SUBSCR':
             #
             # return [call(stackvar(out), 'BUILTINS.getattr', (stackvar(stack_depth - 1), "'__getitem__'")),
             #        call(stackvar(out), stackvar(out), (stackvar(stack_depth),))]
             # IVY-Specific: :(
-            return [Assign(stackvar(out), Subscr(stackvar(stack_depth - 1), stackvar(stack_depth)))]
+            return [Assign(stackvar(out), Subscript(stackvar(stack_depth - 1), stackvar(stack_depth)))]
         case 'POP_BLOCK':
             return [NOP]
         case 'SETUP_LOOP':
@@ -540,9 +558,9 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
                     args = (stackvar(stack_depth - 1), stackvar(stack_depth))
                 else:
                     args = (stackvar(stack_depth), stackvar(stack_depth - 1), stackvar(stack_depth - 2))
-                return [Assign(stackvar(out), Call(Var('SLICE'), args))]
+                return [Assign(stackvar(out), Call(Predefined.SLICE, args))]
             return [Assign(stackvar(out),
-                           Call(Var(op), tuple(stackvar(i + 1) for i in range(stack_depth - val, stack_depth))))]
+                           Call(Predefined.lookup(op), tuple(stackvar(i + 1) for i in range(stack_depth - val, stack_depth))))]
         case 'CALL_FUNCTION' | 'CALL_METHOD':
             nargs = val & 0xFF
             mid = [stackvar(i + 1) for i in range(stack_depth - nargs, stack_depth)]

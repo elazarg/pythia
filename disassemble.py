@@ -55,7 +55,7 @@ def read_function(file_path, function_name):
     env = {}
     # exec should be safe here, since it cannot have any side effects
     exec(code, {}, env)
-    return env['feature_selection']
+    return env[function_name]
 
 
 if __name__ == '__main__':

@@ -386,6 +386,9 @@ def loop():
     return x
 
 
+def make_tuple(x):
+    return (x, 1)
+
 # from: https://github.com/drbilo/multivariate-linear-regression
 
 def score(X, y, theta):

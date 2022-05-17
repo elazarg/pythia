@@ -32,7 +32,7 @@ import typing
 import graph_utils
 import tac
 from tac import Tac, Var
-from tac_analysis_domain import AbstractDomain, IterationStrategy, BackwardIterationStrategy
+from tac_analysis_domain import IterationStrategy, BackwardIterationStrategy
 import graph_utils as gu
 
 T = TypeVar('T')

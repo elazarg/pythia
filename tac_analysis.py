@@ -3,19 +3,18 @@
 from __future__ import annotations
 
 import math
-import typing
 
 import disassemble
 import graph_utils as gu
 import tac
 import tac_analysis_types
 
-from tac_analysis_domain import AbstractDomain, IterationStrategy, Lattice, AbstractAnalysis
-from tac_analysis_liveness import LivenessDomain, rewrite_remove_useless_movs, rewrite_remove_useless_movs_pairs
-from tac_analysis_constant import ConstantDomain
-from tac_analysis_pointer import PointerDomain
-from tac_analysis_alias import AliasDomain, rewrite_aliases
-from tac_analysis_types import TypeDomain
+from tac_analysis_domain import IterationStrategy, Lattice, AbstractAnalysis, Cartesian
+# from tac_analysis_liveness import LivenessDomain, rewrite_remove_useless_movs, rewrite_remove_useless_movs_pairs
+# from tac_analysis_constant import ConstantDomain
+# from tac_analysis_pointer import PointerDomain
+# from tac_analysis_alias import AliasDomain, rewrite_aliases
+from tac_analysis_types import TypeLattice
 
 
 def make_tacblock_cfg(f, simplify=True):
@@ -32,8 +31,7 @@ def print_block(n, block):
         print(f'\t{label:6}\t', ins)
 
 
-
-def analyze(_cfg: gu.Cfg, analysis: AbstractAnalysis, initial: Lattice = None) -> None:
+def analyze(_cfg: gu.Cfg, analysis: Cartesian, annotations: dict[str, str]) -> None:
     name = analysis.name()
     for label in _cfg.labels:
         _cfg[label].pre[name] = analysis.bottom()
@@ -42,7 +40,7 @@ def analyze(_cfg: gu.Cfg, analysis: AbstractAnalysis, initial: Lattice = None) -
     cfg: IterationStrategy = analysis.view(_cfg)
 
     wl = [entry] = {cfg.entry_label}
-    cfg[entry].pre[name] = initial or analysis.initial()
+    cfg[entry].pre[name].set_initial(annotations)
     while wl:
         label = wl.pop()
         block = cfg[label]
@@ -51,11 +49,11 @@ def analyze(_cfg: gu.Cfg, analysis: AbstractAnalysis, initial: Lattice = None) -
         for index, tac in enumerate(cfg[label]):
             invariant.transfer(tac, f'{label}.{index}')
 
-        if analysis.name() is not "Alive":
-            liveness = typing.cast(typing.Optional[LivenessDomain], block.post.get(LivenessDomain.name()))
-            if liveness:
-                invariant.keep_only_live_vars(liveness.vars)
-            del liveness
+        # if analysis.name() is not "Alive":
+        #     liveness = typing.cast(typing.Optional[LivenessDomain], block.post.get(LivenessDomain.name()))
+        #     if liveness:
+        #         invariant.keep_only_live_vars(liveness.vars)
+        #     del liveness
 
         block.post[name] = invariant
 
@@ -69,33 +67,34 @@ def analyze(_cfg: gu.Cfg, analysis: AbstractAnalysis, initial: Lattice = None) -
 def test(f: type(test), print_analysis=False, simplify=True):
     cfg = make_tacblock_cfg(f, simplify=simplify)
 
-    analyze(cfg, LivenessDomain)
-    analyze(cfg, AliasDomain)
-    for label, block in cfg.items():
-        rewrite_remove_useless_movs_pairs(block, label)
-        rewrite_aliases(block, label)
-        rewrite_remove_useless_movs(block, label)
-    analyze(cfg, LivenessDomain)
-    analyze(cfg, ConstantDomain)
-    analyze(cfg, tac_analysis_types.TypeAnalysis(f.__annotations__))
-    analyze(cfg, PointerDomain)
+    # analyze(cfg, LivenessDomain)
+    # analyze(cfg, AliasDomain)
+    # for label, block in cfg.items():
+    #     rewrite_remove_useless_movs_pairs(block, label)
+    #     rewrite_aliases(block, label)
+    #     rewrite_remove_useless_movs(block, label)
+    # analyze(cfg, LivenessDomain)
+    # analyze(cfg, ConstantDomain)
+    analysis = Cartesian(TypeLattice())
+    analyze(cfg, analysis, f.__annotations__)
+    # analyze(cfg, PointerDomain)
 
     for label, block in sorted(cfg.items()):
         if math.isinf(label):
             continue
         if print_analysis:
             print('Pre:')
-            print('\t', block.pre[LivenessDomain.name()])
-            print('\t', block.pre[PointerDomain.name()])
-            print('\t', block.pre[ConstantDomain.name()])
-            print('\t', block.pre[TypeDomain.name()])
+            # print('\t', block.pre[LivenessDomain.name()])
+            # print('\t', block.pre[PointerDomain.name()])
+            # print('\t', block.pre[ConstantDomain.name()])
+            print('\t', block.pre[analysis.name()])
         print_block(label, block)
         if print_analysis:
             print('Post:')
-            print('\t', block.post[LivenessDomain.name()])
-            print('\t', block.post[PointerDomain.name()])
-            print('\t', block.post[ConstantDomain.name()])
-            print('\t', block.post[TypeDomain.name()])
+            # print('\t', block.post[LivenessDomain.name()])
+            # print('\t', block.post[PointerDomain.name()])
+            # print('\t', block.post[ConstantDomain.name()])
+            print('\t', block.post[analysis.name()])
             print()
 
     if tac_analysis_types.unseen:
@@ -110,5 +109,5 @@ if __name__ == '__main__':
     import code_examples
     # import dis
     # print(dis.dis(code_examples.jumps))
-    code = disassemble.read_function('code_examples.py', 'feature_selection')
-    test(code, print_analysis=True, simplify=True)
+    code = disassemble.read_function('code_examples.py', 'make_tuple')
+    test(code, print_analysis=True, simplify=False)

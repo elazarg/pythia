@@ -7,7 +7,7 @@ from typing import Type, TypeVar, Optional, ClassVar
 
 import tac
 from tac import Const, Var
-from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Bottom
+from tac_analysis_domain import IterationStrategy, ForwardIterationStrategy, Bottom
 
 import graph_utils as gu
 
@@ -94,7 +94,7 @@ def eval(constants: dict[Var, Const], expr: tac.Expr) -> Optional[Const]:
         case tac.Var(): return constants.get(expr)
         case tac.Attribute(): return None
         case tac.Call(): return None
-        case tac.Subscr(): return None
+        case tac.Subscript(): return None
         case tac.Yield(): return None
         case tac.Import: return tac.Const(tac.Module(expr.modname))
         case tac.Binary():
