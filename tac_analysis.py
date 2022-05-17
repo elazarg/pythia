@@ -31,7 +31,7 @@ def print_block(n, block):
         print(f'\t{label:6}\t', ins)
 
 
-def analyze(_cfg: gu.Cfg, analysis: Cartesian, annotations: dict[str, str]) -> None:
+def analyze(_cfg: gu.Cfg, analysis: Cartesian, annotations: dict[tac.Var, str]) -> None:
     name = analysis.name()
     for label in _cfg.labels:
         _cfg[label].pre[name] = analysis.bottom()
@@ -77,7 +77,7 @@ def test(f: type(test), print_analysis=False, simplify=True):
     # analyze(cfg, LivenessDomain)
     # analyze(cfg, ConstantDomain)
     analysis = Cartesian(TypeLattice())
-    analyze(cfg, analysis, f.__annotations__)
+    analyze(cfg, analysis, {tac.Var(k): v for k, v in f.__annotations__.items()})
     # analyze(cfg, PointerDomain)
 
     for label, block in sorted(cfg.items()):
@@ -110,5 +110,5 @@ if __name__ == '__main__':
     import code_examples
     # import dis
     # print(dis.dis(code_examples.jumps))
-    code = disassemble.read_function('code_examples.py', 'make_tuple')
+    code = disassemble.read_function('code_examples.py', 'feature_selection')
     test(code, print_analysis=True, simplify=False)

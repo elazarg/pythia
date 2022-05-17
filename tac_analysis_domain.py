@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TypeVar, Protocol, Type, Generic, TypeAlias, Final, Callable
+from typing import TypeVar, Protocol, Type, Generic, TypeAlias, Final, Callable, Iterator, Iterable
 import graph_utils as gu
 
 import tac
@@ -120,25 +120,27 @@ class Map(Generic[T]):
     def __init__(self):
         self.map = defaultdict(lambda: TOP)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: tac.Var) -> T:
+        assert isinstance(key, tac.Var)
         return self.map[key]
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: tac.Var, value: T):
+        assert isinstance(key, tac.Var)
         self.map[key] = value
 
     def __iter__(self):
         return iter(self.map)
 
-    def __contains__(self, key):
+    def __contains__(self, key: tac.Var):
         return key in self.map
 
     def __len__(self):
         return len(self.map)
 
-    def __eq__(self, other):
+    def __eq__(self, other: Map[T] | Bottom) -> bool:
         return isinstance(other, Map) and self.map == other.map
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: tac.Var):
         del self.map[key]
 
     def __repr__(self):
@@ -146,22 +148,22 @@ class Map(Generic[T]):
         return f'Map({items})'
 
     def __str__(self):
-        items = ', '.join(f'{k}={v}' for k, v in self.items())
-        return f'Map({items})'
+        return repr(self)
 
-    def items(self):
-        return self.map.items()
+    def items(self) -> list[tuple[tac.Var, T]]:
+        return list(self.map.items())
 
-    def keys(self):
-        return self.map.keys()
+    def keys(self) -> set[tac.Var]:
+        return set(self.map.keys())
 
     def copy(self):
         res = Map()
-        res.map.update(self.map.copy())
+        res.update(self.map.copy())
         return res
 
     def update(self, dictionary: dict[tac.Var, T]):
-        self.map.update(dictionary)
+        for k, v in dictionary.items():
+            self[k] = v
 
 
 MapDomain: TypeAlias = Map[T] | Bottom
@@ -206,7 +208,7 @@ class Cartesian(Generic[T]):
     def is_bottom(self, values) -> bool:
         return isinstance(values, Bottom)
 
-    def initial(self, annotations: dict[str, str]) -> MapDomain[T]:
+    def initial(self, annotations: dict[tac.Var, str]) -> MapDomain[T]:
         result = Map()
         result.update({
             name: self.lattice.annotation(t)
@@ -229,8 +231,6 @@ class Cartesian(Generic[T]):
         for k in left.keys() | right.keys():
             if k in left.keys() and k in right.keys():
                 res[k] = self.lattice.join(left[k], right[k])
-            else:
-                del res[k]
         return normalize(res)
 
     @staticmethod
