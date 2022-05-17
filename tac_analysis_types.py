@@ -235,10 +235,8 @@ class TypeLattice(Lattice[TypeElement]):
         if self.is_bottom(function) or any(self.is_bottom(arg) for arg in args):
             return self.bottom()
         if not isinstance(function, FunctionType):
-            print(f'call({function}, {args}) == {function} which is not a function')
+            print(f'{function} which is not a function')
             return self.bottom()
-        # if function.name() == 'LIST':
-        #     return LIST
         return function.return_type
 
     def binary(self, left: TypeElement, right: TypeElement, op: str) -> TypeElement:
@@ -284,7 +282,7 @@ class TypeLattice(Lattice[TypeElement]):
             return self.top()
         f = array.fields.get('__getitem__')
         if f is None:
-            print(f'{array} is not an indexable type')
+            print(f'{array} is not indexable')
             return self.bottom()
         return self.call(f, [index])
 

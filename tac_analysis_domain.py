@@ -126,7 +126,11 @@ class Map(Generic[T]):
 
     def __setitem__(self, key: tac.Var, value: T):
         assert isinstance(key, tac.Var)
-        self.map[key] = value
+        if isinstance(value, Top):
+            if key in self.map:
+                del self.map[key]
+        else:
+            self.map[key] = value
 
     def __iter__(self):
         return iter(self.map)

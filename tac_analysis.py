@@ -8,6 +8,7 @@ import disassemble
 import graph_utils as gu
 import tac
 import tac_analysis_types
+from tac_analysis_constant import ConstLattice
 
 from tac_analysis_domain import IterationStrategy, Lattice, AbstractAnalysis, Cartesian
 # from tac_analysis_liveness import LivenessDomain, rewrite_remove_useless_movs, rewrite_remove_useless_movs_pairs
@@ -76,8 +77,8 @@ def test(f: type(test), print_analysis=False, simplify=True):
     #     rewrite_remove_useless_movs(block, label)
     # analyze(cfg, LivenessDomain)
     # analyze(cfg, ConstantDomain)
-    analysis = Cartesian(TypeLattice())
-    analyze(cfg, analysis, {tac.Var(k): v for k, v in f.__annotations__.items()})
+    analyze(cfg, Cartesian(ConstLattice()), {tac.Var(k): v for k, v in f.__annotations__.items()})
+    # analyze(cfg, Cartesian(TypeLattice()), {tac.Var(k): v for k, v in f.__annotations__.items()})
     # analyze(cfg, PointerDomain)
 
     for label, block in sorted(cfg.items()):
@@ -87,15 +88,15 @@ def test(f: type(test), print_analysis=False, simplify=True):
             print('Pre:')
             # print('\t', block.pre[LivenessDomain.name()])
             # print('\t', block.pre[PointerDomain.name()])
-            # print('\t', block.pre[ConstantDomain.name()])
-            print('\t', block.pre[analysis.name()])
+            print('\t', block.pre[Cartesian.name()])
+            # print('\t', block.pre[TypeLattice.name()])
         print_block(label, block)
         if print_analysis:
             print('Post:')
             # print('\t', block.post[LivenessDomain.name()])
             # print('\t', block.post[PointerDomain.name()])
-            # print('\t', block.post[ConstantDomain.name()])
-            print('\t', block.post[analysis.name()])
+            print('\t', block.post[Cartesian.name()])
+            # print('\t', block.post[TypeLattice.name()])
             print()
 
     if tac_analysis_types.unseen:
@@ -111,4 +112,4 @@ if __name__ == '__main__':
     # import dis
     # print(dis.dis(code_examples.jumps))
     code = disassemble.read_function('code_examples.py', 'feature_selection')
-    test(code, print_analysis=True, simplify=False)
+    test(code, print_analysis=True, simplify=True)
