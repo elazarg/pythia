@@ -6,51 +6,64 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TypeVar, TypeAlias, Optional
 
+from frozendict import frozendict
+
 from tac import Predefined
 from tac_analysis_domain import Bottom, Top, Lattice, BOTTOM
 
 T = TypeVar('T')
 
 
-@dataclass()
+@dataclass(frozen=True)
 class ObjectType:
     name: str
-    fields: dict[str, FunctionType | ObjectType]
+    fields: frozendict[str, SimpleType]
 
     def __repr__(self):
         return self.name
 
 
-@dataclass
+@dataclass(frozen=True)
+class Ref:
+    name: str
+
+
+@dataclass(frozen=True)
 class FunctionType:
-    return_type: ObjectType
+    return_type: SimpleType
     new: bool = True
 
     def __repr__(self):
         return f'() -> {self.return_type}'
 
 
+SimpleType: TypeAlias = ObjectType | Ref | FunctionType
+
+
+TypeElement: TypeAlias = ObjectType | FunctionType | Ref | Top | Bottom
+
+
 def make_tuple(t: ObjectType) -> ObjectType:
-    return ObjectType('tuple', {
+    return ObjectType('tuple', frozendict({
         '__getitem__': FunctionType(t),
-    })
-
-
-def iter_method(element_type: ObjectType) -> FunctionType:
-    return FunctionType(ObjectType(f'iterator[{element_type}]', {
-        '__next__': FunctionType(element_type),
     }))
 
 
-OBJECT = ObjectType('object', {})
+def iter_method(element_type: ObjectType) -> FunctionType:
+    return FunctionType(ObjectType(f'iterator[{element_type}]', frozendict({
+        '__next__': FunctionType(element_type),
+    })))
 
-FLOAT = ObjectType('float', {})
-INT = ObjectType('int', {})
-STRING = ObjectType('str', {})
-BOOL = ObjectType('bool', {})
-NONE = ObjectType('None', {})
 
-LIST = ObjectType('list', {
+OBJECT = ObjectType('object', frozendict({}))
+
+FLOAT = ObjectType('float', frozendict({}))
+INT = ObjectType('int', frozendict({}))
+STRING = ObjectType('str', frozendict({}))
+BOOL = ObjectType('bool', frozendict({}))
+NONE = ObjectType('None', frozendict({}))
+
+LIST = ObjectType('list', frozendict({
     '__getitem__': FunctionType(OBJECT, new=False),
     '__iter__': iter_method(OBJECT),
     '__len__': FunctionType(INT, new=False),
@@ -65,37 +78,31 @@ LIST = ObjectType('list', {
     'remove': FunctionType(NONE, new=False),
     'reverse': FunctionType(NONE, new=False),
     'sort': FunctionType(NONE, new=False),
-})
+}))
 
 TUPLE_CONSTRUCTOR = FunctionType(make_tuple(OBJECT), new=False)
 LIST_CONSTRUCTOR = FunctionType(LIST, new=False)
 
-NDARRAY = ObjectType('ndarray', {
+
+NDARRAY = ObjectType('ndarray', frozendict({
     'mean': FunctionType(FLOAT, new=False),
     'std': FunctionType(FLOAT, new=False),
     'shape': make_tuple(INT),
     'size': INT,
     '__getitem__': FunctionType(FLOAT),
     '__iter__': iter_method(FLOAT),  # inaccurate
-})
+    'T': Ref('numpy.ndarray'),
+    'astype': FunctionType(Ref('numpy.ndarray'), new=True)
+}))
 
+ARRAY_GEN = FunctionType(NDARRAY, new=True)
 
-NDARRAY.fields['T'] = NDARRAY
+DATAFRAME = ObjectType('DataFrame', frozendict({}))
 
-ARRAY_GEN = FunctionType(NDARRAY)
+TIME_MODULE = ObjectType('/time', frozendict({}))
 
-NDARRAY.fields['astype'] = ARRAY_GEN
-
-
-DATAFRAME = ObjectType('DataFrame', {
-
-})
-
-TIME_MODULE = ObjectType('/time', {
-
-})
-
-NUMPY_MODULE = ObjectType('/numpy', {
+NUMPY_MODULE = ObjectType('/numpy', frozendict({
+    'ndarray': NDARRAY,
     'array': ARRAY_GEN,
     'dot': FunctionType(FLOAT, new=False),
     'zeros': ARRAY_GEN,
@@ -125,16 +132,16 @@ NUMPY_MODULE = ObjectType('/numpy', {
         '__getitem__': FunctionType(NDARRAY),
     }),
 
-})
+}))
 
-PANDAS_MODULE = ObjectType('/pandas', {
+PANDAS_MODULE = ObjectType('/pandas', frozendict({
     'DataFrame': FunctionType(DATAFRAME),
-})
+}))
 
-BUILTINS_MODULE = ObjectType('/builtins', {
-    'range': FunctionType(ObjectType('range', {
+BUILTINS_MODULE = ObjectType('/builtins', frozendict({
+    'range': FunctionType(ObjectType('range', frozendict({
         '__iter__': iter_method(INT),
-    })),
+    }))),
     'len': FunctionType(INT, new=False),
     'print': FunctionType(NONE, new=False),
     'abs': FunctionType(FLOAT, new=False),
@@ -148,47 +155,43 @@ BUILTINS_MODULE = ObjectType('/builtins', {
     'float': FunctionType(FLOAT, new=False),
     'str': FunctionType(STRING, new=False),
     'bool': FunctionType(BOOL, new=False),
-})
+}))
 
-GLOBALS_OBJECT = ObjectType('globals()', {
+GLOBALS_OBJECT = ObjectType('globals()', frozendict({
     'numpy': NUMPY_MODULE,
     'np': NUMPY_MODULE,
     'pandas': PANDAS_MODULE,
     'time': TIME_MODULE,
-})
-GLOBALS_OBJECT.fields.update(BUILTINS_MODULE.fields)
+    **BUILTINS_MODULE.fields
+}))
 
 BINARY = {
-    (INT.name, INT.name): {
+    (INT, INT): {
         '/': FunctionType(FLOAT, new=False),
         **{op: FunctionType(INT, new=False) for op in ['+', '-', '*', '**', '//', '%']},
         **{op: FunctionType(INT, new=False) for op in ['&', '|', '^', '<<', '>>']},
         **{op: FunctionType(BOOL, new=False) for op in ['<', '>', '<=', '>=', '==', '!=']},
     },
-    (INT.name, FLOAT.name): {
+    (INT, FLOAT): {
         **{op: FunctionType(FLOAT, new=False) for op in ['+', '-', '*', '/', '**', '//', '%']},
         **{op: FunctionType(BOOL, new=False) for op in ['<', '>', '<=', '>=', '==', '!=']},
     },
-    (FLOAT.name, INT.name): {
+    (FLOAT, INT): {
         **{op: FunctionType(FLOAT, new=False) for op in ['+', '-', '*', '/', '**', '//', '%']},
         **{op: FunctionType(BOOL, new=False) for op in ['<', '>', '<=', '>=', '==', '!=']},
     },
-    (FLOAT.name, FLOAT.name): {
+    (FLOAT, FLOAT): {
         **{op: FunctionType(FLOAT, new=False) for op in ['+', '-', '*', '/', '**', '//', '%']},
         **{op: FunctionType(BOOL, new=False) for op in ['<', '>', '<=', '>=', '==', '!=']},
     },
-    (NDARRAY.name, NDARRAY.name): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
-    (NDARRAY.name, INT.name): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
-    (INT.name, NDARRAY.name): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
-    (NDARRAY.name, FLOAT.name): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
-    (FLOAT.name, NDARRAY.name): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (NDARRAY, NDARRAY): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (NDARRAY, INT): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (INT, NDARRAY): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (NDARRAY, FLOAT): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (FLOAT, NDARRAY): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
 }
 
 
-TypeElement: TypeAlias = ObjectType | FunctionType | Top | Bottom
-
-
-@dataclass(frozen=True)
 class TypeLattice(Lattice[TypeElement]):
     """
     Abstract domain for type analysis with lattice operations.
@@ -228,6 +231,14 @@ class TypeLattice(Lattice[TypeElement]):
     def bottom(cls) -> TypeElement:
         return BOTTOM
 
+    def resolve(self, ref: TypeElement) -> TypeElement:
+        if isinstance(ref, Ref):
+            result = GLOBALS_OBJECT
+            for attr in ref.name.split('.'):
+                result = result.fields[attr]
+            return result
+        return ref
+
     def call(self, function: TypeElement, args: list[TypeElement]) -> TypeElement:
         if self.is_top(function):
             return self.top()
@@ -236,16 +247,16 @@ class TypeLattice(Lattice[TypeElement]):
         if not isinstance(function, FunctionType):
             print(f'{function} which is not a function')
             return self.bottom()
-        return function.return_type
+        return self.resolve(function.return_type)
 
     def binary(self, left: TypeElement, right: TypeElement, op: str) -> TypeElement:
         if self.is_top(left) or self.is_top(right):
             return self.top()
         if self.is_bottom(left) or self.is_bottom(right):
             return self.bottom()
-        if (left.name, right.name) in BINARY:
-            ftype = BINARY[(left.name, right.name)][op]
-            return self.call(ftype, [left, right])
+        category = BINARY.get((left, right))
+        if category is not None:
+            return self.call(category[op], [left, right])
         return self.top()
 
     def predefined(self, name: Predefined) -> Optional[TypeElement]:
@@ -256,7 +267,8 @@ class TypeLattice(Lattice[TypeElement]):
         return None
 
     def const(self, value: object) -> TypeElement:
-        return self.annotation(type(value).__name__) if value is not None else NONE
+        return self.call(self.annotation(type(value).__name__), [])\
+            if value is not None else NONE
 
     def attribute(self, var: TypeElement, attr: str) -> TypeElement:
         if self.is_top(var):
@@ -266,7 +278,7 @@ class TypeLattice(Lattice[TypeElement]):
         match var:
             case ObjectType() as obj:
                 if attr in obj.fields:
-                    return obj.fields[attr]
+                    return self.resolve(obj.fields[attr])
                 else:
                     unseen[obj.name].add(attr)
                 return self.top()
@@ -286,12 +298,7 @@ class TypeLattice(Lattice[TypeElement]):
         return self.call(f, [index])
 
     def annotation(self, code: str) -> TypeElement:
-        match code:
-            case "np.ndarray" | "numpy.ndarray" | "ndarray": return NDARRAY
-            case "int": return INT
-            case "float": return FLOAT
-            case "str": return STRING
-            case "bool": return BOOL
+        return self.resolve(Ref(code))
         return ObjectType(type(code).__name__, {})
 
     def imported(self, modname: str) -> TypeElement:

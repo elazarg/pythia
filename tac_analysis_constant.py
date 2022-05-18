@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypeVar, Optional
+from typing import TypeVar, Optional, TypeAlias
 
 import tac
 from tac import Const
@@ -11,17 +11,18 @@ from tac_analysis_domain import Lattice, TOP, BOTTOM, Top, Bottom
 
 T = TypeVar('T')
 
+Constant: TypeAlias = Const | Top | Bottom
 
-@dataclass(frozen=True)
-class ConstLattice(Lattice[Const]):
+
+class ConstLattice(Lattice[Constant]):
     """
     Abstract domain for type analysis with lattice operations.
     """
 
     def name(self) -> str:
-        return "Const"
+        return "Constant"
 
-    def join(self, left: Const, right: Const) -> Const:
+    def join(self, left: Constant, right: Constant) -> Constant:
         if self.is_bottom(left) or self.is_top(right):
             return right
         if self.is_bottom(right) or self.is_top(left):
@@ -30,7 +31,7 @@ class ConstLattice(Lattice[Const]):
             return left
         return self.top()
 
-    def meet(self, left: Const, right: Const) -> Const:
+    def meet(self, left: Constant, right: Constant) -> Constant:
         if self.is_top(left) or self.is_bottom(right):
             return left
         if self.is_top(right) or self.is_bottom(left):
@@ -39,23 +40,23 @@ class ConstLattice(Lattice[Const]):
             return left
         return self.bottom()
 
-    def top(self) -> Const:
+    def top(self) -> Constant:
         return TOP
 
-    def is_top(self, elem: Const) -> bool:
+    def is_top(self, elem: Constant) -> bool:
         return isinstance(elem, Top)
 
-    def is_bottom(self, elem: Const) -> bool:
+    def is_bottom(self, elem: Constant) -> bool:
         return isinstance(elem, Bottom)
 
     @classmethod
-    def bottom(cls) -> Const:
+    def bottom(cls) -> Constant:
         return BOTTOM
 
-    def call(self, function: Const, args: list[Const]) -> Const:
+    def call(self, function: Constant, args: list[Constant]) -> Constant:
         return self.top()
 
-    def binary(self, left: Const, right: Const, op: str) -> Const:
+    def binary(self, left: Constant, right: Constant, op: str) -> Constant:
         if self.is_bottom(left) or self.is_bottom(right):
             return self.bottom()
         if self.is_top(left) or self.is_top(right):
@@ -65,22 +66,22 @@ class ConstLattice(Lattice[Const]):
         except ValueError:
             return self.top()
 
-    def predefined(self, name: tac.Predefined) -> Optional[Const]:
+    def predefined(self, name: tac.Predefined) -> Optional[Constant]:
         return self.top()
 
-    def const(self, value: object) -> Const:
+    def const(self, value: object) -> Constant:
         return Const(value)
 
-    def attribute(self, var: Const, attr: str) -> Const:
+    def attribute(self, var: Constant, attr: str) -> Constant:
         return self.top()
 
-    def subscr(self, array: Const, index: Const) -> Const:
+    def subscr(self, array: Constant, index: Constant) -> Constant:
         return self.top()
 
-    def annotation(self, code: str) -> Const:
+    def annotation(self, code: str) -> Constant:
         return self.top()
 
-    def imported(self, modname: str) -> Const:
+    def imported(self, modname: str) -> Constant:
         return tac.Const(tac.Module(modname))
 
 

@@ -108,4 +108,4 @@ if __name__ == '__main__':
     # import dis
     # print(dis.dis(code_examples.jumps))
     code = disassemble.read_function('code_examples.py', 'feature_selection')
-    test(code, print_analysis=True, simplify=True)
+    test(code, print_analysis=True, simplify=False)

@@ -43,9 +43,7 @@ class BackwardIterationStrategy(Generic[T]):
 IterationStrategy: TypeAlias = ForwardIterationStrategy | BackwardIterationStrategy
 
 
-# mix of domain and analysis-specific choice of operations
-# nothing here really works...
-class Lattice(Protocol[T]):
+class Lattice(Generic[T]):
     def copy(self: T) -> T:
         ...
 
@@ -68,31 +66,35 @@ class Lattice(Protocol[T]):
         ...
 
     def call(self, function: T, args: list[T]) -> T:
-        ...
+        return self.top()
 
     def binary(self, left: T, right: T, op: str) -> T:
-        ...
+        return self.top()
 
     def predefined(self, name: tac.Predefined) -> T:
-        ...
+        return self.top()
 
     def const(self, value: object) -> T:
-        ...
+        return self.top()
 
     def attribute(self, var: T, attr: str) -> T:
-        ...
+        return self.top()
 
     def subscr(self, array: T, index: T) -> T:
-        ...
+        return self.top()
 
     def imported(self, modname: str) -> T:
-        ...
+        return self.top()
 
     def annotation(self, string: str) -> T:
-        ...
+        return self.top()
 
     def name(self) -> str:
-        ...
+        return self.top()
+
+    def var(self, value: T) -> T:
+        return value
+
 
 @dataclass(frozen=True)
 class Top:
@@ -119,8 +121,10 @@ TOP = Top()
 class Map(Generic[T]):
     map: defaultdict[tac.Var, T]
 
-    def __init__(self):
+    def __init__(self, dict: dict[tac.Var, T] = None):
         self.map = defaultdict(lambda: TOP)
+        if dict is not None:
+            self.update(dict)
 
     def __getitem__(self, key: tac.Var) -> T:
         assert isinstance(key, tac.Var)
@@ -163,9 +167,7 @@ class Map(Generic[T]):
         return set(self.map.keys())
 
     def copy(self):
-        res = Map()
-        res.update(self.map.copy())
-        return res
+        return Map(self.map)
 
     def update(self, dictionary: dict[tac.Var, T]):
         for k, v in dictionary.items():
@@ -239,46 +241,102 @@ class Cartesian(Generic[T]):
         return normalize(res)
 
     @staticmethod
-    def transformer(lattice: Lattice[T], values: Map[T]) -> Callable[[tac.Expr], T]:
+    def transformer_expr(lattice: Lattice[T], values: Map[T], expr: tac.Expr) -> T:
         def eval(expr: tac.Expr | tac.Predefined) -> T:
-            match expr:
-                case tac.Call():
-                    return lattice.call(
-                        function=eval(expr.function),
-                        args=[eval(arg) for arg in expr.args]
-                    )
-                case tac.Binary():
-                    return lattice.binary(
-                        left=eval(expr.left),
-                        right=eval(expr.right),
-                        op=expr.op
-                    )
-                case tac.Predefined():
-                    return lattice.predefined(expr)
-                case tac.Const():
-                    return lattice.const(expr.value)
-                case tac.Attribute():
-                    return lattice.attribute(eval(expr.var), expr.attr.name)
-                case tac.Subscript():
-                    return lattice.subscr(eval(expr.var), eval(expr.index))
-                case tac.Yield():
-                    return TOP
-                case tac.Import():
-                    return lattice.imported(expr.modname)
-                case tac.Var():
-                    return values[expr]
-                case str():
-                    assert False, f'unexpected string {expr}'
-                case _:
-                    assert False, f'unexpected expr {expr}'
+            return Cartesian.transformer_expr(lattice, values, expr)
 
-        return eval
+        match expr:
+            case tac.Call():
+                return lattice.call(
+                    function=eval(expr.function),
+                    args=[eval(arg) for arg in expr.args]
+                )
+            case tac.Binary():
+                return lattice.binary(
+                    left=eval(expr.left),
+                    right=eval(expr.right),
+                    op=expr.op
+                )
+            case tac.Predefined:
+                expr: tac.Predefined = expr
+                return lattice.predefined(expr)
+            case tac.Const():
+                return lattice.const(expr.value)
+            case tac.Attribute():
+                return lattice.attribute(eval(expr.var), expr.attr.name)
+            case tac.Subscript():
+                return lattice.subscr(eval(expr.var), eval(expr.index))
+            case tac.Yield():
+                return TOP
+            case tac.Import():
+                return lattice.imported(expr.modname)
+            case tac.Var():
+                return lattice.var(values[expr])
+            case _:
+                assert False, f'unexpected expr {expr}'
+
+    @staticmethod
+    def transformer_signature(lattice: Lattice[T], value: T, signature: tac.Signature) -> Map[T]:
+        match signature:
+            case tuple():
+                value_tuple = lattice.assign_tuple(value)
+                return Map({signature[i]: value_tuple[i] for i in range(len(value_tuple))})
+            case tac.Var():
+                return Map({signature: lattice.assign_var(value)})
+            case _:
+                assert False, f'unexpected signature {signature}'
 
     def transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
-        transformer = Cartesian.transformer(self.lattice, values.copy())
-        for var in tac.gens(ins) & values.keys():
+        transformer = Cartesian.transformer_expr(self.lattice, values.copy())
+        if isinstance(ins, tac.For):
+            ins = ins.as_call()
+        if isinstance(ins, tac.Assign):
+            if isinstance(ins.lhs, (tac.Var, tac.Predefined)):
+                values[ins.lhs] = transformer(ins.expr)
+        return normalize(values)
+
+    @staticmethod
+    def back_transformer(lattice: Lattice[T], assigned: T, expr: tac.Expr | tac.Predefined) -> Map[T]:
+        match expr:
+            case tac.Call():
+                return lattice.back_call(assigned)
+            case tac.Binary():
+                return lattice.back_binary(assigned)
+            case tac.Predefined():
+                return lattice.back_predefined(assigned)
+            case tac.Const():
+                return lattice.back_const(assigned)
+            case tac.Attribute():
+                return lattice.back_attribute(assigned)
+            case tac.Subscript():
+                return lattice.back_subscr(assigned)
+            case tac.Yield():
+                return lattice.back_yield(assigned)
+            case tac.Import():
+                return lattice.back_imported(expr.modname)
+            case tac.Var():
+                return lattice.back_var(assigned)
+            case _:
+                assert False, f'unexpected expr {expr}'
+
+    @staticmethod
+    def back_transformer_signature(lattice: Lattice[T], values: Map[T], signature: tac.Signature) -> T:
+        match signature:
+            case tuple():
+                value = tuple(values[v] for v in signature)
+                return lattice.back_assign_tuple(value)
+            case tac.Var():
+                return lattice.back_assign_var(values[signature])
+            case _:
+                assert False, f'unexpected signature {signature}'
+
+    def back_transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
+        if isinstance(values, Bottom):
+            return BOTTOM
+        transformer = Cartesian.back_transformer(self.lattice, values.copy())
+        for var in tac.free_vars(ins) & values.keys():
             del values[var]
         if isinstance(ins, tac.For):
             ins = ins.as_call()
