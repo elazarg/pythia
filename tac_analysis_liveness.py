@@ -83,101 +83,46 @@ class LivenessLattice(Lattice[Liveness]):
     def bottom(cls) -> Liveness:
         return BOTTOM
 
-    def call(self, function: Liveness, args: list[Liveness]) -> Liveness:
+    def back_assign_subscr(self, var: T, index: T) -> T:
         return self.top()
 
-    def binary(self, left: Liveness, right: Liveness, op: str) -> Liveness:
-        if self.is_bottom(left) or self.is_bottom(right):
-            return self.bottom()
+    def back_assign_attribute(self, var: T, attr: str) -> T:
         return self.top()
 
-    def predefined(self, name: tac.Predefined) -> typing.Optional[Liveness]:
-        return False
+    def back_assign_tuple(self, values: tuple[T]) -> T:
+        return self.top()
 
-    def const(self, value: object) -> Liveness:
-        return False
+    def back_call(self, value: Liveness, size: int) -> tuple[Liveness, list[Liveness]]:
+        result = (True, [True] * size)
+        return result
 
-    def attribute(self, var: Liveness, attr: str) -> Liveness:
-        return False
+    def back_binary(self, value: Liveness) -> tuple[Liveness, Liveness]:
+        return (True, True)
 
-    def subscr(self, array: Liveness, index: Liveness) -> Liveness:
-        return False
+    def back_predefined(self, value: T) -> None:
+        return None
 
-    def annotation(self, code: str) -> Liveness:
+    def back_const(self, value: T) -> None:
+        return None
+
+    def back_attribute(self, value: Liveness) -> Liveness:
         return True
 
-    def imported(self, modname: str) -> Liveness:
-        return False
+    def back_subscr(self, value: Liveness) -> tuple[Liveness, Liveness]:
+        return (True, True)
+
+    def back_annotation(self, value: Liveness) -> Liveness:
+        return True
+
+    def back_imported(self, value: Liveness) -> None:
+        return None
 
     @classmethod
     def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy:
         return BackwardIterationStrategy(cfg)
 
-
-class LivenessDomain(AbstractDomain):
-    vars: set[Var] | None = None
-
-    BOTTOM: ClassVar[None] = None
-
-    @staticmethod
-    def name() -> str:
+    def name(self) -> str:
         return "Liveness"
-
-    def __init__(self, vars: set[Var] | None) -> None:
-        super().__init__()
-        if vars is not None:
-            self.vars = vars.copy()
-
-    def __le__(self, other):
-        return self.join(other).vars == other.vars
-
-    def __eq__(self, other):
-        return self.vars == other.vars
-
-    def __ne__(self, other):
-        return self.vars != other.vars
-
-    def copy(self: T) -> T:
-        return LivenessDomain(self.vars)
-
-    @classmethod
-    def initial(cls: Type[T]) -> T:
-        return cls.top()
-
-    @classmethod
-    def top(cls: Type[T]) -> T:
-        return LivenessDomain(set())
-
-    @classmethod
-    def bottom(cls: Type[T]) -> T:
-        return LivenessDomain(None)
-
-    @property
-    def is_bottom(self) -> bool:
-        return self.vars is None
-
-    def join(self: T, other: T) -> T:
-        if self.is_bottom:
-            return other.copy()
-        if other.is_bottom:
-            return self.copy()
-        return LivenessDomain(self.vars | other.vars)
-
-    def transfer(self, ins: tac.Tac, location: str) -> None:
-        if self.vars is None:
-            return
-        self.vars -= tac.gens(ins)
-        self.vars |= tac.free_vars(ins)
-
-    def __str__(self) -> str:
-        return 'Alive({})'.format(", ".join(f'{k}' for k in self.vars))
-
-    def __repr__(self) -> str:
-        return 'Alive({})'.format(", ".join(f'{k}' for k in self.vars))
-
-    @classmethod
-    def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy:
-        return BackwardIterationStrategy(cfg)
 
 
 def single_block_uses(block):

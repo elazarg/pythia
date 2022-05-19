@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypeVar, Protocol, Generic, TypeAlias, Final, Iterator
+from typing import TypeVar, Protocol, Generic, TypeAlias, Final, Iterator, Type
 import graph_utils as gu
 
 import tac
@@ -98,9 +98,9 @@ class Lattice(Generic[T]):
         return value
 
     def name(self) -> str:
-        return self.top()
+        raise NotImplementedError
 
-    def back_call(self, assigned) -> tuple[T, list[T]]:
+    def back_call(self, assigned, size: int) -> tuple[T, list[T]]:
         return (self.top(), [])
 
     def back_binary(self, value: T) -> tuple[T, T]:
@@ -135,6 +135,12 @@ class Lattice(Generic[T]):
 
     def back_assign_var(self, value: T) -> T:
         return value
+
+    def back_assign_subscr(self, var: T, index: T) -> T:
+        return self.top()
+
+    def back_assign_attribute(self, var: T, attr: str) -> T:
+        return self.top()
 
 
 @dataclass(frozen=True)
@@ -173,14 +179,16 @@ class Map(Generic[T]):
         return self._map.get(key, TOP)
 
     def __setitem__(self, key: tac.Var, value: T):
-        assert isinstance(key, tac.Var)
+        assert isinstance(key, tac.Var), key
         if isinstance(value, Top):
             if key in self._map:
                 del self._map[key]
         else:
+            assert not isinstance(value, dict)
+            assert not isinstance(value, Map)
             self._map[key] = value
 
-    def update(self, dictionary: dict[tac.Var, T]) -> None:
+    def update(self, dictionary: dict[tac.Var, T] | Map) -> None:
         for k, v in dictionary.items():
             self[k] = v
 
@@ -232,14 +240,18 @@ def normalize(values: MapDomain[T]) -> MapDomain:
 
 class Cartesian(Generic[T]):
     lattice: Lattice[T]
+    backward: bool
 
     # TODO: this does not belong here
-    def view(self, cfg: gu.Cfg[T]):
+    def view(self, cfg: gu.Cfg[T]) -> IterationStrategy:
+        if self.backward:
+            return BackwardIterationStrategy(cfg)
         return ForwardIterationStrategy(cfg)
 
-    def __init__(self, lattice: Lattice[T]):
+    def __init__(self, lattice: Lattice[T], backward: bool = False):
         super().__init__()
         self.lattice = lattice
+        self.backward = backward
 
     def name(self) -> str:
         return f"Cartesian({self.lattice.name()})"
@@ -327,7 +339,7 @@ class Cartesian(Generic[T]):
             case _:
                 assert False, f'unexpected signature {signature}'
 
-    def transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
+    def forward_transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
         if isinstance(ins, tac.For):
@@ -340,12 +352,19 @@ class Cartesian(Generic[T]):
     @staticmethod
     def back_transformer(lattice: Lattice[T], assigned: T, expr: tac.Expr | tac.Predefined) -> Map[T]:
         match expr:
+            case tac.Attribute():
+                value = lattice.back_attribute(assigned)
+                d = {expr.var: value} if isinstance(expr.var, tac.Var) else {}
+                return Map(d)
+            case tac.Var():
+                return Map({expr: lattice.back_var(assigned)})
             case tac.Call():
-                (f, args) = lattice.back_call(assigned)
-                return Map({
-                    expr.function: f,
-                    **{expr.args[i]: args[i] for i in range(len(expr.args))}
-                })
+                (f, args) = lattice.back_call(assigned, len(expr.args))
+                d = {expr.args[i]: args[i] for i in range(len(expr.args))
+                     if isinstance(expr.args[i], tac.Var)}
+                if isinstance(expr.function, tac.Var):
+                    d[expr.function] = f
+                return Map(d)
             case tac.Binary():
                 left, right = lattice.back_binary(assigned)
                 return Map({
@@ -356,9 +375,6 @@ class Cartesian(Generic[T]):
                 return Map()
             case tac.Const():
                 return Map()
-            case tac.Attribute():
-                value = lattice.back_attribute(assigned)
-                return Map({expr.var: value})
             case tac.Subscript():
                 array, index = lattice.back_subscr(assigned)
                 return Map({expr.var: array, expr.index: index})
@@ -367,8 +383,6 @@ class Cartesian(Generic[T]):
                 return Map({expr.value: value})
             case tac.Import():
                 return Map()
-            case tac.Var():
-                return Map({expr: lattice.back_var(assigned)})
             case _:
                 assert False, f'unexpected expr {expr}'
 
@@ -380,21 +394,28 @@ class Cartesian(Generic[T]):
                 return lattice.back_assign_tuple(value)
             case tac.Var():
                 return lattice.back_assign_var(values[signature])
+            case tac.Attribute():
+                return lattice.back_assign_attribute(values[signature.var], signature.attr.name)
+            case tac.Subscript():
+                return lattice.back_assign_subscr(values[signature.var], values[signature.index])
             case _:
                 assert False, f'unexpected signature {signature}'
 
     def back_transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
-        transformer = Cartesian.back_transformer(self.lattice, values.copy())
-        for var in tac.free_vars(ins) & values.keys():
-            del values[var]
         if isinstance(ins, tac.For):
             ins = ins.as_call()
         if isinstance(ins, tac.Assign):
-            if isinstance(ins.lhs, (tac.Var, tac.Predefined)):
-                values[ins.lhs] = transformer(ins.expr)
+            assigned = Cartesian.back_transformer_signature(self.lattice, values, ins.lhs)
+            values.update(Cartesian.back_transformer(self.lattice, assigned, ins.expr))
         return normalize(values)
+
+    def transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
+        if self.backward:
+            return self.back_transfer(values, ins, location)
+        else:
+            return self.forward_transfer(values, ins, location)
 
     def keep_only_live_vars(self, values: MapDomain[T], alive_vars: set[tac.Var]) -> None:
         for var in set(values.keys()) - alive_vars:

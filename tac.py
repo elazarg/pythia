@@ -115,7 +115,7 @@ class Subscript:
 
 
 # Simplified version of the real binding construct in Python.
-Signature: TypeAlias = Var | tuple[Var]
+Signature: TypeAlias = Var | tuple[Var] | Subscript | Attribute | None
 
 
 @dataclass

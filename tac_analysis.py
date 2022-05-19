@@ -15,6 +15,7 @@ from tac_analysis_domain import IterationStrategy, Lattice, AbstractAnalysis, Ca
 # from tac_analysis_constant import ConstantDomain
 # from tac_analysis_pointer import PointerDomain
 # from tac_analysis_alias import AliasDomain, rewrite_aliases
+from tac_analysis_liveness import LivenessLattice
 from tac_analysis_types import TypeLattice
 
 
@@ -75,7 +76,7 @@ def test(f: type(test), print_analysis=False, simplify=True):
     #     rewrite_remove_useless_movs_pairs(block, label)
     #     rewrite_aliases(block, label)
     #     rewrite_remove_useless_movs(block, label)
-    # analyze(cfg, LivenessDomain)
+    analyze(cfg, Cartesian(LivenessLattice(), backward=True), annotations)
     # analyze(cfg, ConstantDomain)
     analyze(cfg, Cartesian(ConstLattice()), annotations)
     analyze(cfg, Cartesian(TypeLattice()), annotations)
