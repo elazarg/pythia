@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TypeVar, Optional, TypeAlias
 
 import tac
@@ -63,7 +62,7 @@ class ConstLattice(Lattice[Constant]):
             return self.top()
         try:
             return eval_binary(op, left, right)
-        except ValueError:
+        except (ValueError, TypeError):
             return self.top()
 
     def predefined(self, name: tac.Predefined) -> Optional[Constant]:

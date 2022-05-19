@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass
-from typing import TypeVar, Protocol, Type, Generic, TypeAlias, Final, Callable, Iterator, Iterable
+from typing import TypeVar, Protocol, Generic, TypeAlias, Final, Iterator
 import graph_utils as gu
 
 import tac
@@ -65,6 +64,18 @@ class Lattice(Generic[T]):
     def is_top(self, elem: T) -> bool:
         ...
 
+    def const(self, value: object) -> T:
+        return self.top()
+
+    def var(self, value: T) -> T:
+        return value
+
+    def attribute(self, var: T, attr: str) -> T:
+        return self.top()
+
+    def subscr(self, array: T, index: T) -> T:
+        return self.top()
+
     def call(self, function: T, args: list[T]) -> T:
         return self.top()
 
@@ -74,25 +85,55 @@ class Lattice(Generic[T]):
     def predefined(self, name: tac.Predefined) -> T:
         return self.top()
 
-    def const(self, value: object) -> T:
-        return self.top()
-
-    def attribute(self, var: T, attr: str) -> T:
-        return self.top()
-
-    def subscr(self, array: T, index: T) -> T:
-        return self.top()
-
     def imported(self, modname: str) -> T:
         return self.top()
 
     def annotation(self, string: str) -> T:
         return self.top()
 
+    def assign_tuple(self, values: T) -> list[T]:
+        return self.top()
+
+    def assign_var(self, value: T) -> T:
+        return value
+
     def name(self) -> str:
         return self.top()
 
-    def var(self, value: T) -> T:
+    def back_call(self, assigned) -> tuple[T, list[T]]:
+        return (self.top(), [])
+
+    def back_binary(self, value: T) -> tuple[T, T]:
+        return (self.top(), self.top())
+
+    def back_predefined(self, value: T) -> None:
+        return None
+
+    def back_const(self, value: T) -> None:
+        return None
+
+    def back_attribute(self, value: T) -> T:
+        return self.top()
+
+    def back_subscr(self, value: T) -> tuple[T, T]:
+        return (self.top(), self.top())
+
+    def back_imported(self, value: T) -> None:
+        return
+
+    def back_annotation(self, value: T) -> T:
+        return self.top()
+
+    def back_var(self, value: T) -> T:
+        return value
+
+    def back_yield(self, value: T) -> T:
+        return self.top()
+
+    def back_assign_tuple(self, values: tuple[T]) -> T:
+        return self.top()
+
+    def back_assign_var(self, value: T) -> T:
         return value
 
 
@@ -119,59 +160,63 @@ TOP = Top()
 
 
 class Map(Generic[T]):
-    map: defaultdict[tac.Var, T]
+    # Essentially a defaultdict, but a defaultdict make values appear out of nowhere
+    _map: dict[tac.Var, T]
 
-    def __init__(self, dict: dict[tac.Var, T] = None):
-        self.map = defaultdict(lambda: TOP)
-        if dict is not None:
-            self.update(dict)
+    def __init__(self, d: dict[tac.Var, T] = None):
+        self._map = {}
+        if d is not None:
+            self.update(d)
 
     def __getitem__(self, key: tac.Var) -> T:
         assert isinstance(key, tac.Var)
-        return self.map[key]
+        return self._map.get(key, TOP)
 
     def __setitem__(self, key: tac.Var, value: T):
         assert isinstance(key, tac.Var)
         if isinstance(value, Top):
-            if key in self.map:
-                del self.map[key]
+            if key in self._map:
+                del self._map[key]
         else:
-            self.map[key] = value
+            self._map[key] = value
 
-    def __iter__(self):
-        return iter(self.map)
-
-    def __contains__(self, key: tac.Var):
-        return key in self.map
-
-    def __len__(self):
-        return len(self.map)
-
-    def __eq__(self, other: Map[T] | Bottom) -> bool:
-        return isinstance(other, Map) and self.map == other.map
-
-    def __delitem__(self, key: tac.Var):
-        del self.map[key]
-
-    def __repr__(self):
-        items = ', '.join(f'{k}={v}' for k, v in self.items())
-        return f'Map({items})'
-
-    def __str__(self):
-        return repr(self)
-
-    def items(self) -> list[tuple[tac.Var, T]]:
-        return list(self.map.items())
-
-    def keys(self) -> set[tac.Var]:
-        return set(self.map.keys())
-
-    def copy(self):
-        return Map(self.map)
-
-    def update(self, dictionary: dict[tac.Var, T]):
+    def update(self, dictionary: dict[tac.Var, T]) -> None:
         for k, v in dictionary.items():
             self[k] = v
+
+    def __iter__(self):
+        return iter(self._map)
+
+    def __contains__(self, key: tac.Var):
+        return key in self._map
+
+    def __len__(self):
+        return len(self._map)
+
+    def __eq__(self, other: Map[T] | Bottom) -> bool:
+        return isinstance(other, Map) and self._map == other._map
+
+    def __delitem__(self, key: tac.Var) -> None:
+        del self._map[key]
+
+    def __repr__(self) -> str:
+        items = ', '.join(f'{k}={v}' for k, v in self._map.items())
+        return f'Map({items})'
+
+    def __str__(self) -> str:
+        return repr(self)
+
+    def items(self) -> Iterator[tuple[tac.Var, T]]:
+        return self._map.items()
+
+    def values(self) -> Iterator[T]:
+        return self._map.values()
+
+    def keys(self) -> set[tac.Var]:
+        return self._map.keys()
+
+    def copy(self) -> Map:
+        return Map(self._map)
 
 
 MapDomain: TypeAlias = Map[T] | Bottom
@@ -180,13 +225,9 @@ MapDomain: TypeAlias = Map[T] | Bottom
 def normalize(values: MapDomain[T]) -> MapDomain:
     if isinstance(values, Bottom):
         return BOTTOM
-    result = values.copy()
-    for k, v in values.items():
-        if isinstance(v, Bottom):
-            return BOTTOM
-        if isinstance(v, Top):
-            del result[k]
-    return result
+    if any(isinstance(v, Bottom) for v in values.values()):
+        return BOTTOM
+    return values
 
 
 class Cartesian(Generic[T]):
@@ -246,6 +287,10 @@ class Cartesian(Generic[T]):
             return Cartesian.transformer_expr(lattice, values, expr)
 
         match expr:
+            case tac.Var():
+                return lattice.var(values[expr])
+            case tac.Attribute():
+                return lattice.attribute(eval(expr.var), expr.attr.name)
             case tac.Call():
                 return lattice.call(
                     function=eval(expr.function),
@@ -257,23 +302,19 @@ class Cartesian(Generic[T]):
                     right=eval(expr.right),
                     op=expr.op
                 )
-            case tac.Predefined:
+            case tac.Predefined():
                 expr: tac.Predefined = expr
                 return lattice.predefined(expr)
             case tac.Const():
                 return lattice.const(expr.value)
-            case tac.Attribute():
-                return lattice.attribute(eval(expr.var), expr.attr.name)
             case tac.Subscript():
                 return lattice.subscr(eval(expr.var), eval(expr.index))
             case tac.Yield():
                 return TOP
             case tac.Import():
                 return lattice.imported(expr.modname)
-            case tac.Var():
-                return lattice.var(values[expr])
             case _:
-                assert False, f'unexpected expr {expr}'
+                assert False, f'unexpected expr of type {type(expr)}: {expr}'
 
     @staticmethod
     def transformer_signature(lattice: Lattice[T], value: T, signature: tac.Signature) -> Map[T]:
@@ -289,35 +330,45 @@ class Cartesian(Generic[T]):
     def transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
-        transformer = Cartesian.transformer_expr(self.lattice, values.copy())
         if isinstance(ins, tac.For):
             ins = ins.as_call()
         if isinstance(ins, tac.Assign):
-            if isinstance(ins.lhs, (tac.Var, tac.Predefined)):
-                values[ins.lhs] = transformer(ins.expr)
+            if isinstance(ins.lhs, tac.Var):
+                values[ins.lhs] = Cartesian.transformer_expr(self.lattice, values, ins.expr)
         return normalize(values)
 
     @staticmethod
     def back_transformer(lattice: Lattice[T], assigned: T, expr: tac.Expr | tac.Predefined) -> Map[T]:
         match expr:
             case tac.Call():
-                return lattice.back_call(assigned)
+                (f, args) = lattice.back_call(assigned)
+                return Map({
+                    expr.function: f,
+                    **{expr.args[i]: args[i] for i in range(len(expr.args))}
+                })
             case tac.Binary():
-                return lattice.back_binary(assigned)
+                left, right = lattice.back_binary(assigned)
+                return Map({
+                    expr.left: left,
+                    expr.right: right
+                })
             case tac.Predefined():
-                return lattice.back_predefined(assigned)
+                return Map()
             case tac.Const():
-                return lattice.back_const(assigned)
+                return Map()
             case tac.Attribute():
-                return lattice.back_attribute(assigned)
+                value = lattice.back_attribute(assigned)
+                return Map({expr.var: value})
             case tac.Subscript():
-                return lattice.back_subscr(assigned)
+                array, index = lattice.back_subscr(assigned)
+                return Map({expr.var: array, expr.index: index})
             case tac.Yield():
-                return lattice.back_yield(assigned)
+                value = lattice.back_yield(assigned)
+                return Map({expr.value: value})
             case tac.Import():
-                return lattice.back_imported(expr.modname)
+                return Map()
             case tac.Var():
-                return lattice.back_var(assigned)
+                return Map({expr: lattice.back_var(assigned)})
             case _:
                 assert False, f'unexpected expr {expr}'
 

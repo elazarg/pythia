@@ -91,9 +91,6 @@ class Var:
             return f'${self.name}'
         return self.name
 
-    def __repr__(self):
-        return self.__str__()
-
 
 Value: TypeAlias = Var | Const
 Name: TypeAlias = Var | Predefined
