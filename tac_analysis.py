@@ -49,7 +49,7 @@ def analyze(_cfg: gu.Cfg, analysis: Cartesian, annotations: dict[tac.Var, str]) 
 
         invariant = block.pre[name].copy()
         for index, tac in enumerate(cfg[label]):
-            analysis.transfer(invariant, tac, f'{label}.{index}')
+            invariant = analysis.transfer(invariant, tac, f'{label}.{index}')
 
         # if analysis.name() is not "Alive":
         #     liveness = typing.cast(typing.Optional[LivenessDomain], block.post.get(LivenessDomain.name()))

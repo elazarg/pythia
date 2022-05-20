@@ -62,7 +62,7 @@ class ConstLattice(Lattice[Constant]):
             return self.top()
         try:
             return eval_binary(op, left, right)
-        except (ValueError, TypeError):
+        except TypeError:
             return self.top()
 
     def predefined(self, name: tac.Predefined) -> Optional[Constant]:

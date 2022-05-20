@@ -299,6 +299,7 @@ def free_vars_expr(expr: Expr) -> set[Var]:
         case Yield(): return free_vars_expr(expr.value)
         case Import(): return set()
         case MakeFunction(): return {expr.name, expr.code}  # TODO: fix this
+        case Predefined(): return set()
         case _: raise NotImplementedError(f'free_vars_expr({repr(expr)})')
 
 
@@ -323,6 +324,7 @@ def free_vars(tac: Tac) -> set[Var]:
         case Raise(): return free_vars_expr(tac.value)
         case Del(): return set(tac.variables)
         case Unsupported(): return set()
+        case Predefined(): return set()
         case _: raise NotImplementedError(f'{tac}')
 
 

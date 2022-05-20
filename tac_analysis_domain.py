@@ -142,6 +142,9 @@ class Lattice(Generic[T]):
     def back_assign_attribute(self, var: T, attr: str) -> T:
         return self.top()
 
+    def back_return(self) -> T:
+        return self.top()
+
 
 @dataclass(frozen=True)
 class Top:
@@ -160,6 +163,9 @@ class Bottom:
     def copy(self: T) -> T:
         return self
 
+    def __ror__(self, other):
+        return other
+
 
 BOTTOM = Bottom()
 TOP = Top()
@@ -168,19 +174,21 @@ TOP = Top()
 class Map(Generic[T]):
     # Essentially a defaultdict, but a defaultdict make values appear out of nowhere
     _map: dict[tac.Var, T]
+    default: T
 
-    def __init__(self, d: dict[tac.Var, T] = None):
+    def __init__(self, default, d: dict[tac.Var, T] = None):
+        self.default = default
         self._map = {}
         if d is not None:
             self.update(d)
 
     def __getitem__(self, key: tac.Var) -> T:
         assert isinstance(key, tac.Var)
-        return self._map.get(key, TOP)
+        return self._map.get(key, self.default)
 
     def __setitem__(self, key: tac.Var, value: T):
         assert isinstance(key, tac.Var), key
-        if isinstance(value, Top):
+        if value == self.default:
             if key in self._map:
                 del self._map[key]
         else:
@@ -224,7 +232,8 @@ class Map(Generic[T]):
         return self._map.keys()
 
     def copy(self) -> Map:
-        return Map(self._map)
+        return Map(self.default, self._map)
+
 
 
 MapDomain: TypeAlias = Map[T] | Bottom
@@ -268,8 +277,12 @@ class Cartesian(Generic[T]):
     def is_bottom(self, values) -> bool:
         return isinstance(values, Bottom)
 
+    def make_map(self, d: dict[tac.Var, T] = None) -> MapDomain[T]:
+        d = d or {}
+        return Map(default=self.lattice.top(), d=d)
+
     def initial(self, annotations: dict[tac.Var, str]) -> MapDomain[T]:
-        result = Map()
+        result = self.make_map()
         result.update({
             name: self.lattice.annotation(t)
             for name, t in annotations.items()
@@ -293,49 +306,51 @@ class Cartesian(Generic[T]):
                 res[k] = self.lattice.join(left[k], right[k])
         return normalize(res)
 
-    @staticmethod
-    def transformer_expr(lattice: Lattice[T], values: Map[T], expr: tac.Expr) -> T:
+    def transformer_expr(self, values: Map[T], expr: tac.Expr) -> T:
         def eval(expr: tac.Expr | tac.Predefined) -> T:
-            return Cartesian.transformer_expr(lattice, values, expr)
+            return self.transformer_expr(values, expr)
 
         match expr:
             case tac.Var():
-                return lattice.var(values[expr])
+                return self.lattice.var(values[expr])
             case tac.Attribute():
-                return lattice.attribute(eval(expr.var), expr.attr.name)
+                return self.lattice.attribute(eval(expr.var), expr.attr.name)
             case tac.Call():
-                return lattice.call(
+                return self.lattice.call(
                     function=eval(expr.function),
                     args=[eval(arg) for arg in expr.args]
                 )
             case tac.Binary():
-                return lattice.binary(
+                return self.lattice.binary(
                     left=eval(expr.left),
                     right=eval(expr.right),
                     op=expr.op
                 )
             case tac.Predefined():
                 expr: tac.Predefined = expr
-                return lattice.predefined(expr)
+                return self.lattice.predefined(expr)
             case tac.Const():
-                return lattice.const(expr.value)
+                return self.lattice.const(expr.value)
             case tac.Subscript():
-                return lattice.subscr(eval(expr.var), eval(expr.index))
+                return self.lattice.subscr(eval(expr.var), eval(expr.index))
             case tac.Yield():
-                return TOP
+                return self.lattice.top()
             case tac.Import():
-                return lattice.imported(expr.modname)
+                return self.lattice.imported(expr.modname)
             case _:
                 assert False, f'unexpected expr of type {type(expr)}: {expr}'
 
-    @staticmethod
-    def transformer_signature(lattice: Lattice[T], value: T, signature: tac.Signature) -> Map[T]:
+    def transformer_signature(self, value: T, signature: tac.Signature) -> Map[T]:
         match signature:
             case tuple():
-                value_tuple = lattice.assign_tuple(value)
-                return Map({signature[i]: value_tuple[i] for i in range(len(value_tuple))})
+                value_tuple = self.lattice.assign_tuple(value)
+                return self.make_map({signature[i]: value_tuple[i] for i in range(len(value_tuple))})
             case tac.Var():
-                return Map({signature: lattice.assign_var(value)})
+                return self.make_map({signature: self.lattice.assign_var(value)})
+            case tac.Attribute():
+                return self.make_map()
+            case tac.Subscript():
+                return self.make_map()
             case _:
                 assert False, f'unexpected signature {signature}'
 
@@ -344,60 +359,66 @@ class Cartesian(Generic[T]):
             return BOTTOM
         if isinstance(ins, tac.For):
             ins = ins.as_call()
-        if isinstance(ins, tac.Assign):
-            if isinstance(ins.lhs, tac.Var):
-                values[ins.lhs] = Cartesian.transformer_expr(self.lattice, values, ins.expr)
-        return normalize(values)
+        match ins:
+            case tac.Assign():
+                assigned = self.transformer_expr(values, ins.expr)
+                return self.transformer_signature(assigned, ins.lhs)
+            case tac.Return():
+                return self.make_map({
+                    tac.Var('return'): self.transformer_expr(values, ins.value)
+                })
+            case tac.InplaceBinary():
+                return self.make_map()
+            case tac.Del():
+                return self.make_map()
+        return self.make_map()
 
-    @staticmethod
-    def back_transformer(lattice: Lattice[T], assigned: T, expr: tac.Expr | tac.Predefined) -> Map[T]:
+    def back_transformer(self, assigned: T, expr: tac.Expr | tac.Predefined) -> Map[T]:
         match expr:
             case tac.Attribute():
-                value = lattice.back_attribute(assigned)
-                d = {expr.var: value} if isinstance(expr.var, tac.Var) else {}
-                return Map(d)
+                value = self.lattice.back_attribute(assigned)
+                return self.make_map({expr.var: value} if isinstance(expr.var, tac.Var) else {})
             case tac.Var():
-                return Map({expr: lattice.back_var(assigned)})
+                return self.make_map({expr: self.lattice.back_var(assigned)})
             case tac.Call():
-                (f, args) = lattice.back_call(assigned, len(expr.args))
+                (f, args) = self.lattice.back_call(assigned, len(expr.args))
                 d = {expr.args[i]: args[i] for i in range(len(expr.args))
                      if isinstance(expr.args[i], tac.Var)}
                 if isinstance(expr.function, tac.Var):
                     d[expr.function] = f
-                return Map(d)
+                return self.make_map(d)
             case tac.Binary():
-                left, right = lattice.back_binary(assigned)
-                return Map({
+                left, right = self.lattice.back_binary(assigned)
+                return self.make_map({
                     expr.left: left,
                     expr.right: right
                 })
             case tac.Predefined():
-                return Map()
+                return self.make_map()
             case tac.Const():
-                return Map()
+                return self.make_map()
             case tac.Subscript():
-                array, index = lattice.back_subscr(assigned)
-                return Map({expr.var: array, expr.index: index})
+                array, index = self.lattice.back_subscr(assigned)
+                return self.make_map({expr.var: array, expr.index: index})
             case tac.Yield():
-                value = lattice.back_yield(assigned)
-                return Map({expr.value: value})
+                value = self.lattice.back_yield(assigned)
+                return self.make_map({expr.value: value})
             case tac.Import():
-                return Map()
+                return self.make_map()
             case _:
                 assert False, f'unexpected expr {expr}'
 
-    @staticmethod
-    def back_transformer_signature(lattice: Lattice[T], values: Map[T], signature: tac.Signature) -> T:
+    def back_transformer_signature(self, values: Map[T], signature: tac.Signature) -> T:
         match signature:
             case tuple():
                 value = tuple(values[v] for v in signature)
-                return lattice.back_assign_tuple(value)
+                return self.lattice.back_assign_tuple(value)
             case tac.Var():
-                return lattice.back_assign_var(values[signature])
+                return self.lattice.back_assign_var(values[signature])
             case tac.Attribute():
-                return lattice.back_assign_attribute(values[signature.var], signature.attr.name)
+                return self.lattice.back_assign_attribute(values[signature.var], signature.attr.name)
             case tac.Subscript():
-                return lattice.back_assign_subscr(values[signature.var], values[signature.index])
+                return self.lattice.back_assign_subscr(values[signature.var], values[signature.index])
             case _:
                 assert False, f'unexpected signature {signature}'
 
@@ -407,19 +428,30 @@ class Cartesian(Generic[T]):
         if isinstance(ins, tac.For):
             ins = ins.as_call()
         if isinstance(ins, tac.Assign):
-            assigned = Cartesian.back_transformer_signature(self.lattice, values, ins.lhs)
-            values.update(Cartesian.back_transformer(self.lattice, assigned, ins.expr))
-        return normalize(values)
+            assigned = self.back_transformer_signature(values, ins.lhs)
+            return self.back_transformer(assigned, ins.expr)
+        if isinstance(ins, tac.Return):
+            return self.make_map({ins.value: self.lattice.back_return()})
+        if isinstance(ins, tac.InplaceBinary):
+            return self.lattice.back_inplace_binary()
+        return values
 
     def transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
+        if isinstance(values, Bottom):
+            return BOTTOM
+        values = values.copy()
         if self.backward:
-            return self.back_transfer(values, ins, location)
+            result = self.back_transfer(values, ins, location)
+            for var in tac.gens(ins):
+                if var in values:
+                    del values[var]
         else:
-            return self.forward_transfer(values, ins, location)
-
-    def keep_only_live_vars(self, values: MapDomain[T], alive_vars: set[tac.Var]) -> None:
-        for var in set(values.keys()) - alive_vars:
-            del values[var]
+            result = self.forward_transfer(values, ins, location)
+            for var in tac.gens(ins):
+                if var in values:
+                    del values[var]
+        values.update(result)
+        return normalize(values)
 
 
 class AbstractAnalysis(Protocol[T]):

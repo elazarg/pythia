@@ -245,7 +245,7 @@ class TypeLattice(Lattice[TypeElement]):
         if self.is_bottom(function) or any(self.is_bottom(arg) for arg in args):
             return self.bottom()
         if not isinstance(function, FunctionType):
-            print(f'{function} which is not a function')
+            print(f'{function} is not a function')
             return self.bottom()
         return self.resolve(function.return_type)
 
