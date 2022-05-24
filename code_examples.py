@@ -463,9 +463,11 @@ def feature_selection(X: np.ndarray, y: np.ndarray):
 
     return final_cost, (X, theta)
 
+
 def iteration():
     for i in range(5):
         print(i)
+
 
 def simple_pointer():
     a = np.zeros((1, 3))

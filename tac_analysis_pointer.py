@@ -32,7 +32,7 @@ class PointerGraph(Generic[T]):
                 assert isinstance(targets, frozenset|Top)
                 if isinstance(targets, frozenset):
                     for target in targets:
-                        assert isinstance(target, Object)
+                        assert isinstance(target, Object|Top)
         self.graph = graph
         if GLOBALS not in self.graph:
             self.graph[GLOBALS] = PointerGraph.make_map({})
@@ -90,7 +90,7 @@ class PointerGraph(Generic[T]):
                 self[source_obj, field] = targets
 
 
-PointerDomain: TypeAlias = PointerGraph | Bottom | Top
+PointerDomain: TypeAlias = PointerGraph | Top
 
 
 class PointerLattice(Analysis[T]):
@@ -121,7 +121,7 @@ class PointerLattice(Analysis[T]):
         return self.is_less_than(left, right) and self.is_less_than(right, left)
 
     def is_bottom(self, values) -> bool:
-        return isinstance(values, Bottom)
+        return values.graph == {}
 
     def initial(self, annotations: dict[tac.Var, str]) -> PointerDomain[T]:
         result = PointerGraph({LOCALS: PointerGraph.make_map({var: frozenset({TOP}) for var in annotations})})
@@ -131,27 +131,23 @@ class PointerLattice(Analysis[T]):
         return TOP
 
     def bottom(self) -> PointerDomain[T]:
-        return BOTTOM
+        return PointerGraph({})
 
     def join(self, left: PointerDomain, right: PointerDomain) -> PointerDomain:
         match left, right:
             case (Top(), _): return TOP
             case (_, Top()): return TOP
-            case (Bottom(), _): return right
-            case (_, Bottom()): return left
             case (PointerGraph() as left, PointerGraph() as right):
                 return PointerGraph.join(left, right)
         assert False, f'Unhandled case: {left} {right}'
 
     def meet(self, left: PointerDomain, right: PointerDomain) -> PointerDomain:
         match left, right:
-            case (Bottom(), _): return BOTTOM
-            case (_, Bottom()): return BOTTOM
             case (Top(), _): return right
             case (_, Top()): return left
             case (PointerGraph() as left, PointerGraph() as right):
-                # TODO: add precision
-                return BOTTOM
+                assert False
+                return self.bottom()
         assert False, f'Unhandled case: {left} {right}'
 
     def evaluate(self, pointers: PointerDomain, location: str, expr: tac.Expr) -> frozenset[Object]:
@@ -233,7 +229,6 @@ class PointerLattice(Analysis[T]):
             ins = tac.Assign(ins.lhs, tac.Binary(ins.lhs, ins.op, ins.right))
         match pointers:
             case Top(): return TOP
-            case Bottom(): return TOP
             case PointerGraph() as pointers:
                 match ins:
                     case tac.Assign():
