@@ -120,6 +120,9 @@ class LivenessLattice(Lattice[Liveness]):
     def back_return(self) -> T:
         return True
 
+    def default(self) -> T:
+        return False
+
     @classmethod
     def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy:
         return BackwardIterationStrategy(cfg)

@@ -9,7 +9,7 @@ from typing import TypeVar, TypeAlias, Optional
 from frozendict import frozendict
 
 from tac import Predefined
-from tac_analysis_domain import Bottom, Top, Lattice, BOTTOM
+from tac_analysis_domain import Bottom, Lattice, BOTTOM
 
 T = TypeVar('T')
 
@@ -40,7 +40,7 @@ class FunctionType:
 SimpleType: TypeAlias = ObjectType | Ref | FunctionType
 
 
-TypeElement: TypeAlias = ObjectType | FunctionType | Ref | Top | Bottom
+TypeElement: TypeAlias = ObjectType | FunctionType | Ref | Bottom
 
 
 def make_tuple(t: ObjectType) -> ObjectType:
@@ -249,14 +249,17 @@ class TypeLattice(Lattice[TypeElement]):
             return self.bottom()
         return self.resolve(function.return_type)
 
-    def binary(self, left: TypeElement, right: TypeElement, op: str) -> TypeElement:
+    def _get_bianry_op(self, left: TypeElement, right: TypeElement, op: str) -> FunctionType | Bottom:
         if self.is_top(left) or self.is_top(right):
             return self.top()
         if self.is_bottom(left) or self.is_bottom(right):
             return self.bottom()
-        category = BINARY.get((left, right))
-        if category is not None:
-            return self.call(category[op], [left, right])
+        return self.resolve(BINARY.get((left, right), {}).get(op, self.top()))
+
+    def binary(self, left: TypeElement, right: TypeElement, op: str) -> TypeElement:
+        function = self._get_bianry_op(left, right, op)
+        if not self.is_top(function) and not isinstance(function, Bottom):
+            return self.call(function, [left, right])
         return self.top()
 
     def predefined(self, name: Predefined) -> Optional[TypeElement]:
@@ -303,6 +306,19 @@ class TypeLattice(Lattice[TypeElement]):
 
     def imported(self, modname: str) -> TypeElement:
         return GLOBALS_OBJECT.fields[modname]
+
+    def is_subtype(self, left: TypeElement, right: TypeElement) -> bool:
+        return self.join(left, right) == right
+
+    def is_supertype(self, left: TypeElement, right: TypeElement) -> bool:
+        return self.join(left, right) == left
+
+    def is_allocation_function(self, function: TypeElement):
+        return isinstance(function, FunctionType) and function.new
+
+    def is_allocation_binary(self, left: T, right: T, op: str):
+        function = self._get_bianry_op(left, right, op)
+        return self.is_allocation_function(function)
 
 
 unseen = defaultdict(set)

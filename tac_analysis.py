@@ -3,20 +3,22 @@
 from __future__ import annotations
 
 import math
+from typing import TypeVar
 
 import disassemble
 import graph_utils as gu
 import tac
 import tac_analysis_types
-from tac_analysis_constant import ConstLattice
+from tac_analysis_constant import ConstLattice, Constant
 
-from tac_analysis_domain import IterationStrategy, Lattice, AbstractAnalysis, Cartesian
-# from tac_analysis_liveness import LivenessDomain, rewrite_remove_useless_movs, rewrite_remove_useless_movs_pairs
-# from tac_analysis_constant import ConstantDomain
-# from tac_analysis_pointer import PointerDomain
-# from tac_analysis_alias import AliasDomain, rewrite_aliases
-from tac_analysis_liveness import LivenessLattice
+from tac_analysis_domain import IterationStrategy, Cartesian, BackwardIterationStrategy, ForwardIterationStrategy, \
+    Analysis
+from tac_analysis_liveness import LivenessLattice, Liveness
+from tac_analysis_pointer import PointerLattice
 from tac_analysis_types import TypeLattice
+
+
+T = TypeVar('T')
 
 
 def make_tacblock_cfg(f, simplify=True):
@@ -33,16 +35,16 @@ def print_block(n, block):
         print(f'\t{label:6}\t', ins)
 
 
-def analyze(_cfg: gu.Cfg, analysis: Cartesian, annotations: dict[tac.Var, str]) -> None:
+def analyze(_cfg: gu.Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]) -> None:
     name = analysis.name()
     for label in _cfg.labels:
         _cfg[label].pre[name] = analysis.bottom()
         _cfg[label].post[name] = analysis.bottom()
 
-    cfg: IterationStrategy = analysis.view(_cfg)
+    cfg: IterationStrategy = BackwardIterationStrategy(_cfg) if analysis.backward else ForwardIterationStrategy(_cfg)
 
     wl = [entry] = {cfg.entry_label}
-    cfg[entry].pre[name] = analysis.initial(annotations)
+    cfg[entry].pre[name] = analysis.initial(analysis.top() if analysis.backward else annotations)
     while wl:
         label = wl.pop()
         block = cfg[label]
@@ -76,11 +78,15 @@ def test(f: type(test), print_analysis=False, simplify=True):
     #     rewrite_remove_useless_movs_pairs(block, label)
     #     rewrite_aliases(block, label)
     #     rewrite_remove_useless_movs(block, label)
-    analyze(cfg, Cartesian(LivenessLattice(), backward=True), annotations)
+    liveness = LivenessLattice()
+    constant = ConstLattice()
+    typeness = TypeLattice()
+
+    analyze(cfg, Cartesian[tac.Var, Liveness](liveness, backward=True), annotations)
     # analyze(cfg, ConstantDomain)
-    analyze(cfg, Cartesian(ConstLattice()), annotations)
-    analyze(cfg, Cartesian(TypeLattice()), annotations)
-    # analyze(cfg, PointerDomain)
+    analyze(cfg, Cartesian[tac.Var, Constant](constant), annotations)
+    analyze(cfg, Cartesian[tac.Var, tac_analysis_types.TypeElement](typeness), annotations)
+    analyze(cfg, PointerLattice[Constant](typeness), annotations)
 
     for label, block in sorted(cfg.items()):
         if math.isinf(label):
@@ -108,5 +114,5 @@ if __name__ == '__main__':
     import code_examples
     # import dis
     # print(dis.dis(code_examples.jumps))
-    code = disassemble.read_function('code_examples.py', 'feature_selection')
+    code = disassemble.read_function('code_examples.py', 'simple_pointer')
     test(code, print_analysis=True, simplify=False)

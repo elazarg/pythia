@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypeVar, Protocol, Generic, TypeAlias, Final, Iterator, Type
+from typing import TypeVar, Protocol, Generic, TypeAlias, Final, Iterator, Type, Callable
 import graph_utils as gu
 
 import tac
 
 T = TypeVar('T')
+K = TypeVar('K')
 
 
 @dataclass
@@ -145,6 +146,18 @@ class Lattice(Generic[T]):
     def back_return(self) -> T:
         return self.top()
 
+    def default(self) -> T:
+        return self.top()
+
+    def back_inplace_binary(self) -> T:
+        raise NotImplementedError
+
+    def is_allocation_function(self, function: T):
+        pass
+
+    def is_allocation_binary(self, left: T, right: T, op: tac.Var):
+        pass
+
 
 @dataclass(frozen=True)
 class Top:
@@ -153,6 +166,18 @@ class Top:
 
     def copy(self: T) -> T:
         return self
+
+    def __or__(self, other):
+        return self
+
+    def __ror__(self, other):
+        return self
+
+    def __and__(self, other):
+        return other
+
+    def __rand__(self, other):
+        return other
 
 
 @dataclass(frozen=True)
@@ -163,20 +188,29 @@ class Bottom:
     def copy(self: T) -> T:
         return self
 
+    def __or__(self, other):
+        return other
+
     def __ror__(self, other):
         return other
+
+    def __rand__(self, other):
+        return self
+
+    def __and__(self, other):
+        return self
 
 
 BOTTOM = Bottom()
 TOP = Top()
 
 
-class Map(Generic[T]):
+class Map(Generic[K, T]):
     # Essentially a defaultdict, but a defaultdict make values appear out of nowhere
     _map: dict[tac.Var, T]
     default: T
 
-    def __init__(self, default, d: dict[tac.Var, T] = None):
+    def __init__(self, default: T, d: dict[tac.Var, T] = None):
         self.default = default
         self._map = {}
         if d is not None:
@@ -234,12 +268,19 @@ class Map(Generic[T]):
     def copy(self) -> Map:
         return Map(self.default, self._map)
 
+    def join(self, other, resolution: Callable[[T, T], T] = None) -> Map:
+        if resolution is None:
+            resolution = self.default.join
+        new_map = self.copy()
+        for k in self.keys() | other.keys():
+            new_map[k] = resolution(new_map[k], other[k])
+        return new_map
 
 
-MapDomain: TypeAlias = Map[T] | Bottom
+MapDomain: TypeAlias = Map[K, T] | Bottom
 
 
-def normalize(values: MapDomain[T]) -> MapDomain:
+def normalize(values: MapDomain[K, T]) -> MapDomain[K, T]:
     if isinstance(values, Bottom):
         return BOTTOM
     if any(isinstance(v, Bottom) for v in values.values()):
@@ -247,7 +288,41 @@ def normalize(values: MapDomain[T]) -> MapDomain:
     return values
 
 
-class Cartesian(Generic[T]):
+class Analysis(Protocol[T]):
+    backward: bool
+
+    def name(self) -> str:
+        ...
+
+    def is_less_than(self, left: T, right: T) -> bool:
+        ...
+
+    def is_equivalent(self, left, right) -> bool:
+        ...
+
+    def copy(self: T) -> T:
+        ...
+
+    def is_bottom(self, values) -> bool:
+        ...
+
+    def initial(self, annotations: dict[K, str]) -> T:
+        ...
+
+    def top(self) -> T:
+        ...
+
+    def bottom(self) -> T:
+        ...
+
+    def join(self, left: T, right: T) -> T:
+        ...
+
+    def transfer(self, values: T, ins: tac.Tac, location: str) -> T:
+        ...
+
+
+class Cartesian(Analysis[MapDomain[K, T]]):
     lattice: Lattice[T]
     backward: bool
 
@@ -277,11 +352,11 @@ class Cartesian(Generic[T]):
     def is_bottom(self, values) -> bool:
         return isinstance(values, Bottom)
 
-    def make_map(self, d: dict[tac.Var, T] = None) -> MapDomain[T]:
+    def make_map(self, d: dict[K, T] = None) -> MapDomain[K, T]:
         d = d or {}
-        return Map(default=self.lattice.top(), d=d)
+        return Map(default=self.lattice.default(), d=d)
 
-    def initial(self, annotations: dict[tac.Var, str]) -> MapDomain[T]:
+    def initial(self, annotations: dict[K, str]) -> MapDomain[K, T]:
         result = self.make_map()
         result.update({
             name: self.lattice.annotation(t)
@@ -289,22 +364,22 @@ class Cartesian(Generic[T]):
         })
         return result
 
-    def top(self) -> MapDomain[T]:
-        return self.initial({})
+    def top(self) -> MapDomain[K, T]:
+        return self.make_map()
 
-    def bottom(self) -> MapDomain[T]:
+    def bottom(self) -> MapDomain[K, T]:
         return BOTTOM
 
-    def join(self, left: MapDomain[T], right: MapDomain[T]) -> MapDomain[T]:
-        if self.is_bottom(left):
-            return right.copy()
-        if self.is_bottom(right):
-            return left.copy()
-        res = self.top()
-        for k in left.keys() | right.keys():
-            if k in left.keys() and k in right.keys():
-                res[k] = self.lattice.join(left[k], right[k])
-        return normalize(res)
+    def join(self, left: MapDomain[K, T], right: MapDomain[K, T]) -> MapDomain[K, T]:
+        match left, right:
+            case (Bottom(), _): return right
+            case (_, Bottom()): return left
+            case (Map(), Map()):
+                res = self.top()
+                for k in left.keys() | right.keys():
+                    if k in left.keys() and k in right.keys():
+                        res[k] = self.lattice.join(left[k], right[k])
+                return normalize(res)
 
     def transformer_expr(self, values: Map[T], expr: tac.Expr) -> T:
         def eval(expr: tac.Expr | tac.Predefined) -> T:
@@ -314,7 +389,7 @@ class Cartesian(Generic[T]):
             case tac.Var():
                 return self.lattice.var(values[expr])
             case tac.Attribute():
-                return self.lattice.attribute(eval(expr.var), expr.attr.name)
+                return self.lattice.attribute(eval(expr.var), expr.field.name)
             case tac.Call():
                 return self.lattice.call(
                     function=eval(expr.function),
@@ -354,7 +429,7 @@ class Cartesian(Generic[T]):
             case _:
                 assert False, f'unexpected signature {signature}'
 
-    def forward_transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
+    def forward_transfer(self, values: MapDomain[K, T], ins: tac.Tac, location: str) -> MapDomain[K, T]:
         if isinstance(values, Bottom):
             return BOTTOM
         if isinstance(ins, tac.For):
@@ -416,13 +491,13 @@ class Cartesian(Generic[T]):
             case tac.Var():
                 return self.lattice.back_assign_var(values[signature])
             case tac.Attribute():
-                return self.lattice.back_assign_attribute(values[signature.var], signature.attr.name)
+                return self.lattice.back_assign_attribute(values[signature.var], signature.field.name)
             case tac.Subscript():
                 return self.lattice.back_assign_subscr(values[signature.var], values[signature.index])
             case _:
                 assert False, f'unexpected signature {signature}'
 
-    def back_transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
+    def back_transfer(self, values: MapDomain[K, T], ins: tac.Tac, location: str) -> MapDomain[K, T]:
         if isinstance(values, Bottom):
             return BOTTOM
         if isinstance(ins, tac.For):
@@ -436,21 +511,18 @@ class Cartesian(Generic[T]):
             return self.lattice.back_inplace_binary()
         return values
 
-    def transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
+    def transfer(self, values: MapDomain[K, T], ins: tac.Tac, location: str) -> MapDomain[K, T]:
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()
         if self.backward:
-            result = self.back_transfer(values, ins, location)
+            to_update = self.back_transfer(values, ins, location)
             for var in tac.gens(ins):
                 if var in values:
                     del values[var]
         else:
-            result = self.forward_transfer(values, ins, location)
-            for var in tac.gens(ins):
-                if var in values:
-                    del values[var]
-        values.update(result)
+            to_update = self.forward_transfer(values, ins, location)
+        values.update(to_update)
         return normalize(values)
 
 
