@@ -470,13 +470,13 @@ def iteration():
 
 
 def simple_pointer():
-    a = np.zeros((1, 3))
-    x = np.zeros((4, 5))
+    a = A()
+    x = A()
     if x:
         y = x
         a.x = x
     else:
-        y = np.zeros((7, 8))
+        y = A()
         a.x = y
     print(y)
     return x + y

@@ -6,8 +6,8 @@ from itertools import chain
 from typing import TypeVar, TypeAlias, Generic, Iterator
 
 import tac
-from tac_analysis_domain import IterationStrategy, ForwardIterationStrategy, Lattice, Bottom, Top, \
-    Object, LOCALS, TOP, BOTTOM, BackwardIterationStrategy, Map, Analysis, GLOBALS
+from tac_analysis_domain import IterationStrategy, ForwardIterationStrategy, Lattice, \
+    Object, LOCALS, BackwardIterationStrategy, Map, Analysis, GLOBALS, NONLOCALS, VarAnalysis, MapDomain
 
 import graph_utils as gu
 
@@ -29,10 +29,10 @@ class PointerGraph(Generic[T]):
             assert isinstance(m, Map)
             for field, targets in m.items():
                 assert isinstance(field, tac.Var)
-                assert isinstance(targets, frozenset|Top)
+                assert isinstance(targets, frozenset)
                 if isinstance(targets, frozenset):
                     for target in targets:
-                        assert isinstance(target, Object|Top)
+                        assert isinstance(target, Object)
         self.graph = graph
         if GLOBALS not in self.graph:
             self.graph[GLOBALS] = PointerGraph.make_map({})
@@ -63,7 +63,7 @@ class PointerGraph(Generic[T]):
         obj, field = pair
         assert isinstance(obj, Object)
         assert isinstance(field, tac.Var)
-        assert isinstance(targets, frozenset|Top)
+        assert isinstance(targets, frozenset)
         self.graph.setdefault(obj, self.make_map({}))[field] = targets
 
     def __str__(self) -> str:
@@ -71,11 +71,17 @@ class PointerGraph(Generic[T]):
                                        for source_obj in self.graph
                                        for field, target_obj in self.graph[source_obj].items()) + ")"
 
+    def make_top_map(self) -> Map[tac.Var, frozenset[Object]]:
+        all_objects = frozenset(chain.from_iterable(self.graph.keys()))
+        all_fields = frozenset(chain.from_iterable(self.graph.values()))
+        return self.make_map({field: all_objects for field in all_fields})
+
+    def make_top(self) -> PointerGraph:
+        all_objects = frozenset(chain.from_iterable(self.graph.keys()))
+        top_map = self.make_top_map()
+        return PointerGraph({obj: top_map.copy() for obj in all_objects})
+
     def __eq__(self, other):
-        if other == BOTTOM:
-            return False
-        if other == TOP:
-            return False
         return self.graph == other.graph
 
     def __le__(self):
@@ -89,12 +95,15 @@ class PointerGraph(Generic[T]):
             for field, targets in fields.items():
                 self[source_obj, field] = targets
 
+    def objects(self) -> frozenset[Object]:
+        return frozenset(self.graph.keys())
 
-PointerDomain: TypeAlias = PointerGraph | Top
+
+PointerDomain: TypeAlias = PointerGraph
 
 
-class PointerLattice(Analysis[T]):
-    lattice: Lattice[T]
+class PointerLattice(Analysis[MapDomain[tac.Var, T]]):
+    lattice: MapDomain[tac.Var, T]
     backward: bool
 
     # TODO: this does not belong here
@@ -103,7 +112,7 @@ class PointerLattice(Analysis[T]):
             return BackwardIterationStrategy(cfg)
         return ForwardIterationStrategy(cfg)
 
-    def __init__(self, lattice: Lattice[T], backward: bool = False):
+    def __init__(self, lattice: MapDomain[tac.Var, T], backward: bool = False):
         super().__init__()
         self.lattice = lattice
         self.backward = backward
@@ -124,33 +133,20 @@ class PointerLattice(Analysis[T]):
         return values.graph == {}
 
     def initial(self, annotations: dict[tac.Var, str]) -> PointerDomain[T]:
-        result = PointerGraph({LOCALS: PointerGraph.make_map({var: frozenset({TOP}) for var in annotations})})
+        result = PointerGraph({LOCALS: PointerGraph.make_map({var: frozenset({}) for var in annotations})})
         return result
-
-    def top(self) -> PointerDomain[T]:
-        return TOP
 
     def bottom(self) -> PointerDomain[T]:
         return PointerGraph({})
 
-    def join(self, left: PointerDomain, right: PointerDomain) -> PointerDomain:
-        match left, right:
-            case (Top(), _): return TOP
-            case (_, Top()): return TOP
-            case (PointerGraph() as left, PointerGraph() as right):
-                return PointerGraph.join(left, right)
-        assert False, f'Unhandled case: {left} {right}'
+    def join(self, left: PointerDomain[T], right: PointerDomain[T]) -> PointerDomain[T]:
+        return PointerGraph.join(left, right)
 
-    def meet(self, left: PointerDomain, right: PointerDomain) -> PointerDomain:
-        match left, right:
-            case (Top(), _): return right
-            case (_, Top()): return left
-            case (PointerGraph() as left, PointerGraph() as right):
-                assert False
-                return self.bottom()
+    def meet(self, left: PointerDomain[T], right: PointerDomain[T]) -> PointerDomain[T]:
         assert False, f'Unhandled case: {left} {right}'
+        return self.bottom()
 
-    def evaluate(self, pointers: PointerDomain, location: str, expr: tac.Expr) -> frozenset[Object]:
+    def evaluate(self, pointers: PointerDomain[T], location: str, expr: tac.Expr) -> frozenset[Object]:
         location_object = Object(location)
         match expr:
             case tac.Const():
@@ -158,6 +154,7 @@ class PointerLattice(Analysis[T]):
             case tac.Predefined.GLOBALS: return frozenset({GLOBALS})
             case tac.Predefined.LOCALS: return frozenset({LOCALS})
             case tac.Predefined.TUPLE: return frozenset()
+            case tac.Predefined.NONLOCALS: return frozenset({NONLOCALS})
             case tac.Var():
                 return pointers[LOCALS, expr]
             case tac.Attribute(var=var, field=field):
@@ -167,21 +164,21 @@ class PointerLattice(Analysis[T]):
             case tac.Subscript(var=var):
                 return self.evaluate(pointers, location, tac.Attribute(var=var, field=tac.Var('*')))
             case tac.Call(function=function):
-                allocation = self.lattice.is_allocation_function(self.evaluate(pointers, location, function))
+                allocation = self.lattice.is_allocation_function(function)
                 if allocation is None:
                     allocation = function.name[0].isupper()
                 if allocation:
                     return frozenset({location_object})
                 return frozenset()
             case tac.Binary(left=left, op=op, right=right):
-                allocation = self.lattice.is_allocation_binary(self.lattice.var(left), self.lattice.var(right), op)
+                allocation = self.lattice.is_allocation_binary(left, right, op)
                 if allocation is None:
-                    return TOP
+                    return pointers.objects()
                 elif allocation:
                     return frozenset({location_object})
                 return frozenset()
             case tac.Yield():
-                return TOP
+                return pointers.objects()
             case tac.Import():
                 return frozenset()
             case tac.MakeFunction():
@@ -227,29 +224,24 @@ class PointerLattice(Analysis[T]):
         pointers = pointers.copy()
         if isinstance(ins, tac.InplaceBinary):
             ins = tac.Assign(ins.lhs, tac.Binary(ins.lhs, ins.op, ins.right))
-        match pointers:
-            case Top(): return TOP
-            case PointerGraph() as pointers:
-                match ins:
-                    case tac.Assign():
-                        val = self.evaluate(pointers, location, ins.expr)
-                        assert isinstance(val, frozenset|Top)
-                        to_update = self.transformer_signature(pointers, val, ins.lhs)
-                        pointers.update(to_update)
-                    case tac.InplaceBinary():
-                        assert False
-                    case tac.Return():
-                        return pointers
-                    case tac.Del():
-                        # TODO
-                        return pointers
-                    case tac.Raise():
-                        # TODO
-                        return pointers
-                    case tac.Jump():
-                        return pointers
-                    case _:
-                        assert False, f'unexpected instruction {ins}'
+        match ins:
+            case tac.Assign():
+                val = self.evaluate(pointers, location, ins.expr)
+                assert isinstance(val, frozenset)
+                to_update = self.transformer_signature(pointers, val, ins.lhs)
+                pointers.update(to_update)
+            case tac.InplaceBinary():
+                assert False
+            case tac.Return():
+                return pointers
+            case tac.Del():
+                # TODO
+                return pointers
+            case tac.Raise():
+                # TODO
+                return pointers
+            case tac.Jump():
                 return pointers
             case _:
-                assert False, f'unexpected pointers {pointers}'
+                assert False, f'unexpected instruction {ins}'
+        return pointers

@@ -322,7 +322,7 @@ class Analysis(Protocol[T]):
         ...
 
 
-class Cartesian(Analysis[MapDomain[K, T]]):
+class VarAnalysis(Analysis[MapDomain[K, T]]):
     lattice: Lattice[T]
     backward: bool
 
@@ -338,7 +338,7 @@ class Cartesian(Analysis[MapDomain[K, T]]):
         self.backward = backward
 
     def name(self) -> str:
-        return f"Cartesian({self.lattice.name()})"
+        return f"VarAnalysis({self.lattice.name()})"
 
     def is_less_than(self, left: T, right: T) -> bool:
         return self.join(left, right) == right
@@ -347,7 +347,7 @@ class Cartesian(Analysis[MapDomain[K, T]]):
         return self.is_less_than(left, right) and self.is_less_than(right, left)
 
     def copy(self: T) -> T:
-        return Cartesian(self.lattice)
+        return VarAnalysis(self.lattice)
 
     def is_bottom(self, values) -> bool:
         return isinstance(values, Bottom)
@@ -412,6 +412,8 @@ class Cartesian(Analysis[MapDomain[K, T]]):
                 return self.lattice.top()
             case tac.Import():
                 return self.lattice.imported(expr.modname)
+            case tac.MakeFunction():
+                return self.lattice.top()
             case _:
                 assert False, f'unexpected expr of type {type(expr)}: {expr}'
 
@@ -480,6 +482,10 @@ class Cartesian(Analysis[MapDomain[K, T]]):
                 return self.make_map({expr.value: value})
             case tac.Import():
                 return self.make_map()
+            case tac.MakeFunction():
+                return self.make_map()
+            case tac.MakeClass():
+                return self.make_map()
             case _:
                 assert False, f'unexpected expr {expr}'
 
@@ -533,7 +539,7 @@ class AbstractAnalysis(Protocol[T]):
     def view(self, cfg: gu.Cfg[T]) -> IterationStrategy[T]:
         raise NotImplementedError
 
-    def transfer(self, inv: Cartesian, ins: T, location: str) -> None:
+    def transfer(self, inv: VarAnalysis, ins: T, location: str) -> None:
         raise NotImplementedError
 
     def initial(self) -> T:
@@ -565,5 +571,6 @@ class Object:
 
 
 LOCALS: Final[Object] = Object('locals()')
+NONLOCALS: Final[Object] = Object('NONLOCALS')
 
 GLOBALS: Final[Object] = Object('globals()')

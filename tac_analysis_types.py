@@ -62,6 +62,7 @@ INT = ObjectType('int', frozendict({}))
 STRING = ObjectType('str', frozendict({}))
 BOOL = ObjectType('bool', frozendict({}))
 NONE = ObjectType('None', frozendict({}))
+CODE = ObjectType('code', frozendict({}))
 
 LIST = ObjectType('list', frozendict({
     '__getitem__': FunctionType(OBJECT, new=False),
@@ -155,6 +156,7 @@ BUILTINS_MODULE = ObjectType('/builtins', frozendict({
     'float': FunctionType(FLOAT, new=False),
     'str': FunctionType(STRING, new=False),
     'bool': FunctionType(BOOL, new=False),
+    'code': FunctionType(CODE, new=False),
 }))
 
 GLOBALS_OBJECT = ObjectType('globals()', frozendict({
@@ -162,6 +164,7 @@ GLOBALS_OBJECT = ObjectType('globals()', frozendict({
     'np': NUMPY_MODULE,
     'pandas': PANDAS_MODULE,
     'time': TIME_MODULE,
+    'A': FunctionType(ObjectType('A', frozendict({}))),
     **BUILTINS_MODULE.fields
 }))
 
@@ -267,6 +270,8 @@ class TypeLattice(Lattice[TypeElement]):
             case Predefined.LIST: return LIST_CONSTRUCTOR
             case Predefined.TUPLE: return TUPLE_CONSTRUCTOR
             case Predefined.GLOBALS: return GLOBALS_OBJECT
+            case Predefined.NONLOCALS: return NONLOCALS_OBJECT
+            case Predefined.LOCALS: return LOCALS_OBJECT
         return None
 
     def const(self, value: object) -> TypeElement:

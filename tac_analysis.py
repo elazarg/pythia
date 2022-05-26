@@ -11,7 +11,7 @@ import tac
 import tac_analysis_types
 from tac_analysis_constant import ConstLattice, Constant
 
-from tac_analysis_domain import IterationStrategy, Cartesian, BackwardIterationStrategy, ForwardIterationStrategy, \
+from tac_analysis_domain import IterationStrategy, VarAnalysis, BackwardIterationStrategy, ForwardIterationStrategy, \
     Analysis
 from tac_analysis_liveness import LivenessLattice, Liveness
 from tac_analysis_pointer import PointerLattice
@@ -82,10 +82,10 @@ def test(f: type(test), print_analysis=False, simplify=True):
     constant = ConstLattice()
     typeness = TypeLattice()
 
-    analyze(cfg, Cartesian[tac.Var, Liveness](liveness, backward=True), annotations)
+    analyze(cfg, VarAnalysis[tac.Var, Liveness](liveness, backward=True), annotations)
     # analyze(cfg, ConstantDomain)
-    analyze(cfg, Cartesian[tac.Var, Constant](constant), annotations)
-    analyze(cfg, Cartesian[tac.Var, tac_analysis_types.TypeElement](typeness), annotations)
+    analyze(cfg, VarAnalysis[tac.Var, Constant](constant), annotations)
+    analyze(cfg, VarAnalysis[tac.Var, tac_analysis_types.TypeElement](typeness), annotations)
     analyze(cfg, PointerLattice[Constant](typeness), annotations)
 
     for label, block in sorted(cfg.items()):
@@ -114,5 +114,5 @@ if __name__ == '__main__':
     import code_examples
     # import dis
     # print(dis.dis(code_examples.jumps))
-    code = disassemble.read_function('code_examples.py', 'cost_function')
+    code = disassemble.read_function('code_examples.py', 'simple_pointer')
     test(code, print_analysis=True, simplify=False)

@@ -174,7 +174,12 @@ class MakeFunction:
     positional_only_defaults: dict[Var, Var] = None
 
 
-Expr: TypeAlias = Value | Attribute | Subscript | Binary | Call | Yield | Import | MakeFunction
+@dataclass
+class MakeClass:
+    name: str
+
+
+Expr: TypeAlias = Value | Attribute | Subscript | Binary | Call | Yield | Import | MakeFunction | MakeClass
 
 
 def stackvar(x) -> Var:
@@ -437,12 +442,16 @@ def make_TAC(opname, val, stack_effect, stack_depth, starts_line=None) -> list[T
     return tac  # [t._replace(starts_line=starts_line) for t in tac]
 
 
-def make_global(field: str):
+def make_global(field: str) -> Attribute:
     return Attribute(Predefined.GLOBALS, Var(field))
 
 
-def make_nonlocal(field: str):
+def make_nonlocal(field: str) -> Attribute:
     return Attribute(Predefined.NONLOCALS, Var(field))
+
+
+def make_class(name: str) -> Attribute:
+    return Attribute(Predefined.NONLOCALS, Var(name))
 
 
 def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
@@ -516,6 +525,8 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
                 case 'CLOSURE':
                     print("Uknown: LOAD CLOSURE")
                     return [Assign(lhs, Const(None))]
+                case 'BUILD_CLASS':
+                    return [Assign(lhs, make_class(val))]
                 case _:
                     assert False, op
         case 'STORE_FAST' | 'STORE_NAME':
