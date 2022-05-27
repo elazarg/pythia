@@ -14,7 +14,7 @@ from tac_analysis_constant import ConstLattice, Constant
 from tac_analysis_domain import IterationStrategy, VarAnalysis, BackwardIterationStrategy, ForwardIterationStrategy, \
     Analysis
 from tac_analysis_liveness import LivenessLattice, Liveness
-from tac_analysis_pointer import PointerLattice
+from tac_analysis_pointer import PointerAnalysis
 from tac_analysis_types import TypeLattice
 
 
@@ -80,13 +80,13 @@ def test(f: type(test), print_analysis=False, simplify=True):
     #     rewrite_remove_useless_movs(block, label)
     liveness = LivenessLattice()
     constant = ConstLattice()
-    typeness = TypeLattice()
+    var_analysis = VarAnalysis[tac.Var, tac_analysis_types.TypeElement](TypeLattice())
 
     analyze(cfg, VarAnalysis[tac.Var, Liveness](liveness, backward=True), annotations)
     # analyze(cfg, ConstantDomain)
     analyze(cfg, VarAnalysis[tac.Var, Constant](constant), annotations)
-    analyze(cfg, VarAnalysis[tac.Var, tac_analysis_types.TypeElement](typeness), annotations)
-    analyze(cfg, PointerLattice[Constant](typeness), annotations)
+    analyze(cfg, var_analysis, annotations)
+    analyze(cfg, PointerAnalysis(var_analysis), annotations)
 
     for label, block in sorted(cfg.items()):
         if math.isinf(label):

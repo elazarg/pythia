@@ -300,7 +300,7 @@ class Analysis(Protocol[T]):
     def is_equivalent(self, left, right) -> bool:
         ...
 
-    def copy(self: T) -> T:
+    def copy(self, values: T) -> T:
         ...
 
     def is_bottom(self, values) -> bool:
@@ -326,12 +326,6 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
     lattice: Lattice[T]
     backward: bool
 
-    # TODO: this does not belong here
-    def view(self, cfg: gu.Cfg[T]) -> IterationStrategy:
-        if self.backward:
-            return BackwardIterationStrategy(cfg)
-        return ForwardIterationStrategy(cfg)
-
     def __init__(self, lattice: Lattice[T], backward: bool = False):
         super().__init__()
         self.lattice = lattice
@@ -346,10 +340,10 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
     def is_equivalent(self, left, right) -> bool:
         return self.is_less_than(left, right) and self.is_less_than(right, left)
 
-    def copy(self: T) -> T:
-        return VarAnalysis(self.lattice)
+    def copy(self, values: MapDomain[K, T]) -> MapDomain[K, T]:
+        return values.copy()
 
-    def is_bottom(self, values) -> bool:
+    def is_bottom(self, values: MapDomain[K, T]) -> bool:
         return isinstance(values, Bottom)
 
     def make_map(self, d: dict[K, T] = None) -> MapDomain[K, T]:
@@ -391,16 +385,17 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
             case tac.Attribute():
                 return self.lattice.attribute(eval(expr.var), expr.field.name)
             case tac.Call():
+                func = eval(expr.function)
+                expr.is_allocation = self.lattice.is_allocation_function(func)
                 return self.lattice.call(
-                    function=eval(expr.function),
+                    function=func,
                     args=[eval(arg) for arg in expr.args]
                 )
             case tac.Binary():
-                return self.lattice.binary(
-                    left=eval(expr.left),
-                    right=eval(expr.right),
-                    op=expr.op
-                )
+                left = eval(expr.left)
+                right = eval(expr.right)
+                expr.is_allocation = self.lattice.is_allocation_binary(left, right, tac.Var(expr.op))
+                return self.lattice.binary(left=left, right=right, op=expr.op)
             case tac.Predefined():
                 expr: tac.Predefined = expr
                 return self.lattice.predefined(expr)

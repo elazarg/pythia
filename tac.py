@@ -91,6 +91,8 @@ class Var:
             return f'${self.name}'
         return self.name
 
+    def __repr__(self):
+        return str(self)
 
 Value: TypeAlias = Var | Const
 Name: TypeAlias = Var | Predefined
@@ -134,6 +136,7 @@ class Call:
     function: Var | Attribute
     args: tuple[Value, ...]
     kwargs: Var = None
+    is_allocation = None
 
     def location(self) -> int:
         return id(self)
