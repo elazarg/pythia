@@ -122,4 +122,4 @@ if __name__ == '__main__':
     code = disassemble.read_function('examples/feature_selection_pymm.py', 'Linear_Regression')
     # code = disassemble.read_function('examples/code_examples.py', 'test_attr')
 
-    test(code, print_analysis=True, simplify=False)
+    test(code, print_analysis=True, simplify=True)

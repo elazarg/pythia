@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sklearn as sk
-# from sklearn.linear_model import *
 import pymm
 import numpy as np
 import pandas as pd
@@ -57,7 +56,7 @@ def linear_regression_mult_var_run(X, y):
     y = np.concatenate(y)
     # Normalize our features
 
-    # Normelize
+    # Normalize
     X = (X - X.mean()) / X.std()
     # Add a 1 column to the start to allow vectorized gradient descent
     X = np.c_[np.ones(X.shape[0]), X]
@@ -84,11 +83,8 @@ def linear_regression_mult_var_run(X, y):
     return final_cost, predict(X, theta)
 
 
-is_sklearn = 0
-
-
 def oracle(features: np.ndarray, target: np.ndarray, S: np.ndarray, model: str):
-    '''
+    """
     Train the model and outputs metric for a set of features
 
     INPUTS:
@@ -101,7 +97,7 @@ def oracle(features: np.ndarray, target: np.ndarray, S: np.ndarray, model: str):
     float log_loss -- the log-loss for the trained model
     float -log_loss -- the negative log-loss, which is proportional to the log-likelihood
     float score -- the R^2 score for the trained linear model
-    '''
+    """
     # preprocess current solution
     S = np.unique(S[S >= 0])
 
@@ -118,10 +114,6 @@ def oracle(features: np.ndarray, target: np.ndarray, S: np.ndarray, model: str):
         return grad, score
 
 
-# ------------------------------------------------------------------------------------------
-#  logistic regression
-# ------------------------------------------------------------------------------------------
-
 def Logistic_Regression(features: np.ndarray, target: np.ndarray, dims: np.ndarray):
     """
     Logistic regression for a given set of features
@@ -135,8 +127,7 @@ def Logistic_Regression(features: np.ndarray, target: np.ndarray, dims: np.ndarr
     float log_loss -- the log-loss for the trained model
     """
 
-    if (features[:, dims].size > 0):
-
+    if features[:, dims].size > 0:
         # define sparse features
         sparse_features = np.array(features[:, dims])
         if sparse_features.ndim == 1:
@@ -148,7 +139,6 @@ def Logistic_Regression(features: np.ndarray, target: np.ndarray, dims: np.ndarr
         predictions = model.predict(sparse_features)
 
     else:
-
         # predict probabilities, and predictions
         predict_prob = np.ones((features.shape[0], 2)) * 0.5
         predictions = np.ones((features.shape[0])) * 0.5
@@ -162,10 +152,6 @@ def Logistic_Regression(features: np.ndarray, target: np.ndarray, dims: np.ndarr
     grad = np.dot(features.T, target - predictions)
     return grad, log_like
 
-
-# ------------------------------------------------------------------------------------------
-#  linear regression
-# ------------------------------------------------------------------------------------------
 
 def Linear_Regression(features: np.ndarray, target: np.ndarray, dims: np.ndarray):
     '''
@@ -182,21 +168,15 @@ def Linear_Regression(features: np.ndarray, target: np.ndarray, dims: np.ndarray
     '''
 
     target = np.array(target).reshape(target.shape[0], -1)
-    if (features[:, dims].size > 0):
-
+    if features[:, dims].size > 0:
         sparse_features = features[:, dims]
         if sparse_features.ndim == 1:
             sparse_features = sparse_features.reshape(sparse_features.shape[0], 1)
-        if (is_sklearn):
-            model = sk.linear_model.LinearRegression().fit(sparse_features, target)
-            score = model.score(sparse_features, target)
-            predict = model.predict(sparse_features)
-        else:
-            score, predict = linear_regression_mult_var_run(sparse_features, target)
+        score, predict = linear_regression_mult_var_run(sparse_features, target)
     else:
         # predict probabilities, and predictions
         score = 0
-        predict = (np.zeros((features.shape[0]))).reshape(features.shape[0], -1)
+        predict = np.zeros(features.shape[0]).reshape(features.shape[0], -1)
     # compute gradient of log likelihood
     grad = np.dot(features.T, target - predict)
     return grad, score
