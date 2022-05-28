@@ -20,7 +20,7 @@ def pretty_print_pointers(pointers) -> str:
 
 
 def copy_graph(graph: Graph) -> Graph:
-    return {obj: {field: target_obj for field, target_obj in obj_fields.items()}
+    return {obj: {field: set(target_obj) for field, target_obj in obj_fields.items()}
             for obj, obj_fields in graph.items()}
 
 
@@ -105,6 +105,8 @@ class PointerAnalysis(Analysis[Graph]):
                 case tac.Const(): return frozenset()
                 case tac.Var(): return locals_state.get(expr, frozenset()).copy()
                 case tac.Attribute():
+                    if expr.is_allocation:
+                        return frozenset({location_object})
                     if expr.var.name == 'GLOBALS':
                         return state[GLOBALS].get(expr.field, frozenset()).copy()
                     else:

@@ -38,10 +38,19 @@ class FunctionType:
         return f'() -> {self.return_type}'
 
 
+@dataclass(frozen=True)
+class Property:
+    return_type: SimpleType
+    new: bool = False
+
+    def __repr__(self):
+        return f'-> {self.return_type}'
+
+
 SimpleType: TypeAlias = ObjectType | Ref | FunctionType
 
 
-TypeElement: TypeAlias = ObjectType | FunctionType | Ref | Bottom
+TypeElement: TypeAlias = ObjectType | FunctionType | Property | Ref | Bottom
 
 
 def make_tuple(t: ObjectType) -> ObjectType:
@@ -93,7 +102,7 @@ NDARRAY = ObjectType('ndarray', frozendict({
     'size': INT,
     '__getitem__': FunctionType(FLOAT),
     '__iter__': iter_method(FLOAT),  # inaccurate
-    'T': Ref('numpy.ndarray'),
+    'T': Property(Ref('numpy.ndarray'), new=True),
     'astype': FunctionType(Ref('numpy.ndarray'), new=True)
 }))
 
@@ -165,7 +174,6 @@ GLOBALS_OBJECT = ObjectType('globals()', frozendict({
     'np': NUMPY_MODULE,
     'pandas': PANDAS_MODULE,
     'time': TIME_MODULE,
-    'A': FunctionType(ObjectType('A', frozendict({}))),
     **BUILTINS_MODULE.fields
 }))
 
@@ -283,7 +291,7 @@ class TypeLattice(Lattice[TypeElement]):
         return self.call(self.annotation(type(value).__name__), [])\
             if value is not None else NONE
 
-    def attribute(self, var: TypeElement, attr: str) -> TypeElement:
+    def _attribute(self, var: TypeElement, attr: str) -> TypeElement:
         if self.is_top(var):
             return self.top()
         if self.is_bottom(var):
@@ -298,6 +306,12 @@ class TypeLattice(Lattice[TypeElement]):
             case FunctionType():
                 return self.bottom()
         return self.top()
+
+    def attribute(self, var: TypeElement, attr: str) -> TypeElement:
+        res = self._attribute(var, attr)
+        if isinstance(res, Property):
+            return res.return_type
+        return res
 
     def subscr(self, array: TypeElement, index: TypeElement) -> TypeElement:
         if self.is_bottom(array):
@@ -329,6 +343,10 @@ class TypeLattice(Lattice[TypeElement]):
     def is_allocation_binary(self, left: T, right: T, op: str) -> bool:
         function = self._get_binary_op(left, right, op)
         return self.is_allocation_function(function)
+
+    def is_allocation_attribute(self, var: TypeElement, attr: str) -> bool:
+        p = self._attribute(var, attr)
+        return isinstance(p, Property) and p.new
 
 
 unseen = defaultdict(set)

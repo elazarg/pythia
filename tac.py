@@ -98,13 +98,17 @@ Value: TypeAlias = Var | Const
 Name: TypeAlias = Var | Predefined
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class Attribute:
     var: Name
     field: Var
+    is_allocation: bool = False
 
     def __str__(self):
-        return f'{self.var}.{self.field}'
+        res = f'{self.var}.{self.field}'
+        if self.is_allocation:
+            res += f' #  new'
+        return res
 
 
 @dataclass(frozen=True)

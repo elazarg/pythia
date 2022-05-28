@@ -158,6 +158,9 @@ class Lattice(Generic[T]):
     def is_allocation_binary(self, left: T, right: T, op: tac.Var):
         pass
 
+    def is_allocation_attribute(self, val, name):
+        pass
+
 
 @dataclass(frozen=True)
 class Top:
@@ -383,7 +386,9 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
             case tac.Var():
                 return self.lattice.var(values[expr])
             case tac.Attribute():
-                return self.lattice.attribute(eval(expr.var), expr.field.name)
+                val = eval(expr.var)
+                expr.is_allocation = self.lattice.is_allocation_attribute(val, expr.field.name)
+                return self.lattice.attribute(val, expr.field.name)
             case tac.Call():
                 func = eval(expr.function)
                 expr.is_allocation = self.lattice.is_allocation_function(func)
