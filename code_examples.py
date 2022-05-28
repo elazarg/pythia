@@ -461,7 +461,7 @@ def feature_selection(X: np.ndarray, y: np.ndarray):
     error = np.dot(X, theta.T) - y
     final_cost = 1 / (2 * m) * np.dot(error.T, error)
 
-    return final_cost, (X, theta)
+    return theta
 
 
 def iteration():

@@ -19,6 +19,11 @@ def pretty_print_pointers(pointers) -> str:
                      )
 
 
+def copy_graph(graph: Graph) -> Graph:
+    return {obj: {field: target_obj for field, target_obj in obj_fields.items()}
+            for obj, obj_fields in graph.items()}
+
+
 class PointerAnalysis(Analysis[Graph]):
     backward: bool = False
 
@@ -47,7 +52,7 @@ class PointerAnalysis(Analysis[Graph]):
         return {}
 
     def join(self, left: Graph, right: Graph) -> Graph:
-        pointers = left.copy()
+        pointers = copy_graph(left)
         for obj, fields in right.items():
             if obj in pointers:
                 for field, values in fields.items():
@@ -57,7 +62,7 @@ class PointerAnalysis(Analysis[Graph]):
         return pointers
 
     def transfer(self, values: Graph, ins: tac.Tac, location: str) -> Graph:
-        values = values.copy()
+        values = copy_graph(values)
         eval = self.evaluator(values, location)
         activation = values[LOCALS]
 
@@ -65,17 +70,21 @@ class PointerAnalysis(Analysis[Graph]):
             if var in activation:
                 del activation[var]
 
-        if isinstance(ins, tac.Assign):
-            val = eval(ins.expr)
-            match ins.lhs:
-                case tac.Var():
-                    activation[ins.lhs] = val
-                case tac.Attribute():
-                    for obj in eval(ins.lhs.var):
-                        values.setdefault(obj, {})[ins.lhs.field] = val
-                case tac.Subscript():
-                    for obj in eval(ins.lhs.var):
-                        values.setdefault(obj, {})[tac.Var('*')] = val
+        match ins:
+            case tac.Assign():
+                val = eval(ins.expr)
+                match ins.lhs:
+                    case tac.Var():
+                        activation[ins.lhs] = val
+                    case tac.Attribute():
+                        for obj in eval(ins.lhs.var):
+                            values.setdefault(obj, {})[ins.lhs.field] = val
+                    case tac.Subscript():
+                        for obj in eval(ins.lhs.var):
+                            values.setdefault(obj, {})[tac.Var('*')] = val
+            case tac.Return():
+                val = eval(ins.value)
+                activation[tac.Var('return')] = val
         return values
 
     def to_string(self, pointers) -> str:
@@ -104,14 +113,14 @@ class PointerAnalysis(Analysis[Graph]):
                 case tac.Call():
                     if not expr.is_allocation:
                         return frozenset()
-                    return {location_object}
+                    return frozenset({location_object})
                 case tac.Subscript(): return frozenset()
                 case tac.Yield(): return frozenset()
                 case tac.Import(): return frozenset()
                 case tac.Binary():
                     if not expr.is_allocation:  # self.analysis.is_allocation_binary(expr.function):
                         return frozenset()
-                    return {location_object}
+                    return frozenset({location_object})
                 case tac.MakeFunction(): return frozenset()
                 case _: raise Exception(f"Unsupported expression {expr}")
         return inner
