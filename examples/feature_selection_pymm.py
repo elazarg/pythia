@@ -1,12 +1,88 @@
 from __future__ import annotations
-import math as mt
+
+import sklearn as sk
+# from sklearn.linear_model import *
+import pymm
 import numpy as np
 import pandas as pd
-import time as time
-import sklearn.metrics as mt
-from sklearn.linear_model import *
-import linear_regression_mult_var
-import pymm
+import matplotlib.pyplot as plt
+
+
+def score(X: np.ndarray, y: np.ndarray, theta: np.ndarray):
+    error = np.dot(X, theta.T) - y
+    return np.dot(error.T, error)
+
+
+def cost_function(X, y, theta):
+    m = y.size
+    error = np.dot(X, theta.T) - y
+    cost = 1 / (2 * m) * np.dot(error.T, error)
+    return cost, error
+
+
+def gradient_descent(X, y, theta, alpha, iters):
+    cost_array = np.zeros(iters)
+    m = y.size
+    for i in range(iters):
+        cost, error = cost_function(X, y, theta)
+        theta = theta - (alpha * (1 / m) * np.dot(X.T, error))
+        cost_array[i] = cost
+    return theta, cost_array
+
+
+def plotChart(iterations, cost_num):
+    fig, ax = plt.subplots()
+    ax.plot(np.arange(iterations), cost_num, 'r')
+    ax.set_xlabel('Iterations')
+    ax.set_ylabel('Cost')
+    ax.set_title('Error vs Iterations')
+    plt.style.use('fivethirtyeight')
+    plt.show()
+
+
+def predict(X, theta):
+    predict_ = np.zeros((len(X), 1))
+    for j in range(len(X)):
+        x = X[j]
+        sum_ = 0
+        for i in range(len(x)):
+            sum_ += x[i] * theta[i]
+        predict_[j] = sum_
+    return predict_
+
+
+def linear_regression_mult_var_run(X, y):
+    # Import data
+
+    y = np.concatenate(y)
+    # Normalize our features
+
+    # Normelize
+    X = (X - X.mean()) / X.std()
+    # Add a 1 column to the start to allow vectorized gradient descent
+    X = np.c_[np.ones(X.shape[0]), X]
+
+    # Set hyperparameters
+    alpha = 0.1
+    iterations = 10000
+    # Initialize Theta Values to 0
+    theta = np.zeros(X.shape[1])
+    initial_cost, _ = cost_function(X, y, theta)
+
+    #    print('With initial theta values of {0}, cost error is {1}'.format(theta, initial_cost))
+
+    # Run Gradient Descent
+    #    theta1, cost_num = gradient_descent(X1, y1, theta1, alpha, iterations)
+    theta, cost_num = gradient_descent(X, y, theta, alpha, iterations)
+
+    # Display cost chart
+    #    plotChart(iterations, cost_num)
+
+    final_cost, _ = cost_function(X, y, theta)
+
+    #    print('With final theta values of {0}, cost error is {1}'.format(theta, final_cost))
+    return final_cost, predict(X, theta)
+
 
 is_sklearn = 0
 
@@ -35,7 +111,8 @@ def oracle(features: np.ndarray, target: np.ndarray, S: np.ndarray, model: str):
         return grad, log_like
 
     # linear model
-    if model == 'linear':
+    else:
+        assert model == 'linear'
         grad, score = Linear_Regression(features, target, S)
         #        print (score)
         return grad, score
@@ -45,8 +122,8 @@ def oracle(features: np.ndarray, target: np.ndarray, S: np.ndarray, model: str):
 #  logistic regression
 # ------------------------------------------------------------------------------------------
 
-def Logistic_Regression(features: np.ndarray, target: np.ndarray, dims: int):
-    '''
+def Logistic_Regression(features: np.ndarray, target: np.ndarray, dims: np.ndarray):
+    """
     Logistic regression for a given set of features
 
     INPUTS:
@@ -54,18 +131,19 @@ def Logistic_Regression(features: np.ndarray, target: np.ndarray, dims: int):
     target -- the observations
     dims -- index for the features used for model construction
     GRAD -- if set to TRUE the function returns grad
-    float grad -- the garadient of the log-likelihood function
+    float grad -- the gradient of the log-likelihood function
     float log_loss -- the log-loss for the trained model
-    '''
+    """
 
     if (features[:, dims].size > 0):
 
         # define sparse features
         sparse_features = np.array(features[:, dims])
-        if sparse_features.ndim == 1: sparse_features = sparse_features.reshape(sparse_features.shape[0], 1)
+        if sparse_features.ndim == 1:
+            sparse_features = sparse_features.reshape(sparse_features.shape[0], 1)
 
         # get model, predict probabilities, and predictions
-        model = LogisticRegression(max_iter=10000).fit(sparse_features, target)
+        model = sk.linear_model.LogisticRegression(max_iter=10000).fit(sparse_features, target)
         predict_prob = np.array(model.predict_proba(sparse_features))
         predictions = model.predict(sparse_features)
 
@@ -77,8 +155,10 @@ def Logistic_Regression(features: np.ndarray, target: np.ndarray, dims: int):
 
     # conpute gradient of log likelihood
 
-    log_like = (-mt.log_loss(target, predict_prob) + mt.log_loss(target, np.ones((features.shape[0], 2)) * 0.5)) * len(
-        target)
+    log_like = len(target) * (
+                 -sk.metrics.log_loss(target, predict_prob)
+                 + sk.metrics.log_loss(target, np.ones((features.shape[0], 2)) * 0.5)
+              )
     grad = np.dot(features.T, target - predictions)
     return grad, log_like
 
@@ -87,7 +167,7 @@ def Logistic_Regression(features: np.ndarray, target: np.ndarray, dims: int):
 #  linear regression
 # ------------------------------------------------------------------------------------------
 
-def Linear_Regression(features: np.ndarray, target: np.ndarray, dims: int):
+def Linear_Regression(features: np.ndarray, target: np.ndarray, dims: np.ndarray):
     '''
     Linear regression for a given set of features
 
@@ -97,7 +177,7 @@ def Linear_Regression(features: np.ndarray, target: np.ndarray, dims: int):
     dims -- index for the features used for model construction
 
     OUTPUTS:
-    float grad -- the garadient of the log-likelihood function
+    float grad -- the gradient of the log-likelihood function
     float score -- the R^2 score for the trained model
     '''
 
@@ -107,11 +187,11 @@ def Linear_Regression(features: np.ndarray, target: np.ndarray, dims: int):
         sparse_features = features[:, dims]
         if sparse_features.ndim == 1: sparse_features = sparse_features.reshape(sparse_features.shape[0], 1)
         if (is_sklearn):
-            model = LinearRegression().fit(sparse_features, target)
+            model = sk.linear_model.LinearRegression().fit(sparse_features, target)
             score = model.score(sparse_features, target)
             predict = model.predict(sparse_features)
         else:
-            score, predict = linear_regression_mult_var.run(sparse_features, target)
+            score, predict = linear_regression_mult_var_run(sparse_features, target)
     else:
         # predict probabilities, and predictions
         score = 0
@@ -121,7 +201,8 @@ def Linear_Regression(features: np.ndarray, target: np.ndarray, dims: int):
     return grad, score
 
 
-def do_work(featuers: np.ndarray, target: np.ndarray, model: str, k: int, recovery: int):
+def do_work(features: np.ndarray, target: np.ndarray, model: str, k: int, recovery: int):
+    s = global_shelf
     '''
     The SDS algorithm, as in "Submodular Dictionary Selection for Sparse Representation", Krause and Cevher, ICML '10
 
@@ -142,12 +223,13 @@ def do_work(featuers: np.ndarray, target: np.ndarray, model: str, k: int, recove
               'metric': np.zeros(k)})
 
     # define time and rounds
-    run_time = time.time()
     rounds = 0
     rounds_ind = 0
 
-    # intial checkpoint
-    if (not recovery):
+    # initial checkpoint
+    if recovery:
+        S = s.S[k - s.idx[0]:k]
+    else:
         s.S = np.zeros(k, dtype=int)
         s.idx = np.zeros(1, dtype=int)
         s.done = np.zeros(1, dtype=int)
@@ -158,12 +240,6 @@ def do_work(featuers: np.ndarray, target: np.ndarray, model: str, k: int, recove
         s.res_metric = np.zeros(k)
         # define new solution
         S = np.array([], int)
-
-    else:  # recovery
-        print(s.S[0:4])
-        S = s.S[k - s.idx[0]:k]
-        print(S)
-        print(s.S)
 
     start_idx = s.idx[0]
     for idx in range(start_idx, k):
@@ -179,7 +255,7 @@ def do_work(featuers: np.ndarray, target: np.ndarray, model: str, k: int, recove
             point = np.append(point, a)
         out = [[point, len(np.setdiff1d(A, S))]]
 
-        if (idx == 2):
+        if idx == 2:
             print("exit where idx=", idx)
             print(s.S)
 
@@ -196,9 +272,9 @@ def do_work(featuers: np.ndarray, target: np.ndarray, model: str, k: int, recove
         points = np.array([])
         points = np.append(points, np.array(out[0, 0]))
         points = points.astype('int')
-        e = time.time()
         # break if points are no longer feasible
-        if len(points) == 0: break
+        if not points:
+            break
 
         # otherwise add maximum point to current solution
         a = points[0]
@@ -211,12 +287,9 @@ def do_work(featuers: np.ndarray, target: np.ndarray, model: str, k: int, recove
         else:
             s.done[0] = 1
             break
-        print(idx)
-        print(S)
-        print(s.S)
         s.S[k - idx - 1] = S[0]
         s.idx[0] = s.idx + 1
-        if (s.idx == k and s.done == 0):
+        if s.idx == k and s.done == 0:
             s.done[0] = 1
 
     results['k'] = s.res_k
@@ -224,70 +297,77 @@ def do_work(featuers: np.ndarray, target: np.ndarray, model: str, k: int, recove
     results['rounds'] = s.res_rounds
     results['rounds_ind'] = s.res_rounds_ind
     results['metric'] = s.res_metric
-
-    print(results)
     return results
 
 
-'''
-Test algorithms with the run_experiment function.
-target -- the observations for the regression
-features -- the feature matrix for the regression
-model -- choose if 'logistic' or 'linear' regression
-k_range -- range for the parameter k for a set of experiments
-'''
+global_shelf = None
 
-'''
-Linear Regration
-'''
 
-# define features and target for the experiments
+def main():
+    global global_shelf
+    """
+    Test algorithms with the run_experiment function.
+    target -- the observations for the regression
+    features -- the feature matrix for the regression
+    model -- choose if 'logistic' or 'linear' regression
+    k_range -- range for the parameter k for a set of experiments
+    """
 
-dataset_name = "dataset_20KB"
+    '''
+    Linear Regression
+    '''
 
-# open shelf
+    # define features and target for the experiments
 
-shelf_size_GB = 20
-shelf_path = '/mnt/pmem0'
-shelf_name = str(shelf_size_GB) + "GBshelf"  # 20GBshelf
-shelf_force_new = False
-# shelf_force_new = True
-s = pymm.shelf(shelf_name, size_mb=shelf_size_GB * 1024, pmem_path=shelf_path, force_new=shelf_force_new)
+    dataset_name = "dataset_20KB"
 
-ONLY_DRAM = 1
-print("Load target from")
-target_name = dataset_name + "_target.npy"
+    # open shelf
 
-print("Load target from: " + target_name)
-if ONLY_DRAM:
-    target = np.load(target_name)  # DRAM only
-else:
-    target = np.load(target_name, mmap_mode='r')  # DRAM + NVMe
+    shelf_size_GB = 20
+    shelf_path = '/mnt/pmem0'
+    shelf_name = str(shelf_size_GB) + "GBshelf"  # 20GBshelf
+    shelf_force_new = False
+    # shelf_force_new = True
+    global_shelf = pymm.shelf(shelf_name, size_mb=shelf_size_GB * 1024, pmem_path=shelf_path, force_new=shelf_force_new)
 
-features_name = dataset_name + "_features.npy"
+    ONLY_DRAM = 1
+    print("Load target from")
+    target_name = dataset_name + "_target.npy"
 
-if ONLY_DRAM:
-    features = np.load(features_name)  # DRAM only
-else:
-    features = np.load(features_name, mmap_mode='r')  # DRAM + NVMe
-
-# initalize features and target
-
-# choose if logistic or linear regression
-model = 'linear'
-
-# set range for the experiments
-k_range = np.array([10])
-
-# run experiment
-recovery = 0
-if (s.idx is not None and s.idx > 0):
-    if (s.done is not None and (s.done or s.idx == k_range[-1])):  # done
-        print("We finished this do_work")
-        print("done =", s.done[0], ", idx =", s.idx[0])
-        exit(0)
+    print("Load target from: " + target_name)
+    if ONLY_DRAM:
+        target = np.load(target_name)  # DRAM only
     else:
-        print("start recovery process, idx={}", s.idx)
-        recovery = 1
-print(recovery)
-do_work(features, target, model, k_range[-1], recovery)
+        target = np.load(target_name, mmap_mode='r')  # DRAM + NVMe
+
+    features_name = dataset_name + "_features.npy"
+
+    if ONLY_DRAM:
+        features = np.load(features_name)  # DRAM only
+    else:
+        features = np.load(features_name, mmap_mode='r')  # DRAM + NVMe
+
+    # initalize features and target
+
+    # choose if logistic or linear regression
+    model = 'linear'
+
+    # set range for the experiments
+    k_range = np.array([10])
+
+    # run experiment
+    recovery = 0
+    if global_shelf.idx is not None and global_shelf.idx > 0:
+        if global_shelf.done is not None and (global_shelf.done or global_shelf.idx == k_range[-1]):  # done
+            print("We finished this do_work")
+            print("done =", global_shelf.done[0], ", idx =", global_shelf.idx[0])
+            exit(0)
+        else:
+            print("start recovery process, idx={}", global_shelf.idx)
+            recovery = 1
+    print(recovery)
+    do_work(features, target, model, k_range[-1], recovery)
+
+
+if __name__ == '__main__':
+    main()

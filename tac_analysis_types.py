@@ -73,6 +73,10 @@ STRING = ObjectType('str', frozendict({}))
 BOOL = ObjectType('bool', frozendict({}))
 NONE = ObjectType('None', frozendict({}))
 CODE = ObjectType('code', frozendict({}))
+ASSERTION_ERROR = ObjectType('AssertionError', frozendict({}))
+
+SLICE = ObjectType('slice', frozendict({
+}))
 
 LIST = ObjectType('list', frozendict({
     '__getitem__': FunctionType(OBJECT, new=False),
@@ -93,6 +97,7 @@ LIST = ObjectType('list', frozendict({
 
 TUPLE_CONSTRUCTOR = FunctionType(make_tuple(OBJECT), new=False)
 LIST_CONSTRUCTOR = FunctionType(LIST, new=False)
+SLICE_CONSTRUCTOR = FunctionType(SLICE, new=False)
 
 
 NDARRAY = ObjectType('ndarray', frozendict({
@@ -103,7 +108,9 @@ NDARRAY = ObjectType('ndarray', frozendict({
     '__getitem__': FunctionType(FLOAT),
     '__iter__': iter_method(FLOAT),  # inaccurate
     'T': Property(Ref('numpy.ndarray'), new=True),
-    'astype': FunctionType(Ref('numpy.ndarray'), new=True)
+    'astype': FunctionType(Ref('numpy.ndarray'), new=True),
+    'reshape': FunctionType(Ref('numpy.ndarray'), new=True),
+    'ndim': INT,
 }))
 
 ARRAY_GEN = FunctionType(NDARRAY, new=True)
@@ -145,6 +152,28 @@ NUMPY_MODULE = ObjectType('/numpy', frozendict({
 
 }))
 
+SKLEARN_MODULE = ObjectType('/sklearn', frozendict({
+    'metrics': ObjectType('/metrics', frozendict({
+        'log_loss': FunctionType(FLOAT, new=False),
+        'accuracy_score': FunctionType(FLOAT, new=False),
+        'f1_score': FunctionType(FLOAT, new=False),
+        'precision_score': FunctionType(FLOAT, new=False),
+        'recall_score': FunctionType(FLOAT, new=False),
+        'roc_auc_score': FunctionType(FLOAT, new=False),
+        'average_precision_score': FunctionType(FLOAT, new=False),
+        'roc_curve': FunctionType(make_tuple(FLOAT), new=False),
+        'confusion_matrix': FunctionType(make_tuple(INT), new=False),
+    })),
+    'linear_model': ObjectType('/linear_model', frozendict({
+        'LogisticRegression': FunctionType(ObjectType('LogisticRegression', frozendict({
+            'fit': FunctionType(ObjectType('Model', {
+                'predict': FunctionType(FLOAT),
+                'predict_proba': ARRAY_GEN,
+            }), new=False),
+        })), new=True),
+    })),
+}))
+
 PANDAS_MODULE = ObjectType('/pandas', frozendict({
     'DataFrame': FunctionType(DATAFRAME),
 }))
@@ -167,6 +196,7 @@ BUILTINS_MODULE = ObjectType('/builtins', frozendict({
     'str': FunctionType(STRING, new=False),
     'bool': FunctionType(BOOL, new=False),
     'code': FunctionType(CODE, new=False),
+    'AssertionError': FunctionType(ASSERTION_ERROR, new=False),
 }))
 
 GLOBALS_OBJECT = ObjectType('globals()', frozendict({
@@ -174,6 +204,9 @@ GLOBALS_OBJECT = ObjectType('globals()', frozendict({
     'np': NUMPY_MODULE,
     'pandas': PANDAS_MODULE,
     'time': TIME_MODULE,
+    'sklearn': SKLEARN_MODULE,
+    'sk': SKLEARN_MODULE,
+    'mt': SKLEARN_MODULE.fields['metrics'],
     **BUILTINS_MODULE.fields
 }))
 
@@ -285,6 +318,7 @@ class TypeLattice(Lattice[TypeElement]):
             case Predefined.GLOBALS: return GLOBALS_OBJECT
             case Predefined.NONLOCALS: return NONLOCALS_OBJECT
             case Predefined.LOCALS: return LOCALS_OBJECT
+            case Predefined.SLICE: return SLICE_CONSTRUCTOR
         return None
 
     def const(self, value: object) -> TypeElement:

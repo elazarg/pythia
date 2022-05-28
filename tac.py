@@ -465,7 +465,6 @@ def make_nonlocal(field: str) -> Attribute:
 def make_class(name: str) -> Attribute:
     return Attribute(Predefined.NONLOCALS, Var(name))
 
-
 def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
     """Translate a bytecode operation into a list of TAC instructions.
     """
@@ -539,6 +538,8 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
                     return [Assign(lhs, Const(None))]
                 case 'BUILD_CLASS':
                     return [Assign(lhs, make_class(val))]
+                case 'ASSERTION_ERROR':
+                    return [Assign(lhs, Const(AssertionError()))]
                 case _:
                     assert False, op
         case 'STORE_FAST' | 'STORE_NAME':
