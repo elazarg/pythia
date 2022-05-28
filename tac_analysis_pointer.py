@@ -46,7 +46,8 @@ class PointerAnalysis(Analysis[Graph]):
                       for obj, fields in values.items()}
 
     def initial(self, annotations: dict[tac.Var, str]) -> Graph:
-        return {LOCALS: {}, GLOBALS: {}}
+        return {LOCALS: {k: frozenset({Object(f'param {k}')}) for k in annotations},
+                GLOBALS: {}}
 
     def bottom(self) -> Graph:
         return {}
