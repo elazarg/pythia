@@ -421,6 +421,8 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
         match signature:
             case tuple():
                 value_tuple = self.lattice.assign_tuple(value)
+                if not isinstance(value_tuple, tuple):
+                    return self.make_map({signature[i]: self.lattice.top() for i in range(len(signature))})
                 return self.make_map({signature[i]: value_tuple[i] for i in range(len(value_tuple))})
             case tac.Var():
                 return self.make_map({signature: self.lattice.assign_var(value)})
