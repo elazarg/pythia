@@ -119,5 +119,7 @@ def test(f: type(test), print_analysis=False, simplify=True):
 if __name__ == '__main__':
     # import dis
     # print(dis.dis(code_examples.jumps))
-    code = disassemble.read_function('examples/feature_selection_pymm.py', 'score')
+    code = disassemble.read_function('examples/feature_selection_pymm.py', 'Linear_Regression')
+    # code = disassemble.read_function('examples/code_examples.py', 'test_attr')
+
     test(code, print_analysis=True, simplify=False)

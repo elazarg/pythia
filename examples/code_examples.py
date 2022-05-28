@@ -437,6 +437,10 @@ def predict(X: np.ndarray, theta: np.ndarray):
         predict_[j] = sum_
     return predict_
 
+def test_attr():
+    x = 1.0
+    y = x.foo
+    return y
 
 def feature_selection(X: np.ndarray, y: np.ndarray):
     y = np.concatenate(y)

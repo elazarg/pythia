@@ -525,11 +525,11 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
         values = values.copy()
         if self.backward:
             to_update = self.back_transfer(values, ins, location)
-            for var in tac.gens(ins):
-                if var in values:
-                    del values[var]
         else:
             to_update = self.forward_transfer(values, ins, location)
+        for var in tac.gens(ins):
+            if var in values:
+                del values[var]
         values.update(to_update)
         return normalize(values)
 

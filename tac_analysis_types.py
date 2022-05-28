@@ -75,8 +75,7 @@ NONE = ObjectType('None', frozendict({}))
 CODE = ObjectType('code', frozendict({}))
 ASSERTION_ERROR = ObjectType('AssertionError', frozendict({}))
 
-SLICE = ObjectType('slice', frozendict({
-}))
+SLICE = ObjectType('slice', frozendict({}))
 
 LIST = ObjectType('list', frozendict({
     '__getitem__': FunctionType(OBJECT, new=False),
@@ -169,6 +168,14 @@ SKLEARN_MODULE = ObjectType('/sklearn', frozendict({
             'fit': FunctionType(ObjectType('Model', {
                 'predict': FunctionType(FLOAT),
                 'predict_proba': ARRAY_GEN,
+                'score': FunctionType(FLOAT),
+            }), new=False),
+        })), new=True),
+        'LinearRegression': FunctionType(ObjectType('LinearRegression', frozendict({
+            'fit': FunctionType(ObjectType('Model', {
+                'predict': FunctionType(FLOAT),
+                'predict_proba': ARRAY_GEN,
+                'score': FunctionType(FLOAT),
             }), new=False),
         })), new=True),
     })),
@@ -336,7 +343,7 @@ class TypeLattice(Lattice[TypeElement]):
                     return self.resolve(obj.fields[attr])
                 else:
                     unseen[obj.name].add(attr)
-                return self.top()
+                    return self.top()
             case FunctionType():
                 return self.bottom()
         return self.top()

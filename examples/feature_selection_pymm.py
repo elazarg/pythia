@@ -185,7 +185,8 @@ def Linear_Regression(features: np.ndarray, target: np.ndarray, dims: np.ndarray
     if (features[:, dims].size > 0):
 
         sparse_features = features[:, dims]
-        if sparse_features.ndim == 1: sparse_features = sparse_features.reshape(sparse_features.shape[0], 1)
+        if sparse_features.ndim == 1:
+            sparse_features = sparse_features.reshape(sparse_features.shape[0], 1)
         if (is_sklearn):
             model = sk.linear_model.LinearRegression().fit(sparse_features, target)
             score = model.score(sparse_features, target)
