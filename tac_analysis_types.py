@@ -8,6 +8,7 @@ from typing import TypeVar, TypeAlias, Optional
 
 from frozendict import frozendict
 
+import tac
 from tac import Predefined
 from tac_analysis_domain import Bottom, Lattice, BOTTOM
 
@@ -252,15 +253,19 @@ class TypeLattice(Lattice[TypeElement]):
             return self.bottom()
         return self.resolve(function.return_type)
 
-    def _get_bianry_op(self, left: TypeElement, right: TypeElement, op: str) -> FunctionType | Bottom:
+    def _get_binary_op(self, left: TypeElement, right: TypeElement, op: str) -> FunctionType | Bottom:
+        if isinstance(op, tac.Var):
+            op = op.name
         if self.is_top(left) or self.is_top(right):
             return self.top()
         if self.is_bottom(left) or self.is_bottom(right):
             return self.bottom()
-        return self.resolve(BINARY.get((left, right), {}).get(op, self.top()))
+        category = BINARY.get((left, right), {})
+        res = category.get(op, self.top())
+        return self.resolve(res)
 
     def binary(self, left: TypeElement, right: TypeElement, op: str) -> TypeElement:
-        function = self._get_bianry_op(left, right, op)
+        function = self._get_binary_op(left, right, op)
         if not self.is_top(function) and not isinstance(function, Bottom):
             return self.call(function, [left, right])
         return self.top()
@@ -321,8 +326,8 @@ class TypeLattice(Lattice[TypeElement]):
     def is_allocation_function(self, function: TypeElement):
         return isinstance(function, FunctionType) and function.new
 
-    def is_allocation_binary(self, left: T, right: T, op: str):
-        function = self._get_bianry_op(left, right, op)
+    def is_allocation_binary(self, left: T, right: T, op: str) -> bool:
+        function = self._get_binary_op(left, right, op)
         return self.is_allocation_function(function)
 
 

@@ -125,9 +125,12 @@ class Binary:
     left: Value
     op: str
     right: Value
+    is_allocation = None
 
     def __str__(self):
         res = f'{self.left} {self.op} {self.right}'
+        if self.is_allocation:
+            res += f' #  new'
         return res
 
 
@@ -148,6 +151,8 @@ class Call:
         res += f'({", ".join(str(x) for x in self.args)})'
         if self.kwargs:
             res += f', kwargs={self.kwargs}'
+        if self.is_allocation:
+            res += f' #  new'
         return res
 
 

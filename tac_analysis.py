@@ -14,7 +14,7 @@ from tac_analysis_constant import ConstLattice, Constant
 from tac_analysis_domain import IterationStrategy, VarAnalysis, BackwardIterationStrategy, ForwardIterationStrategy, \
     Analysis
 from tac_analysis_liveness import LivenessLattice, Liveness
-from tac_analysis_pointer import PointerAnalysis
+from tac_analysis_pointer import PointerAnalysis, pretty_print_pointers
 from tac_analysis_types import TypeLattice
 
 
@@ -94,12 +94,18 @@ def test(f: type(test), print_analysis=False, simplify=True):
         if print_analysis:
             print('Pre:')
             for k in block.pre:
-                print(f'\t{k}:', block.pre[k])
+                if k == 'Pointer':
+                    print(f'\t{k}:', pretty_print_pointers(block.pre[k]))
+                else:
+                    print(f'\t{k}:', block.pre[k])
         print_block(label, block)
         if print_analysis:
             print('Post:')
             for k in block.post:
-                print(f'\t{k}:', block.post[k])
+                if k == 'Pointer':
+                    print(f'\t{k}:', pretty_print_pointers(block.post[k]))
+                else:
+                    print(f'\t{k}:', block.post[k])
             print()
 
     if tac_analysis_types.unseen:
@@ -114,5 +120,5 @@ if __name__ == '__main__':
     import code_examples
     # import dis
     # print(dis.dis(code_examples.jumps))
-    code = disassemble.read_function('code_examples.py', 'simple_pointer')
-    test(code, print_analysis=True, simplify=False)
+    code = disassemble.read_function('code_examples.py', 'feature_selection')
+    test(code, print_analysis=True, simplify=True)

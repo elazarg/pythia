@@ -8,7 +8,15 @@ from typing import TypeAlias, Callable
 import tac
 from tac_analysis_domain import Object, LOCALS, Map, Analysis, GLOBALS, VarAnalysis
 
-Graph: TypeAlias = [Object, Map[tac.Var, frozenset[Object]]]
+Graph: TypeAlias = dict[Object, dict[tac.Var, frozenset[Object]]]
+
+
+def pretty_print_pointers(pointers) -> str:
+    return ', '.join(f'{field}->{target_obj}'
+                     for source_obj in pointers
+                     for field, target_obj in pointers[source_obj].items()
+                     if pointers[source_obj][field]
+                     )
 
 
 class PointerAnalysis(Analysis[Graph]):
@@ -79,31 +87,31 @@ class PointerAnalysis(Analysis[Graph]):
         for var in pointers[LOCALS].keys() - alive_vars:
             del pointers[LOCALS][var]
 
-    def evaluator(self, state: dict[Object, dict[tac.Var, set[Object]]], location: str) -> Callable[[tac.Expr], set[Object]]:
+    def evaluator(self, state: Graph, location: str) -> Callable[[tac.Expr], frozenset[Object]]:
         location_object = Object(location)
         locals_state = state[LOCALS]
 
-        def inner(expr: tac.Expr) -> set[Object]:
+        def inner(expr: tac.Expr) -> frozenset[Object]:
             match expr:
-                case tac.Const(): return set()
-                case tac.Var(): return locals_state.get(expr, set()).copy()
+                case tac.Const(): return frozenset()
+                case tac.Var(): return locals_state.get(expr, frozenset()).copy()
                 case tac.Attribute():
                     if expr.var.name == 'GLOBALS':
-                        return state[GLOBALS].get(expr.field, set()).copy()
+                        return state[GLOBALS].get(expr.field, frozenset()).copy()
                     else:
-                        return set(chain.from_iterable(state.get(obj, {}).get(expr.field, set()).copy()
+                        return frozenset(chain.from_iterable(state.get(obj, {}).get(expr.field, frozenset()).copy()
                                                        for obj in inner(expr.var)))
                 case tac.Call():
                     if not expr.is_allocation:
-                        return set()
+                        return frozenset()
                     return {location_object}
-                case tac.Subscript(): return set()
-                case tac.Yield(): return set()
-                case tac.Import(): return set()
+                case tac.Subscript(): return frozenset()
+                case tac.Yield(): return frozenset()
+                case tac.Import(): return frozenset()
                 case tac.Binary():
                     if not expr.is_allocation:  # self.analysis.is_allocation_binary(expr.function):
-                        return set()
+                        return frozenset()
                     return {location_object}
-                case tac.MakeFunction(): return set()
+                case tac.MakeFunction(): return frozenset()
                 case _: raise Exception(f"Unsupported expression {expr}")
         return inner
