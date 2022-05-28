@@ -386,6 +386,9 @@ def loop():
     return x
 
 
+def make_tuple(x):
+    return (x, 1)
+
 # from: https://github.com/drbilo/multivariate-linear-regression
 
 def score(X, y, theta):
@@ -460,18 +463,20 @@ def feature_selection(X: np.ndarray, y: np.ndarray):
 
     return final_cost, (X, theta)
 
+
 def iteration():
     for i in range(5):
         print(i)
 
+
 def simple_pointer():
     a = A()
-    x = X()
+    x = A()
     if x:
         y = x
         a.x = x
     else:
-        y = Y()
+        y = A()
         a.x = y
     print(y)
     return x + y

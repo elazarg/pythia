@@ -2,111 +2,86 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Type, TypeVar, Optional, ClassVar
+from typing import TypeVar, Optional, TypeAlias
 
 import tac
-from tac import Const, Var
-from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Bottom
-
-import graph_utils as gu
+from tac import Const
+from tac_analysis_domain import Lattice, TOP, BOTTOM, Top, Bottom
 
 T = TypeVar('T')
 
+Constant: TypeAlias = Const | Top | Bottom
 
-class ConstantDomain(AbstractDomain):
-    constants: dict[Var, Const] | Bottom
 
-    BOTTOM: ClassVar[Bottom] = Bottom()
+class ConstLattice(Lattice[Constant]):
+    """
+    Abstract domain for type analysis with lattice operations.
+    """
 
-    @staticmethod
-    def name() -> str:
+    def name(self) -> str:
         return "Constant"
 
+    def join(self, left: Constant, right: Constant) -> Constant:
+        if self.is_bottom(left) or self.is_top(right):
+            return right
+        if self.is_bottom(right) or self.is_top(left):
+            return left
+        if left == right:
+            return left
+        return self.top()
+
+    def meet(self, left: Constant, right: Constant) -> Constant:
+        if self.is_top(left) or self.is_bottom(right):
+            return left
+        if self.is_top(right) or self.is_bottom(left):
+            return right
+        if left == right:
+            return left
+        return self.bottom()
+
+    def top(self) -> Constant:
+        return TOP
+
+    def is_top(self, elem: Constant) -> bool:
+        return isinstance(elem, Top)
+
+    def is_bottom(self, elem: Constant) -> bool:
+        return isinstance(elem, Bottom)
+
     @classmethod
-    def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy[T]:
-        return ForwardIterationStrategy(cfg)
+    def bottom(cls) -> Constant:
+        return BOTTOM
 
-    def __init__(self, constants: dict[Var, Const] | Bottom) -> None:
-        super().__init__()
-        if constants is ConstantDomain.BOTTOM:
-            self.constants = ConstantDomain.BOTTOM
-        else:
-            self.constants = constants.copy() or {}
+    def call(self, function: Constant, args: list[Constant]) -> Constant:
+        return self.top()
 
-    def __le__(self, other):
-        return self.join(other).constants == other.constants
+    def binary(self, left: Constant, right: Constant, op: str) -> Constant:
+        if self.is_bottom(left) or self.is_bottom(right):
+            return self.bottom()
+        if self.is_top(left) or self.is_top(right):
+            return self.top()
+        try:
+            return eval_binary(op, left, right)
+        except TypeError:
+            return self.top()
 
-    def __eq__(self, other):
-        return self.constants == other.constants
+    def predefined(self, name: tac.Predefined) -> Optional[Constant]:
+        return self.top()
 
-    def copy(self: T) -> T:
-        return ConstantDomain(self.constants)
+    def const(self, value: object) -> Constant:
+        return Const(value)
 
-    @classmethod
-    def initial(cls: Type[T]) -> T:
-        return cls.top()
+    def attribute(self, var: Constant, attr: str) -> Constant:
+        return self.top()
 
-    @classmethod
-    def top(cls: Type[T]) -> T:
-        return ConstantDomain({})
+    def subscr(self, array: Constant, index: Constant) -> Constant:
+        return self.top()
 
-    @classmethod
-    def bottom(cls: Type[T]) -> T:
-        return ConstantDomain(ConstantDomain.BOTTOM)
+    def annotation(self, code: str) -> Constant:
+        return self.top()
 
-    @property
-    def is_bottom(self) -> bool:
-        return self.constants is ConstantDomain.BOTTOM
-
-    def join(self: T, other: T) -> T:
-        if self.is_bottom:
-            return other.copy()
-        if other.is_bottom:
-            return self.copy()
-        return ConstantDomain(dict(self.constants.items() & other.constants.items()))
-
-    def transfer(self, ins: tac.Tac, location: str) -> None:
-        if self.is_bottom:
-            return
-        constants = self.constants.copy()
-        for var in tac.gens(ins):
-            if var in self.constants:
-                del self.constants[var]
-        if isinstance(ins, tac.Assign):
-            if isinstance(ins.lhs, tac.Var) and (val := eval(constants, ins.expr)) is not None:
-                self.constants[ins.lhs] = val
-
-    def __str__(self) -> str:
-        return 'Constants({})'.format(", ".join(f'{k}={v}' for k, v in self.constants.items()))
-
-    def __repr__(self) -> str:
-        return self.constants.__repr__()
-
-    def keep_only_live_vars(self, alive_vars: set[tac.Var]) -> None:
-        for var in set(self.constants.keys()) - alive_vars:
-            del self.constants[var]
-
-
-def eval(constants: dict[Var, Const], expr: tac.Expr) -> Optional[Const]:
-    match expr:
-        case tac.Const(): return expr
-        case tac.Var(): return constants.get(expr)
-        case tac.Attribute(): return None
-        case tac.Call(): return None
-        case tac.Subscr(): return None
-        case tac.Yield(): return None
-        case tac.Import: return tac.Const(tac.Module(expr.modname))
-        case tac.Binary():
-            left = eval(constants, expr.left)
-            right = eval(constants, expr.right)
-            if left is not None and right is not None:
-                try:
-                    return eval_binary(expr.op, left.value, right.value)
-                except ValueError:
-                    return None
-            else:
-                return None
+    def imported(self, modname: str) -> Constant:
+        return tac.Const(tac.Module(modname))
 
 
 def eval_binary(op: str, left: object, right: object) -> Optional[Const]:

@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import math
-import typing
+from typing import TypeVar
 
 import disassemble
 import graph_utils as gu
 import tac
 import tac_analysis_types
+from tac_analysis_constant import ConstLattice, Constant
 
-from tac_analysis_domain import AbstractDomain, IterationStrategy, Lattice
-from tac_analysis_liveness import LivenessDomain, rewrite_remove_useless_movs, rewrite_remove_useless_movs_pairs
-from tac_analysis_constant import ConstantDomain
-from tac_analysis_pointer import PointerDomain
-from tac_analysis_alias import AliasDomain, rewrite_aliases
-from tac_analysis_types import TypeDomain
+from tac_analysis_domain import IterationStrategy, VarAnalysis, BackwardIterationStrategy, ForwardIterationStrategy, \
+    Analysis
+from tac_analysis_liveness import LivenessLattice, Liveness
+from tac_analysis_pointer import PointerAnalysis
+from tac_analysis_types import TypeLattice
+
+
+T = TypeVar('T')
 
 
 def make_tacblock_cfg(f, simplify=True):
@@ -32,69 +35,71 @@ def print_block(n, block):
         print(f'\t{label:6}\t', ins)
 
 
-def analyze(_cfg: gu.Cfg, Analysis: typing.Type[AbstractDomain], initial: Lattice = None) -> None:
-    name = Analysis.name()
+def analyze(_cfg: gu.Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]) -> None:
+    name = analysis.name()
     for label in _cfg.labels:
-        _cfg[label].pre[name] = Analysis.bottom()
-        _cfg[label].post[name] = Analysis.bottom()
+        _cfg[label].pre[name] = analysis.bottom()
+        _cfg[label].post[name] = analysis.bottom()
 
-    cfg: IterationStrategy = Analysis.view(_cfg)
+    cfg: IterationStrategy = BackwardIterationStrategy(_cfg) if analysis.backward else ForwardIterationStrategy(_cfg)
 
     wl = [entry] = {cfg.entry_label}
-    cfg[entry].pre[name] = initial or Analysis.initial()
+    cfg[entry].pre[name] = analysis.initial(analysis.top() if analysis.backward else annotations)
     while wl:
         label = wl.pop()
         block = cfg[label]
 
         invariant = block.pre[name].copy()
         for index, tac in enumerate(cfg[label]):
-            invariant.transfer(tac, f'{label}.{index}')
+            invariant = analysis.transfer(invariant, tac, f'{label}.{index}')
 
-        if Analysis is not LivenessDomain:
-            liveness = typing.cast(typing.Optional[LivenessDomain], block.post.get(LivenessDomain.name()))
-            if liveness:
-                invariant.keep_only_live_vars(liveness.vars)
-            del liveness
+        # if analysis.name() is not "Alive":
+        #     liveness = typing.cast(typing.Optional[LivenessDomain], block.post.get(LivenessDomain.name()))
+        #     if liveness:
+        #         invariant.keep_only_live_vars(liveness.vars)
+        #     del liveness
 
         block.post[name] = invariant
 
         for succ in cfg.successors(label):
             next_block: gu.Block = cfg[succ]
-            if not (invariant <= (pre := next_block.pre[name])):
-                next_block.pre[name] = pre.join(invariant)
+            pre = next_block.pre[name]
+            if not analysis.is_less_than(invariant, pre):
+                next_block.pre[name] = analysis.join(invariant, pre)
                 wl.add(succ)
 
 
 def test(f: type(test), print_analysis=False, simplify=True):
     cfg = make_tacblock_cfg(f, simplify=simplify)
+    annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
+    # analyze(cfg, LivenessDomain)
+    # analyze(cfg, AliasDomain)
+    # for label, block in cfg.items():
+    #     rewrite_remove_useless_movs_pairs(block, label)
+    #     rewrite_aliases(block, label)
+    #     rewrite_remove_useless_movs(block, label)
+    liveness = LivenessLattice()
+    constant = ConstLattice()
+    var_analysis = VarAnalysis[tac.Var, tac_analysis_types.TypeElement](TypeLattice())
 
-    analyze(cfg, LivenessDomain)
-    analyze(cfg, AliasDomain)
-    for label, block in cfg.items():
-        rewrite_remove_useless_movs_pairs(block, label)
-        rewrite_aliases(block, label)
-        rewrite_remove_useless_movs(block, label)
-    analyze(cfg, LivenessDomain)
-    analyze(cfg, ConstantDomain)
-    analyze(cfg, TypeDomain, TypeDomain.read_initial(f.__annotations__))
-    analyze(cfg, PointerDomain)
+    analyze(cfg, VarAnalysis[tac.Var, Liveness](liveness, backward=True), annotations)
+    # analyze(cfg, ConstantDomain)
+    analyze(cfg, VarAnalysis[tac.Var, Constant](constant), annotations)
+    analyze(cfg, var_analysis, annotations)
+    analyze(cfg, PointerAnalysis(var_analysis), annotations)
 
     for label, block in sorted(cfg.items()):
         if math.isinf(label):
             continue
         if print_analysis:
             print('Pre:')
-            print('\t', block.pre[LivenessDomain.name()])
-            print('\t', block.pre[PointerDomain.name()])
-            print('\t', block.pre[ConstantDomain.name()])
-            print('\t', block.pre[TypeDomain.name()])
+            for k in block.pre:
+                print(f'\t{k}:', block.pre[k])
         print_block(label, block)
         if print_analysis:
             print('Post:')
-            print('\t', block.post[LivenessDomain.name()])
-            print('\t', block.post[PointerDomain.name()])
-            print('\t', block.post[ConstantDomain.name()])
-            print('\t', block.post[TypeDomain.name()])
+            for k in block.post:
+                print(f'\t{k}:', block.post[k])
             print()
 
     if tac_analysis_types.unseen:
@@ -109,5 +114,5 @@ if __name__ == '__main__':
     import code_examples
     # import dis
     # print(dis.dis(code_examples.jumps))
-    code = disassemble.read_function('code_examples.py', 'feature_selection')
-    test(code, print_analysis=True, simplify=True)
+    code = disassemble.read_function('code_examples.py', 'simple_pointer')
+    test(code, print_analysis=True, simplify=False)

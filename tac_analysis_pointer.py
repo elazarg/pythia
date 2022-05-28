@@ -2,94 +2,56 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from itertools import chain
-from typing import Type, TypeVar, Optional, ClassVar, Final, Callable
+from typing import TypeAlias, Callable
 
 import tac
-from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy, Lattice, Bottom, Top,\
-    Object, LOCALS, GLOBALS
+from tac_analysis_domain import Object, LOCALS, Map, Analysis, GLOBALS, VarAnalysis
 
-import graph_utils as gu
-
-T = TypeVar('T')
+Graph: TypeAlias = [Object, Map[tac.Var, frozenset[Object]]]
 
 
-@dataclass
-class PointerDomain(AbstractDomain):
-    pointers: dict[Object, dict[tac.Var, set[Object]]] | Bottom | Top
+class PointerAnalysis(Analysis[Graph]):
+    backward: bool = False
 
-    BOTTOM: Final[ClassVar[Bottom]] = Bottom()
-    TOP: Final[ClassVar[Top]] = Top()
-
-    @staticmethod
-    def name() -> str:
+    def name(self) -> str:
         return "Pointer"
 
-    @classmethod
-    def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy[T]:
-        return ForwardIterationStrategy(cfg)
-
-    def __init__(self, pointers: dict[Object, dict[tac.Var, set[Object]]] | Bottom | Top) -> None:
+    def __init__(self, analysis: VarAnalysis) -> None:
         super().__init__()
-        if pointers == PointerDomain.BOTTOM:
-            self.pointers = PointerDomain.BOTTOM
-        elif pointers == PointerDomain.TOP:
-            self.pointers = PointerDomain.TOP
-        else:
-            self.pointers = pointers.copy()
+        self.analysis = analysis
+        self.backward = False
 
-    def __le__(self, other):
-        return self.join(other).pointers == other.pointers
+    def is_less_than(self, left, right) -> bool:
+        return self.join(left, right) == right
 
-    def __eq__(self, other):
-        return self.pointers == other.pointers
+    def is_equivalent(self, left, right):
+        return left == right
 
-    def copy(self: T) -> T:
-        if self.pointers == PointerDomain.BOTTOM:
-            return PointerDomain(PointerDomain.BOTTOM)
-        return PointerDomain({obj: {field: targets.copy() for field, targets in fields.items() if targets}
-                              for obj, fields in self.pointers.items()})
+    def copy(self, values) -> Graph:
+        return {obj: {field: targets.copy() for field, targets in fields.items() if targets}
+                      for obj, fields in values.items()}
 
-    @classmethod
-    def initial(cls: Type[T]) -> T:
-        return PointerDomain({LOCALS: {}, GLOBALS: {}})
+    def initial(self, annotations: dict[tac.Var, str]) -> Graph:
+        return {LOCALS: {}, GLOBALS: {}}
 
-    @classmethod
-    def top(cls: Type[T]) -> T:
-        return PointerDomain(PointerDomain.TOP)
+    def bottom(self) -> Graph:
+        return {}
 
-    @classmethod
-    def bottom(cls: Type[T]) -> T:
-        return PointerDomain(PointerDomain.BOTTOM)
-
-    @property
-    def is_bottom(self) -> bool:
-        return self.pointers == PointerDomain.BOTTOM
-
-    @property
-    def is_top(self) -> bool:
-        return self.pointers == PointerDomain.TOP
-
-    def join(self, other: PointerDomain) -> PointerDomain:
-        if self.is_bottom or other.is_top:
-            return other.copy()
-        if other.is_bottom or self.is_top:
-            return self.copy()
-        pointers = self.copy().pointers
-        for obj, fields in other.pointers.items():
+    def join(self, left: Graph, right: Graph) -> Graph:
+        pointers = left.copy()
+        for obj, fields in right.items():
             if obj in pointers:
                 for field, values in fields.items():
                     pointers[obj][field] = pointers[obj].get(field, set()) | values
             else:
                 pointers[obj] = {field: targets.copy() for field, targets in fields.items() if targets}
-        return PointerDomain(pointers)
+        return pointers
 
-    def transfer(self, ins: tac.Tac, location: str) -> None:
-        if self.is_bottom or self.is_top:
-            return
-        eval = evaluator(self.copy().pointers, location)
-        activation = self.pointers[LOCALS]
+    def transfer(self, values: Graph, ins: tac.Tac, location: str) -> Graph:
+        values = values.copy()
+        eval = self.evaluator(values, location)
+        activation = values[LOCALS]
 
         for var in tac.gens(ins):
             if var in activation:
@@ -102,51 +64,46 @@ class PointerDomain(AbstractDomain):
                     activation[ins.lhs] = val
                 case tac.Attribute():
                     for obj in eval(ins.lhs.var):
-                        self.pointers.setdefault(obj, {})[ins.lhs.attr] = val
-                case tac.Subscr():
+                        values.setdefault(obj, {})[ins.lhs.field] = val
+                case tac.Subscript():
                     for obj in eval(ins.lhs.var):
-                        self.pointers.setdefault(obj, {})[tac.Var('*')] = val
+                        values.setdefault(obj, {})[tac.Var('*')] = val
+        return values
 
-    def __str__(self) -> str:
+    def to_string(self, pointers) -> str:
         return 'Pointers(' + ', '.join(f'{source_obj.pretty(field)}->{target_obj}'
-                                       for source_obj in self.pointers
-                                       for field, target_obj in self.pointers[source_obj].items()) + ")"
+                                       for source_obj in pointers
+                                       for field, target_obj in pointers[source_obj].items()) + ")"
 
-    def __repr__(self) -> str:
-        return str(self)
+    def keep_only_live_vars(self, pointers, alive_vars: set[tac.Var]) -> None:
+        for var in pointers[LOCALS].keys() - alive_vars:
+            del pointers[LOCALS][var]
 
-    def keep_only_live_vars(self, alive_vars: set[tac.Var]) -> None:
-        if self.is_bottom or self.is_top:
-            return
-        for var in self.pointers[LOCALS].keys() - alive_vars:
-            del self.pointers[LOCALS][var]
+    def evaluator(self, state: dict[Object, dict[tac.Var, set[Object]]], location: str) -> Callable[[tac.Expr], set[Object]]:
+        location_object = Object(location)
+        locals_state = state[LOCALS]
 
-
-def evaluator(state: dict[Object, dict[tac.Var, set[Object]]], location: str) -> Callable[[tac.Expr], set[Object]]:
-    location_object = Object(location)
-    locals_state = state[LOCALS]
-
-    def inner(expr: tac.Expr) -> set[Object]:
-        match expr:
-            case tac.Const(): return set()
-            case tac.Var(): return locals_state.get(expr, set()).copy()
-            case tac.Attribute():
-                if expr.var.name == 'GLOBALS':
-                    return state[GLOBALS].get(expr.attr, set()).copy()
-                else:
-                    return set(chain.from_iterable(state.get(obj, {}).get(expr.attr, set()).copy()
-                                                   for obj in inner(expr.var)))
-            case tac.Call():
-                if not expr.is_allocation:
-                    return set()
-                return {location_object}
-            case tac.Subscr(): return set()
-            case tac.Yield(): return set()
-            case tac.Import(): return set()
-            case tac.Binary():
-                if not expr.is_allocation:
-                    return set()
-                return {location_object}
-            case tac.MakeFunction(): return set()
-            case _: raise Exception(f"Unsupported expression {expr}")
-    return inner
+        def inner(expr: tac.Expr) -> set[Object]:
+            match expr:
+                case tac.Const(): return set()
+                case tac.Var(): return locals_state.get(expr, set()).copy()
+                case tac.Attribute():
+                    if expr.var.name == 'GLOBALS':
+                        return state[GLOBALS].get(expr.field, set()).copy()
+                    else:
+                        return set(chain.from_iterable(state.get(obj, {}).get(expr.field, set()).copy()
+                                                       for obj in inner(expr.var)))
+                case tac.Call():
+                    if not expr.is_allocation:
+                        return set()
+                    return {location_object}
+                case tac.Subscript(): return set()
+                case tac.Yield(): return set()
+                case tac.Import(): return set()
+                case tac.Binary():
+                    if not expr.is_allocation:  # self.analysis.is_allocation_binary(expr.function):
+                        return set()
+                    return {location_object}
+                case tac.MakeFunction(): return set()
+                case _: raise Exception(f"Unsupported expression {expr}")
+        return inner

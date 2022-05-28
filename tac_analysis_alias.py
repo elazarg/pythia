@@ -109,7 +109,7 @@ def rewrite_ins(ins: tac.Tac, pre: AliasDomain) -> tac.Tac:
                         expr = get(ins.expr)
                     case tac.Attribute():
                         expr = dataclasses.replace(ins.expr, var=get(expr.var))
-                    case tac.Subscr():
+                    case tac.Subscript():
                         expr = dataclasses.replace(ins.expr, var=get(expr.var), index=get(expr.index))
                     case tac.Binary():
                         expr = dataclasses.replace(ins.expr,
@@ -129,7 +129,7 @@ def rewrite_ins(ins: tac.Tac, pre: AliasDomain) -> tac.Tac:
                         pass
                     case tac.Attribute():
                         lhs = dataclasses.replace(lhs, var=get(lhs.var))
-                    case tac.Subscr():
+                    case tac.Subscript():
                         lhs = dataclasses.replace(lhs, var=get(lhs.var), index=get(lhs.index))
                 ins = dataclasses.replace(ins, lhs=lhs)
             return ins
