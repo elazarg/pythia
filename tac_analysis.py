@@ -28,13 +28,6 @@ def make_tacblock_cfg(f, simplify=True):
     return cfg
 
 
-def print_block(n, block):
-    print(n, ':')
-    for i, ins in enumerate(block):
-        label = f'{n}.{i}'
-        print(f'\t{label:6}\t', ins)
-
-
 def analyze(_cfg: gu.Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]) -> None:
     name = analysis.name()
     for label in _cfg.labels:
@@ -69,9 +62,11 @@ def analyze(_cfg: gu.Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]
                 wl.add(succ)
 
 
-def test(f: type(test), print_analysis=False, simplify=True):
+def run(f, print_analysis=False, simplify=True, module=False):
     cfg = make_tacblock_cfg(f, simplify=simplify)
-    annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
+    annotations = {}
+    if not module:
+        annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
     # analyze(cfg, LivenessDomain)
     # analyze(cfg, AliasDomain)
     # for label, block in cfg.items():
@@ -87,7 +82,10 @@ def test(f: type(test), print_analysis=False, simplify=True):
     analyze(cfg, VarAnalysis[tac.Var, Constant](constant), annotations)
     analyze(cfg, var_analysis, annotations)
     analyze(cfg, PointerAnalysis(var_analysis), annotations)
+    return cfg
 
+
+def print_analysis(cfg):
     for label, block in sorted(cfg.items()):
         if math.isinf(label):
             continue
@@ -98,7 +96,7 @@ def test(f: type(test), print_analysis=False, simplify=True):
                     print(f'\t{k}:', pretty_print_pointers(block.pre[k]))
                 else:
                     print(f'\t{k}:', block.pre[k])
-        print_block(label, block)
+        gu.print_block(label, block)
         if print_analysis:
             print('Post:')
             for k in block.post:
@@ -117,9 +115,12 @@ def test(f: type(test), print_analysis=False, simplify=True):
 
 
 if __name__ == '__main__':
-    # import dis
-    # print(dis.dis(code_examples.jumps))
-    code = disassemble.read_function('examples/feature_selection_pymm.py', 'Linear_Regression')
-    # code = disassemble.read_function('examples/code_examples.py', 'test_attr')
+    env, imports = disassemble.read_function('examples/feature_selection_pymm.py', 'do_work')
+    # env, imports = disassemble.read_function('examples/simple.py')
 
-    test(code, print_analysis=True, simplify=True)
+    cfg = run(imports, print_analysis=True, simplify=True, module=True)
+    print_analysis(cfg)
+
+    for k, func in env.items():
+        cfg = run(func, print_analysis=True, simplify=True)
+        print_analysis(cfg)

@@ -37,26 +37,34 @@ def read_function_using_compile(file_path, function_name):
     raise ValueError(f'Could not find function {function_name} in {file_path}')
 
 
-def read_function_as_ast(file_path, function_name):
+def read_function(file_path, funcname=None):
+    module = ast.parse("from __future__ import annotations\n", filename=file_path)
+
     with open(file_path, 'r', encoding='utf-8') as file:
         source = file.read()
     code = ast.parse(source, filename=file_path)
+
     for node in code.body:
-        if isinstance(node, ast.FunctionDef) and node.name == function_name:
-            return node
-
-
-def read_function(file_path, function_name):
-    func = read_function_as_ast(file_path, function_name)
-    module = ast.parse("from __future__ import annotations\n", filename=file_path)
-    module.body.append(func)
-    code = compile(module, '', 'exec', dont_inherit=True, flags=0, optimize=0)
-
+        if isinstance(node, ast.FunctionDef):
+            if funcname and node.name != funcname:
+                continue
+            module.body.append(node)
+    functions = compile(module, '', 'exec', dont_inherit=True, flags=0, optimize=0)
     env = {}
     # exec should be safe here, since it cannot have any side effects
-    exec(code, {}, env)
-    return env[function_name]
+    exec(functions, {}, env)
+    del env['annotations']
+
+    module = ast.parse("from __future__ import annotations\n", filename=file_path)
+    for node in code.body:
+        if False and isinstance(node, (ast.Import, ast.ImportFrom)):
+            module.body.append(node)
+        if isinstance(node, ast.FunctionDef):
+            module.body.append(node)
+    imports = compile(module, '', 'exec', dont_inherit=True, flags=0, optimize=0)
+
+    return env, imports
 
 
 if __name__ == '__main__':
-    read_function_as_ast('code_examples.py', 'feature_selection')
+    pass  # read_function_as_ast('code_examples.py', 'feature_selection')

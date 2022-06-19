@@ -71,7 +71,7 @@ class Lattice(Generic[T]):
     def var(self, value: T) -> T:
         return value
 
-    def attribute(self, var: T, attr: str) -> T:
+    def attribute(self, var: T, attr: tac.Var) -> T:
         return self.top()
 
     def subscr(self, array: T, index: T) -> T:
@@ -149,7 +149,7 @@ class Lattice(Generic[T]):
     def default(self) -> T:
         return self.top()
 
-    def back_inplace_binary(self) -> T:
+    def back_inplace_binary(self, lhs: T, rhs: T, op: str) -> tuple[T, T]:
         raise NotImplementedError
 
     def is_allocation_function(self, function: T):
@@ -220,7 +220,9 @@ class Map(Generic[K, T]):
             self.update(d)
 
     def __getitem__(self, key: tac.Var) -> T:
-        assert isinstance(key, tac.Var)
+        if not isinstance(key, tac.Var):
+            breakpoint()
+        assert isinstance(key, tac.Var), key
         return self._map.get(key, self.default)
 
     def __setitem__(self, key: tac.Var, value: T):
@@ -411,7 +413,12 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
             case tac.Yield():
                 return self.lattice.top()
             case tac.Import():
-                return self.lattice.imported(expr.modname)
+                print(f"{expr}: {type(expr)}; {expr.modname} {type(expr.modname)}")
+                if isinstance(expr.modname, tac.Attribute):
+                    val = eval(expr.modname.var)
+                    return self.lattice.attribute(val, expr.modname.field)
+                else:
+                    return self.lattice.imported(expr.modname)
             case tac.MakeFunction():
                 return self.lattice.top()
             case _:
@@ -499,9 +506,9 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
             case tac.Var():
                 return self.lattice.back_assign_var(values[signature])
             case tac.Attribute():
-                return self.lattice.back_assign_attribute(values[signature.var], signature.field.name)
+                return self.lattice.back_assign_attribute(self.transformer_expr(values, signature.var), signature.field.name)
             case tac.Subscript():
-                return self.lattice.back_assign_subscr(values[signature.var], values[signature.index])
+                return self.lattice.back_assign_subscr(self.transformer_expr(values, signature.var), self.transformer_expr(values, signature.var))
             case _:
                 assert False, f'unexpected signature {signature}'
 
@@ -516,7 +523,8 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
         if isinstance(ins, tac.Return):
             return self.make_map({ins.value: self.lattice.back_return()})
         if isinstance(ins, tac.InplaceBinary):
-            return self.lattice.back_inplace_binary()
+            left, right = self.lattice.back_inplace_binary(values[ins.lhs], values[ins.right], ins.op)
+            return self.make_map({ins.lhs: left, ins.right: right})
         return values
 
     def transfer(self, values: MapDomain[K, T], ins: tac.Tac, location: str) -> MapDomain[K, T]:

@@ -61,6 +61,7 @@ class Predefined(enum.Enum):
     LIST = 3
     TUPLE = 4
     SLICE = 5
+    CONST_KEY_MAP = 6
 
     def __str__(self):
         return self.name
@@ -140,7 +141,7 @@ class Binary:
 
 @dataclass(frozen=False)
 class Call:
-    function: Var | Attribute
+    function: Var | Attribute | Predefined
     args: tuple[Value, ...]
     kwargs: Var = None
     is_allocation = None
@@ -566,9 +567,9 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
             seq = tuple(stackvar(stack_depth + i) for i in reversed(range(val)))
             return [Assign(seq, stackvar(stack_depth))]
         case 'IMPORT_NAME':
-            return [Assign(stackvar(out), Import(val))]
+            return [Assign(stackvar(out), Import(Var(val)))]
         case 'IMPORT_FROM':
-            return [Assign(stackvar(out), Import(stack_depth, val))]
+            return [Assign(stackvar(out), Import(Attribute(stackvar(stack_depth), Var(val))))]
         case 'BUILD':
             if op == 'SLICE':
                 if val == 2:

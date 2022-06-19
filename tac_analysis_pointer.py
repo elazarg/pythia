@@ -104,6 +104,7 @@ class PointerAnalysis(Analysis[Graph]):
         def inner(expr: tac.Expr) -> frozenset[Object]:
             match expr:
                 case tac.Const(): return frozenset()
+                case tac.Predefined(): return frozenset()
                 case tac.Var(): return locals_state.get(expr, frozenset()).copy()
                 case tac.Attribute():
                     if expr.is_allocation:

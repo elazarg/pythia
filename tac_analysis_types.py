@@ -94,9 +94,14 @@ LIST = ObjectType('list', frozendict({
     'sort': FunctionType(NONE, new=False),
 }))
 
+DICT = ObjectType('dict', frozendict({
+    '__getitem__': FunctionType(OBJECT, new=False),
+}))
+
 TUPLE_CONSTRUCTOR = FunctionType(make_tuple(OBJECT), new=False)
 LIST_CONSTRUCTOR = FunctionType(LIST, new=False)
 SLICE_CONSTRUCTOR = FunctionType(SLICE, new=False)
+DICT_CONSTRUCTOR = FunctionType(DICT, new=True)
 
 
 NDARRAY = ObjectType('ndarray', frozendict({
@@ -206,14 +211,28 @@ BUILTINS_MODULE = ObjectType('/builtins', frozendict({
     'AssertionError': FunctionType(ASSERTION_ERROR, new=False),
 }))
 
+FUTURE_MODULE = ObjectType('/future', frozendict({
+    'annotations': ObjectType('_', {}),
+}))
+
+MATPLOTLIB_MODULE = ObjectType('/matplotlib', frozendict({
+    'pyplot': ObjectType('pyplot', frozendict({
+        'plot': FunctionType(NONE, new=False),
+        'show': FunctionType(NONE, new=False),
+    })),
+}))
+
 GLOBALS_OBJECT = ObjectType('globals()', frozendict({
+    '__future__': FUTURE_MODULE,
     'numpy': NUMPY_MODULE,
     'np': NUMPY_MODULE,
     'pandas': PANDAS_MODULE,
     'time': TIME_MODULE,
     'sklearn': SKLEARN_MODULE,
     'sk': SKLEARN_MODULE,
+    'pymm': ObjectType('/pymm', {}),
     'mt': SKLEARN_MODULE.fields['metrics'],
+    'matplotlib': MATPLOTLIB_MODULE,
     **BUILTINS_MODULE.fields
 }))
 
@@ -326,6 +345,7 @@ class TypeLattice(Lattice[TypeElement]):
             case Predefined.NONLOCALS: return NONLOCALS_OBJECT
             case Predefined.LOCALS: return LOCALS_OBJECT
             case Predefined.SLICE: return SLICE_CONSTRUCTOR
+            case Predefined.CONST_KEY_MAP: return DICT_CONSTRUCTOR
         return None
 
     def const(self, value: object) -> TypeElement:
@@ -369,8 +389,11 @@ class TypeLattice(Lattice[TypeElement]):
         return self.resolve(Ref(code))
         return ObjectType(type(code).__name__, {})
 
-    def imported(self, modname: str) -> TypeElement:
-        return GLOBALS_OBJECT.fields[modname]
+    def imported(self, modname: tac.Var) -> TypeElement:
+        if isinstance(modname, tac.Var):
+            return GLOBALS_OBJECT.fields[modname.name]
+        elif isinstance(modname, tac.Attribute):
+            return self.attribute(modname.var, modname.field)
 
     def is_subtype(self, left: TypeElement, right: TypeElement) -> bool:
         return self.join(left, right) == right

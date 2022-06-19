@@ -230,6 +230,21 @@ def test_refine_to_chain():
         print(x, refined.nodes[x]['tac'].format())
 
 
+def print_block(n, block):
+    print(n, ':')
+    for i, ins in enumerate(block):
+        label = f'{n}.{i}'
+        print(f'\t{label:6}\t', ins)
+
+
+def pretty_print_cfg(cfg: Cfg[T]) -> None:
+    for label, block in sorted(cfg.items()):
+        if math.isinf(label):
+            continue
+        print_block(label, block)
+        print()
+
+
 if __name__ == '__main__':
     test_refine_to_chain()
 

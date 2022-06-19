@@ -99,6 +99,9 @@ class LivenessLattice(Lattice[Liveness]):
     def back_binary(self, value: Liveness) -> tuple[Liveness, Liveness]:
         return (True, True)
 
+    def back_inplace_binary(self, lhs: Liveness, right: Liveness, op: str) -> tuple[Liveness, Liveness]:
+        return (True, True)
+
     def back_predefined(self, value: T) -> None:
         return None
 
