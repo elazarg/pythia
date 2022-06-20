@@ -5,12 +5,12 @@ from __future__ import annotations
 from typing import TypeVar, Optional, TypeAlias
 
 import tac
-from tac import Const
+from tac import Const, Predefined
 from tac_analysis_domain import Lattice, TOP, BOTTOM, Top, Bottom
 
 T = TypeVar('T')
 
-Constant: TypeAlias = Const | Top | Bottom
+Constant: TypeAlias = Const | Predefined | Top | Bottom
 
 
 class ConstLattice(Lattice[Constant]):
@@ -53,6 +53,10 @@ class ConstLattice(Lattice[Constant]):
         return BOTTOM
 
     def call(self, function: Constant, args: list[Constant]) -> Constant:
+        match function:
+            case Predefined.LIST: return Const(args)
+            case Predefined.TUPLE: return Const(tuple(args))
+            case Predefined.SLICE: return Const(slice(*args))
         return self.top()
 
     def binary(self, left: Constant, right: Constant, op: str) -> Constant:
@@ -66,7 +70,7 @@ class ConstLattice(Lattice[Constant]):
             return self.top()
 
     def predefined(self, name: tac.Predefined) -> Optional[Constant]:
-        return self.top()
+        return name
 
     def const(self, value: object) -> Constant:
         return Const(value)

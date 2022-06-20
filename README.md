@@ -9,7 +9,7 @@ Translating Python [bytecode](https://docs.python.org/3.5/library/dis.html#pytho
   1. Fixing minor bytecode issues
   2. Turn into BCode
   
-2. [bcode_cfg.py](bcode_cfg.py): Generate CFG of BCode
+2. [bcode_cfg.py](instruction_cfg.py): Generate CFG of BCode
 
   1. Find stack depth at each point
   2. Build basic block CFG

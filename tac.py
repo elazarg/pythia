@@ -7,8 +7,7 @@ import dataclasses
 from dataclasses import dataclass
 from typing import Iterable, Optional, TypeAlias
 
-import bcode
-import bcode_cfg
+import instruction_cfg
 import disassemble
 import graph_utils as gu
 
@@ -36,14 +35,14 @@ def print_3addr(cfg, no_dels=True) -> None:
 
 
 def make_tacblock_cfg(f) -> gu.Cfg[Tac]:
-    depths, cfg = bcode_cfg.make_bcode_block_cfg_from_function(f)
+    depths, cfg = instruction_cfg.make_instruction_block_cfg_from_function(f)
 
-    def bcode_block_to_tac_block(n, block: gu.Block[bcode.BCode]) -> gu.Block[Tac]:
+    def instruction_block_to_tac_block(n, block: gu.Block[instruction_cfg.Instruction]) -> gu.Block[Tac]:
         return gu.ForwardBlock(list(it.chain.from_iterable(
-            make_TAC(bc.opname, bc.argval, bc.stack_effect(), depths[bc.offset], bc.starts_line)
+            make_TAC(bc.opname, bc.argval, instruction_cfg.stack_effect(bc), depths[bc.offset], bc.starts_line)
             for bc in block)))
 
-    return gu.node_data_map(cfg, bcode_block_to_tac_block)
+    return gu.node_data_map(cfg, instruction_block_to_tac_block)
 
 
 @dataclass(frozen=True)

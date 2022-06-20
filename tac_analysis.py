@@ -115,8 +115,9 @@ def print_analysis(cfg):
 
 
 if __name__ == '__main__':
-    env, imports = disassemble.read_function('examples/feature_selection_pymm.py', 'do_work')
+    # env, imports = disassemble.read_function('examples/feature_selection_pymm.py', 'do_work')
     # env, imports = disassemble.read_function('examples/simple.py')
+    env, imports = disassemble.read_function('examples/imports.py', 'foo')
 
     cfg = run(imports, print_analysis=True, simplify=True, module=True)
     print_analysis(cfg)
