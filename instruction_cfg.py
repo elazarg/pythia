@@ -1,3 +1,5 @@
+from typing import Iterable
+
 import dis
 from dis import Instruction
 
@@ -92,10 +94,6 @@ def is_raise(ins: Instruction) -> bool:
 #         self, repr(self.argrepr))
 
 
-def get_instructions(f) -> list[Instruction]:
-    return list(dis.get_instructions(f))
-
-
 def calculate_stack_depth(cfg: Cfg) -> dict[int, int]:
     """The stack depth is supposed to be independent of path, so dijkstra on the undirected graph suffices
     (and may be too strong, since we don't need minimality).
@@ -112,7 +110,7 @@ def calculate_stack_depth(cfg: Cfg) -> dict[int, int]:
     return res
 
 
-def make_instruction_block_cfg(instructions: list[Instruction]) -> tuple[dict[int, int], Cfg]:
+def make_instruction_block_cfg(instructions: Iterable[Instruction]) -> tuple[dict[int, int], Cfg]:
     dbs = {ins.offset: ins for ins in instructions}
     edges = [(b.offset, dbs[j].offset, {'stack_effect': stack_effect})
              for b in dbs.values()
@@ -124,5 +122,4 @@ def make_instruction_block_cfg(instructions: list[Instruction]) -> tuple[dict[in
 
 
 def make_instruction_block_cfg_from_function(f) -> tuple[dict[int, int], Cfg]:
-    instructions = get_instructions(f)
-    return make_instruction_block_cfg(instructions)
+    return make_instruction_block_cfg(dis.get_instructions(f))

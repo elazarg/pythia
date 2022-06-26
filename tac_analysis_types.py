@@ -4,7 +4,7 @@ from __future__ import annotations as _
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TypeVar, TypeAlias, Optional
+from typing import TypeVar, TypeAlias, Optional, Iterable
 
 from frozendict import frozendict
 
@@ -18,7 +18,7 @@ T = TypeVar('T')
 @dataclass(frozen=True)
 class ObjectType:
     name: str
-    fields: frozendict[str, SimpleType]
+    fields: frozendict[str, SimpleType] = frozendict({})
 
     def __repr__(self):
         return self.name
@@ -30,12 +30,46 @@ class Ref:
 
 
 @dataclass(frozen=True)
+class ParamsType:
+    params: tuple[SimpleType, ...]
+    varargs: bool = False
+
+    def __repr__(self):
+        params = ", ".join(map(str, self.params))
+        varargs = "*" if self.varargs else ""
+        if params:
+            varargs = ', ' + varargs
+        return f'({params}{varargs})'
+
+
+@dataclass(frozen=True)
 class FunctionType:
+    params: ParamsType
     return_type: SimpleType
     new: bool = True
 
     def __repr__(self):
-        return f'() -> {self.return_type}'
+        return f'{self.params} -> {"new " if self.new else ""}{self.return_type}'
+
+
+@dataclass(frozen=True)
+class OverloadedFunctionType:
+    types: tuple[FunctionType, ...]
+
+    def __repr__(self):
+        return f'({", ".join(map(str, self.types))})'
+
+
+def make_function_type(return_type: SimpleType, new: bool = True) -> OverloadedFunctionType:
+    return OverloadedFunctionType((FunctionType(ParamsType((), varargs=True), return_type, new=new),))
+
+
+@dataclass(frozen=True)
+class TypeType:
+    type: SimpleType
+
+    def __repr__(self):
+        return f'Type[{self.type}]'
 
 
 @dataclass(frozen=True)
@@ -50,83 +84,90 @@ class Property:
 SimpleType: TypeAlias = ObjectType | Ref | FunctionType
 
 
-TypeElement: TypeAlias = ObjectType | FunctionType | Property | Ref | Bottom
+TypeElement: TypeAlias = ObjectType | OverloadedFunctionType | Property | Ref | Bottom
 
 
 def make_tuple(t: ObjectType) -> ObjectType:
     return ObjectType('tuple', frozendict({
-        '__getitem__': FunctionType(t),
+        '__getitem__': make_function_type(t),
     }))
 
 
-def iter_method(element_type: ObjectType) -> FunctionType:
-    return FunctionType(ObjectType(f'iterator[{element_type}]', frozendict({
-        '__next__': FunctionType(element_type),
+def iter_method(element_type: ObjectType) -> OverloadedFunctionType:
+    return make_function_type(ObjectType(f'iterator[{element_type}]', frozendict({
+        '__next__': make_function_type(element_type),
     })))
 
 
-OBJECT = ObjectType('object', frozendict({}))
+OBJECT = ObjectType('object')
 
-FLOAT = ObjectType('float', frozendict({}))
-INT = ObjectType('int', frozendict({}))
-STRING = ObjectType('str', frozendict({}))
-BOOL = ObjectType('bool', frozendict({}))
-NONE = ObjectType('None', frozendict({}))
-CODE = ObjectType('code', frozendict({}))
-ASSERTION_ERROR = ObjectType('AssertionError', frozendict({}))
+FLOAT = ObjectType('float')
+INT = ObjectType('int')
+STRING = ObjectType('str')
+BOOL = ObjectType('bool')
+NONE = ObjectType('None')
+CODE = ObjectType('code')
+ASSERTION_ERROR = ObjectType('AssertionError')
 
-SLICE = ObjectType('slice', frozendict({}))
+SLICE = ObjectType('slice')
 
 LIST = ObjectType('list', frozendict({
-    '__getitem__': FunctionType(OBJECT, new=False),
+    '__getitem__': make_function_type(OBJECT, new=False),
     '__iter__': iter_method(OBJECT),
-    '__len__': FunctionType(INT, new=False),
-    '__contains__': FunctionType(BOOL, new=False),
-    'clear': FunctionType(NONE, new=False),
-    'copy': FunctionType(NONE, new=False),
-    'count': FunctionType(INT, new=False),
-    'extend': FunctionType(NONE),
-    'index': FunctionType(INT, new=False),
-    'insert': FunctionType(NONE, new=False),
-    'pop': FunctionType(OBJECT),
-    'remove': FunctionType(NONE, new=False),
-    'reverse': FunctionType(NONE, new=False),
-    'sort': FunctionType(NONE, new=False),
+    '__len__': make_function_type(INT, new=False),
+    '__contains__': make_function_type(BOOL, new=False),
+    'clear': make_function_type(NONE, new=False),
+    'copy': make_function_type(NONE, new=False),
+    'count': make_function_type(INT, new=False),
+    'extend': make_function_type(NONE),
+    'index': make_function_type(INT, new=False),
+    'insert': make_function_type(NONE, new=False),
+    'pop': make_function_type(OBJECT),
+    'remove': make_function_type(NONE, new=False),
+    'reverse': make_function_type(NONE, new=False),
+    'sort': make_function_type(NONE, new=False),
 }))
 
 DICT = ObjectType('dict', frozendict({
-    '__getitem__': FunctionType(OBJECT, new=False),
+    '__getitem__': make_function_type(OBJECT, new=False),
 }))
 
-TUPLE_CONSTRUCTOR = FunctionType(make_tuple(OBJECT), new=False)
-LIST_CONSTRUCTOR = FunctionType(LIST, new=False)
-SLICE_CONSTRUCTOR = FunctionType(SLICE, new=False)
-DICT_CONSTRUCTOR = FunctionType(DICT, new=True)
+TUPLE_CONSTRUCTOR = make_function_type(make_tuple(OBJECT), new=False)
+LIST_CONSTRUCTOR = make_function_type(LIST, new=False)
+SLICE_CONSTRUCTOR = make_function_type(SLICE, new=False)
+DICT_CONSTRUCTOR = make_function_type(DICT, new=True)
 
 
 NDARRAY = ObjectType('ndarray', frozendict({
-    'mean': FunctionType(FLOAT, new=False),
-    'std': FunctionType(FLOAT, new=False),
+    'mean': make_function_type(FLOAT, new=False),
+    'std': make_function_type(FLOAT, new=False),
     'shape': make_tuple(INT),
     'size': INT,
-    '__getitem__': FunctionType(FLOAT),
+    '__getitem__': OverloadedFunctionType(
+        tuple([
+            FunctionType(ParamsType((INT,), varargs=False), FLOAT, new=True),
+            FunctionType(ParamsType((SLICE,), varargs=False), Ref('numpy.ndarray'), new=True),
+            FunctionType(ParamsType((Ref('numpy.ndarray'),), varargs=False), Ref('numpy.ndarray'), new=True),
+            FunctionType(ParamsType((make_tuple(OBJECT),), varargs=False), OBJECT, new=True),  # FIX: not necessarily new
+        ])
+    ),
     '__iter__': iter_method(FLOAT),  # inaccurate
     'T': Property(Ref('numpy.ndarray'), new=True),
-    'astype': FunctionType(Ref('numpy.ndarray'), new=True),
-    'reshape': FunctionType(Ref('numpy.ndarray'), new=True),
+    'astype': make_function_type(Ref('numpy.ndarray'), new=True),
+    'reshape': make_function_type(Ref('numpy.ndarray'), new=True),
     'ndim': INT,
 }))
 
-ARRAY_GEN = FunctionType(NDARRAY, new=True)
+ARRAY_GEN = make_function_type(NDARRAY, new=True)
 
-DATAFRAME = ObjectType('DataFrame', frozendict({}))
+DATAFRAME = ObjectType('DataFrame')
 
-TIME_MODULE = ObjectType('/time', frozendict({}))
+TIME_MODULE = ObjectType('/time')
 
 NUMPY_MODULE = ObjectType('/numpy', frozendict({
-    'ndarray': NDARRAY,
+    'ndarray': TypeType(NDARRAY),
     'array': ARRAY_GEN,
-    'dot': FunctionType(FLOAT, new=False),
+    'dot': make_function_type(FLOAT, new=False),
     'zeros': ARRAY_GEN,
     'ones': ARRAY_GEN,
     'concatenate': ARRAY_GEN,
@@ -139,86 +180,86 @@ NUMPY_MODULE = ObjectType('/numpy', frozendict({
     'logspace': ARRAY_GEN,
     'geomspace': ARRAY_GEN,
     'meshgrid': ARRAY_GEN,
-    'max': FunctionType(FLOAT, new=False),
-    'min': FunctionType(FLOAT, new=False),
-    'sum': FunctionType(FLOAT, new=False),
+    'max': make_function_type(FLOAT, new=False),
+    'min': make_function_type(FLOAT, new=False),
+    'sum': make_function_type(FLOAT, new=False),
     'setdiff1d': ARRAY_GEN,
     'unique': ARRAY_GEN,
     'append': ARRAY_GEN,
     'random': ARRAY_GEN,
-    'argmax': FunctionType(INT, new=False),
-    'c_': ObjectType('slice_trick', {
-        '__getitem__': FunctionType(NDARRAY),
-    }),
-    'r_': ObjectType('slice_trick', {
-        '__getitem__': FunctionType(NDARRAY),
-    }),
-
+    'argmax': make_function_type(INT, new=False),
+    'c_': ObjectType('slice_trick', frozendict({
+        '__getitem__': make_function_type(NDARRAY),
+    })),
+    'r_': ObjectType('slice_trick', frozendict({
+        '__getitem__': make_function_type(NDARRAY),
+    })),
 }))
 
 SKLEARN_MODULE = ObjectType('/sklearn', frozendict({
     'metrics': ObjectType('/metrics', frozendict({
-        'log_loss': FunctionType(FLOAT, new=False),
-        'accuracy_score': FunctionType(FLOAT, new=False),
-        'f1_score': FunctionType(FLOAT, new=False),
-        'precision_score': FunctionType(FLOAT, new=False),
-        'recall_score': FunctionType(FLOAT, new=False),
-        'roc_auc_score': FunctionType(FLOAT, new=False),
-        'average_precision_score': FunctionType(FLOAT, new=False),
-        'roc_curve': FunctionType(make_tuple(FLOAT), new=False),
-        'confusion_matrix': FunctionType(make_tuple(INT), new=False),
+        'log_loss': make_function_type(FLOAT, new=False),
+        'accuracy_score': make_function_type(FLOAT, new=False),
+        'f1_score': make_function_type(FLOAT, new=False),
+        'precision_score': make_function_type(FLOAT, new=False),
+        'recall_score': make_function_type(FLOAT, new=False),
+        'roc_auc_score': make_function_type(FLOAT, new=False),
+        'average_precision_score': make_function_type(FLOAT, new=False),
+        'roc_curve': make_function_type(make_tuple(FLOAT), new=False),
+        'confusion_matrix': make_function_type(make_tuple(INT), new=False),
     })),
     'linear_model': ObjectType('/linear_model', frozendict({
-        'LogisticRegression': FunctionType(ObjectType('LogisticRegression', frozendict({
-            'fit': FunctionType(ObjectType('Model', {
-                'predict': FunctionType(FLOAT),
+        'LogisticRegression': make_function_type(ObjectType('LogisticRegression', frozendict({
+            'fit': make_function_type(ObjectType('Model', frozendict({
+                'predict': make_function_type(FLOAT),
                 'predict_proba': ARRAY_GEN,
-                'score': FunctionType(FLOAT),
-            }), new=False),
+                'score': make_function_type(FLOAT),
+            })), new=False),
         })), new=True),
-        'LinearRegression': FunctionType(ObjectType('LinearRegression', frozendict({
-            'fit': FunctionType(ObjectType('Model', {
-                'predict': FunctionType(FLOAT),
+        'LinearRegression': make_function_type(ObjectType('LinearRegression', frozendict({
+            'fit': make_function_type(ObjectType('Model', frozendict({
+                'predict': make_function_type(FLOAT),
                 'predict_proba': ARRAY_GEN,
-                'score': FunctionType(FLOAT),
-            }), new=False),
+                'score': make_function_type(FLOAT),
+            })), new=False),
         })), new=True),
     })),
 }))
 
 PANDAS_MODULE = ObjectType('/pandas', frozendict({
-    'DataFrame': FunctionType(DATAFRAME),
+    'DataFrame': TypeType(DATAFRAME),
 }))
 
 BUILTINS_MODULE = ObjectType('/builtins', frozendict({
-    'range': FunctionType(ObjectType('range', frozendict({
+    'range': make_function_type(ObjectType('range', frozendict({
         '__iter__': iter_method(INT),
     }))),
-    'len': FunctionType(INT, new=False),
-    'print': FunctionType(NONE, new=False),
-    'abs': FunctionType(FLOAT, new=False),
-    'round': FunctionType(FLOAT, new=False),
-    'min': FunctionType(FLOAT, new=False),
-    'max': FunctionType(FLOAT, new=False),
-    'sum': FunctionType(FLOAT, new=False),
-    'all': FunctionType(BOOL, new=False),
-    'any': FunctionType(BOOL, new=False),
-    'int': FunctionType(INT, new=False),
-    'float': FunctionType(FLOAT, new=False),
-    'str': FunctionType(STRING, new=False),
-    'bool': FunctionType(BOOL, new=False),
-    'code': FunctionType(CODE, new=False),
-    'AssertionError': FunctionType(ASSERTION_ERROR, new=False),
+    'len': make_function_type(INT, new=False),
+    'print': make_function_type(NONE, new=False),
+    'abs': make_function_type(FLOAT, new=False),
+    'round': make_function_type(FLOAT, new=False),
+    'min': make_function_type(FLOAT, new=False),
+    'max': make_function_type(FLOAT, new=False),
+    'sum': make_function_type(FLOAT, new=False),
+    'all': make_function_type(BOOL, new=False),
+    'any': make_function_type(BOOL, new=False),
+
+    'int': TypeType(INT),
+    'float': TypeType(FLOAT),
+    'str': TypeType(STRING),
+    'bool': TypeType(BOOL),
+    'code': TypeType(CODE),
+    'AssertionError': TypeType(ASSERTION_ERROR),
 }))
 
 FUTURE_MODULE = ObjectType('/future', frozendict({
-    'annotations': ObjectType('_', {}),
+    'annotations': ObjectType('_'),
 }))
 
 MATPLOTLIB_MODULE = ObjectType('/matplotlib', frozendict({
     'pyplot': ObjectType('pyplot', frozendict({
-        'plot': FunctionType(NONE, new=False),
-        'show': FunctionType(NONE, new=False),
+        'plot': make_function_type(NONE, new=False),
+        'show': make_function_type(NONE, new=False),
     })),
 }))
 
@@ -227,40 +268,54 @@ GLOBALS_OBJECT = ObjectType('globals()', frozendict({
     'numpy': NUMPY_MODULE,
     'np': NUMPY_MODULE,
     'pandas': PANDAS_MODULE,
+    'pd': PANDAS_MODULE,
     'time': TIME_MODULE,
     'sklearn': SKLEARN_MODULE,
     'sk': SKLEARN_MODULE,
-    'pymm': ObjectType('/pymm', {}),
+    'pymm': ObjectType('/pymm'),
     'mt': SKLEARN_MODULE.fields['metrics'],
     'matplotlib': MATPLOTLIB_MODULE,
     **BUILTINS_MODULE.fields
 }))
 
-BINARY = {
+
+def transpose(double_dispatch_table: dict[tuple[SimpleType, SimpleType], dict[str, tuple[SimpleType, bool]]])\
+        -> dict[str, OverloadedFunctionType]:
+    ops = ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']
+    result: dict[str, list[FunctionType]] = {op: [] for op in ops}
+    for op in ops:
+        for params, table in double_dispatch_table.items():
+            if op in table:
+                return_type, new = table[op]
+                result[op].append(FunctionType(ParamsType(params), return_type, new))
+    return {op: OverloadedFunctionType(tuple(result[op])) for op in ops}
+
+
+BINARY = transpose({
     (INT, INT): {
-        '/': FunctionType(FLOAT, new=False),
-        **{op: FunctionType(INT, new=False) for op in ['+', '-', '*', '**', '//', '%']},
-        **{op: FunctionType(INT, new=False) for op in ['&', '|', '^', '<<', '>>']},
-        **{op: FunctionType(BOOL, new=False) for op in ['<', '>', '<=', '>=', '==', '!=']},
+        '/':   (FLOAT, False),
+        **{op: (INT, False) for op in ['+', '-', '*', '**', '//', '%']},
+        **{op: (INT, False) for op in ['&', '|', '^', '<<', '>>']},
+        **{op: (BOOL, False) for op in ['<', '>', '<=', '>=', '==', '!=']},
     },
     (INT, FLOAT): {
-        **{op: FunctionType(FLOAT, new=False) for op in ['+', '-', '*', '/', '**', '//', '%']},
-        **{op: FunctionType(BOOL, new=False) for op in ['<', '>', '<=', '>=', '==', '!=']},
+        **{op: (FLOAT, False) for op in ['+', '-', '*', '/', '**', '//', '%']},
+        **{op: (BOOL, False) for op in ['<', '>', '<=', '>=', '==', '!=']},
     },
     (FLOAT, INT): {
-        **{op: FunctionType(FLOAT, new=False) for op in ['+', '-', '*', '/', '**', '//', '%']},
-        **{op: FunctionType(BOOL, new=False) for op in ['<', '>', '<=', '>=', '==', '!=']},
+        **{op: (FLOAT, False) for op in ['+', '-', '*', '/', '**', '//', '%']},
+        **{op: (BOOL, False) for op in ['<', '>', '<=', '>=', '==', '!=']},
     },
     (FLOAT, FLOAT): {
-        **{op: FunctionType(FLOAT, new=False) for op in ['+', '-', '*', '/', '**', '//', '%']},
-        **{op: FunctionType(BOOL, new=False) for op in ['<', '>', '<=', '>=', '==', '!=']},
+        **{op: (FLOAT, False) for op in ['+', '-', '*', '/', '**', '//', '%']},
+        **{op: (BOOL, False) for op in ['<', '>', '<=', '>=', '==', '!=']},
     },
-    (NDARRAY, NDARRAY): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
-    (NDARRAY, INT): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
-    (INT, NDARRAY): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
-    (NDARRAY, FLOAT): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
-    (FLOAT, NDARRAY): {op: FunctionType(NDARRAY, new=True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
-}
+    (NDARRAY, NDARRAY): {op: (NDARRAY, True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (NDARRAY, INT):     {op: (NDARRAY, True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (INT, NDARRAY):     {op: (NDARRAY, True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (NDARRAY, FLOAT):   {op: (NDARRAY, True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+    (FLOAT, NDARRAY):   {op: (NDARRAY, True) for op in ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']},
+})
 
 
 class TypeLattice(Lattice[TypeElement]):
@@ -307,35 +362,47 @@ class TypeLattice(Lattice[TypeElement]):
             result = GLOBALS_OBJECT
             for attr in ref.name.split('.'):
                 result = result.fields[attr]
-            return result
+            assert isinstance(result, TypeType)
+            return result.type
         return ref
+
+    def is_match(self, args: list[TypeElement], params: ParamsType):
+        if len(args) < len(params.params):
+            return False
+        if len(args) > len(params.params) and not params.varargs:
+            return False
+        return all(self.is_subtype(arg, param)
+                   for arg, param in zip(args, params.params))
+
+    def join_all(self, types: Iterable[TypeElement]) -> TypeElement:
+        result = TypeLattice.bottom()
+        for t in types:
+            result = self.join(result, t)
+        return result
 
     def call(self, function: TypeElement, args: list[TypeElement]) -> TypeElement:
         if self.is_top(function):
             return self.top()
         if self.is_bottom(function) or any(self.is_bottom(arg) for arg in args):
             return self.bottom()
-        if not isinstance(function, FunctionType):
-            print(f'{function} is not a function')
+        if isinstance(function, TypeType):
+            return function.type
+        if not isinstance(function, OverloadedFunctionType):
+            print(f'{function} is not an overloaded function')
             return self.bottom()
-        return self.resolve(function.return_type)
+        return self.join_all(
+            self.resolve(func.return_type) for func in function.types
+            if self.is_match(args, func.params)
+        )
 
-    def _get_binary_op(self, left: TypeElement, right: TypeElement, op: str) -> FunctionType | Bottom:
+    def _get_binary_op(self, op: str) -> OverloadedFunctionType:
         if isinstance(op, tac.Var):
             op = op.name
-        if self.is_top(left) or self.is_top(right):
-            return self.top()
-        if self.is_bottom(left) or self.is_bottom(right):
-            return self.bottom()
-        category = BINARY.get((left, right), {})
-        res = category.get(op, self.top())
-        return self.resolve(res)
+        return BINARY.get(op)
 
     def binary(self, left: TypeElement, right: TypeElement, op: str) -> TypeElement:
-        function = self._get_binary_op(left, right, op)
-        if not self.is_top(function) and not isinstance(function, Bottom):
-            return self.call(function, [left, right])
-        return self.top()
+        overloaded_function = self._get_binary_op(op)
+        return self.call(overloaded_function, [left, right])
 
     def predefined(self, name: Predefined) -> Optional[TypeElement]:
         match name:
@@ -349,8 +416,9 @@ class TypeLattice(Lattice[TypeElement]):
         return None
 
     def const(self, value: object) -> TypeElement:
-        return self.call(self.annotation(type(value).__name__), [])\
-            if value is not None else NONE
+        if value is None:
+            return NONE
+        return self.annotation(type(value).__name__)
 
     def _attribute(self, var: TypeElement, attr: str) -> TypeElement:
         if self.is_top(var):
@@ -364,7 +432,7 @@ class TypeLattice(Lattice[TypeElement]):
                 else:
                     unseen[obj.name].add(attr)
                     return self.top()
-            case FunctionType():
+            case make_function_type():
                 return self.bottom()
         return self.top()
 
@@ -396,17 +464,24 @@ class TypeLattice(Lattice[TypeElement]):
             return self.attribute(modname.var, modname.field)
 
     def is_subtype(self, left: TypeElement, right: TypeElement) -> bool:
+        left = self.resolve(left)
+        right = self.resolve(right)
         return self.join(left, right) == right
 
     def is_supertype(self, left: TypeElement, right: TypeElement) -> bool:
         return self.join(left, right) == left
 
-    def is_allocation_function(self, function: TypeElement):
-        return isinstance(function, FunctionType) and function.new
+    def is_allocation_function(self, overloaded_function: TypeElement):
+        if isinstance(overloaded_function, OverloadedFunctionType):
+            if all(function.new for function in overloaded_function.types):
+                return True
+            if not any(function.new for function in overloaded_function.types):
+                return False
+        return None
 
-    def is_allocation_binary(self, left: T, right: T, op: str) -> bool:
-        function = self._get_binary_op(left, right, op)
-        return self.is_allocation_function(function)
+    def is_allocation_binary(self, left: TypeElement, right: TypeElement, op: str) -> bool:
+        overloaded_function = self._get_binary_op(op)
+        return self.is_allocation_function(overloaded_function)
 
     def is_allocation_attribute(self, var: TypeElement, attr: str) -> bool:
         p = self._attribute(var, attr)

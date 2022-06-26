@@ -62,24 +62,19 @@ def analyze(_cfg: gu.Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]
                 wl.add(succ)
 
 
-def run(f, print_analysis=False, simplify=True, module=False):
+def run(f, simplify=True, module=False):
     cfg = make_tacblock_cfg(f, simplify=simplify)
     annotations = {}
     if not module:
         annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
-    # analyze(cfg, LivenessDomain)
-    # analyze(cfg, AliasDomain)
     # for label, block in cfg.items():
     #     rewrite_remove_useless_movs_pairs(block, label)
     #     rewrite_aliases(block, label)
     #     rewrite_remove_useless_movs(block, label)
-    liveness = LivenessLattice()
-    constant = ConstLattice()
     var_analysis = VarAnalysis[tac.Var, tac_analysis_types.TypeElement](TypeLattice())
 
-    analyze(cfg, VarAnalysis[tac.Var, Liveness](liveness, backward=True), annotations)
-    # analyze(cfg, ConstantDomain)
-    analyze(cfg, VarAnalysis[tac.Var, Constant](constant), annotations)
+    analyze(cfg, VarAnalysis[tac.Var, Liveness](LivenessLattice(), backward=True), annotations)
+    analyze(cfg, VarAnalysis[tac.Var, Constant](ConstLattice()), annotations)
     analyze(cfg, var_analysis, annotations)
     analyze(cfg, PointerAnalysis(var_analysis), annotations)
     return cfg
@@ -115,13 +110,13 @@ def print_analysis(cfg):
 
 
 if __name__ == '__main__':
-    # env, imports = disassemble.read_function('examples/feature_selection_pymm.py', 'do_work')
+    env, imports = disassemble.read_function('examples/feature_selection_pymm.py', 'do_work')
     # env, imports = disassemble.read_function('examples/simple.py')
-    env, imports = disassemble.read_function('examples/imports.py', 'foo')
+    # env, imports = disassemble.read_function('examples/imports.py', 'foo')
 
-    cfg = run(imports, print_analysis=True, simplify=True, module=True)
-    print_analysis(cfg)
+    # cfg = run(imports, simplify=True, module=True)
+    # print_analysis(cfg)
 
     for k, func in env.items():
-        cfg = run(func, print_analysis=True, simplify=True)
+        cfg = run(func, simplify=False)
         print_analysis(cfg)

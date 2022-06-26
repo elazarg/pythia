@@ -94,6 +94,7 @@ class Var:
     def __repr__(self):
         return str(self)
 
+
 Value: TypeAlias = Var | Const
 Name: TypeAlias = Var | Predefined
 
@@ -464,6 +465,7 @@ def make_nonlocal(field: str) -> Attribute:
 
 def make_class(name: str) -> Attribute:
     return Attribute(Predefined.NONLOCALS, Var(name))
+
 
 def make_TAC_no_dels(opname, val, stack_effect, stack_depth) -> list[Tac]:
     """Translate a bytecode operation into a list of TAC instructions.
