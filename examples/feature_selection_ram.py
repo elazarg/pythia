@@ -43,7 +43,7 @@ def run(X, y):
     return final_cost, predict(X, theta)
 
 
-def Linear_Regression(features, target, dims):
+def Linear_Regression(features: np.ndarray, target: np.ndarray, dims):
     # preprocess features and target
     target = np.array(target).reshape(target.shape[0], -1)
     if features[:, dims].size > 0:
@@ -51,59 +51,87 @@ def Linear_Regression(features, target, dims):
         sparse_features = features[:, dims]
         if sparse_features.ndim == 1:
             sparse_features = sparse_features.reshape(sparse_features.shape[0], 1)
-        score, predict = run(sparse_features, target)
+        predict = run(sparse_features, target)
     else:
-        score = 0
         predict = np.zeros(features.shape[0]).reshape(features.shape[0], -1)
     grad = np.dot(features.T, target - predict)
-    return grad, score
+    return grad
 
 
-def do_work(features: np.ndarray, target: np.ndarray, k: int):
-    results = pd.DataFrame(data={
-        'k': np.zeros(k).astype('int'),
-        'time': np.zeros(k),
-        'rounds': np.zeros(k),
-        'metric': np.zeros(k)
-    })
+def do_actual_work(features: np.ndarray, target: np.ndarray, S: np.ndarray):
+    # define vals
+    grad = Linear_Regression(features, target, np.unique(S[S >= 0]))
+    A = np.array(range(len(grad)))
+    point = []
+    for a in np.setdiff1d(A, S):
+        point = np.append(point, a)
+    out = [[point, len(np.setdiff1d(A, S))]]
+    out = np.array(out, dtype='object')
 
-    # define rounds
-    rounds = 0
-    rounds_ind = 0
+    # get feasible points
+    points = np.array([])
+    points = np.append(points, np.array(out[0, 0]))
+    points = points.astype('int')
+    # break if points are no longer feasible
+    if len(points) == 0:
+        return None
 
-    # define new solution
+    # otherwise add maximum point to current solution
+    a = points[0]
+    for i in points:
+        if grad[i] > grad[a]:
+            a = i
+
+    if grad[a] >= 0:
+        return np.unique(np.append(S, a))
+        # Better: incremental update of S
+        #
+        # return pymm.unique(np.append(S, a))
+    else:
+        return None
+
+
+def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     S = np.array([], int)
+    header = "hello"
+
+    # This LOOP!
+
+    if recovery:
+        S = load()
 
     for idx in range(k):
+        begin(idx)
+        S = do_actual_work(features, target, S)
+        if S is None:
+            break
+        commit()
+        COMMIT(S)
+    return S
 
-        # define and train model
-        # preprocess current solution
-        grad, metric = Linear_Regression(features, target, np.unique(S[S >= 0]))
-        rounds += 1
 
-        # define vals
+def do_work_inline(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
+    S = np.array([], int)
+    header = "hello"
+
+    # This LOOP!
+    for idx in range(k):
+        begin(idx)
+
+        grad = Linear_Regression(features, target, np.unique(S[S >= 0]))
         A = np.array(range(len(grad)))
         point = []
         for a in np.setdiff1d(A, S):
             point = np.append(point, a)
         out = [[point, len(np.setdiff1d(A, S))]]
         out = np.array(out, dtype='object')
-        rounds_ind += np.max(out[:, -1])
-        # save results to file
-        results.loc[idx, 'k'] = idx + 1
-        results.loc[idx, 'rounds'] = int(rounds)
-        results.loc[idx, 'rounds_ind'] = rounds_ind
-        results.loc[idx, 'metric'] = metric
 
-        # get feasible points
         points = np.array([])
         points = np.append(points, np.array(out[0, 0]))
         points = points.astype('int')
-        # break if points are no longer feasible
         if len(points) == 0:
             break
 
-        # otherwise add maximum point to current solution
         a = points[0]
         for i in points:
             if grad[i] > grad[a]:
@@ -113,7 +141,11 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int):
             S = np.unique(np.append(S, a))
         else:
             break
-    return results
+
+        commit()
+        COMMIT(S)
+
+    return S
 
 
 def main():

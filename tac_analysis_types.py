@@ -60,7 +60,7 @@ class OverloadedFunctionType:
         return f'({", ".join(map(str, self.types))})'
 
 
-def make_function_type(return_type: SimpleType, new: bool = True) -> OverloadedFunctionType:
+def make_function_type(return_type: SimpleType, new: bool = True, pure=True) -> OverloadedFunctionType:
     return OverloadedFunctionType((FunctionType(ParamsType((), varargs=True), return_type, new=new),))
 
 
@@ -130,6 +130,7 @@ LIST = ObjectType('list', frozendict({
 
 DICT = ObjectType('dict', frozendict({
     '__getitem__': make_function_type(OBJECT, new=False),
+    '__setitem__': make_function_type(NONE, new=False),
 }))
 
 TUPLE_CONSTRUCTOR = make_function_type(make_tuple(OBJECT), new=False)
@@ -139,13 +140,14 @@ DICT_CONSTRUCTOR = make_function_type(DICT, new=True)
 
 
 NDARRAY = ObjectType('ndarray', frozendict({
-    'mean': make_function_type(FLOAT, new=False),
-    'std': make_function_type(FLOAT, new=False),
+    'mean': make_function_type(FLOAT, new=False, pure=True),
+    'std': make_function_type(FLOAT, new=False, pure=True),
     'shape': make_tuple(INT),
     'size': INT,
     '__getitem__': OverloadedFunctionType(
         tuple([
             FunctionType(ParamsType((INT,), varargs=False), FLOAT, new=True),
+            FunctionType(ParamsType((FLOAT,), varargs=False), FLOAT, new=True), # Fix: ad-hoc
             FunctionType(ParamsType((SLICE,), varargs=False), Ref('numpy.ndarray'), new=True),
             FunctionType(ParamsType((Ref('numpy.ndarray'),), varargs=False), Ref('numpy.ndarray'), new=True),
             FunctionType(ParamsType((make_tuple(OBJECT),), varargs=False), OBJECT, new=True),  # FIX: not necessarily new
@@ -153,14 +155,16 @@ NDARRAY = ObjectType('ndarray', frozendict({
     ),
     '__iter__': iter_method(FLOAT),  # inaccurate
     'T': Property(Ref('numpy.ndarray'), new=True),
-    'astype': make_function_type(Ref('numpy.ndarray'), new=True),
-    'reshape': make_function_type(Ref('numpy.ndarray'), new=True),
+    'astype': make_function_type(Ref('numpy.ndarray'), new=True, pure=True),
+    'reshape': make_function_type(Ref('numpy.ndarray'), new=True, pure=False),
     'ndim': INT,
 }))
 
 ARRAY_GEN = make_function_type(NDARRAY, new=True)
 
-DATAFRAME = ObjectType('DataFrame')
+DATAFRAME = ObjectType('DataFrame', frozendict({
+    'loc': DICT,
+}))
 
 TIME_MODULE = ObjectType('/time')
 
@@ -250,6 +254,8 @@ BUILTINS_MODULE = ObjectType('/builtins', frozendict({
     'bool': TypeType(BOOL),
     'code': TypeType(CODE),
     'AssertionError': TypeType(ASSERTION_ERROR),
+
+    'Linear_Regression': make_function_type(NDARRAY, new=True),
 }))
 
 FUTURE_MODULE = ObjectType('/future', frozendict({
@@ -378,6 +384,9 @@ class TypeLattice(Lattice[TypeElement]):
         result = TypeLattice.bottom()
         for t in types:
             result = self.join(result, t)
+        #
+        # if self.is_bottom(result):
+        #     return self.top()
         return result
 
     def call(self, function: TypeElement, args: list[TypeElement]) -> TypeElement:
