@@ -110,7 +110,8 @@ def print_analysis(cfg):
 
 
 if __name__ == '__main__':
-    env, imports = disassemble.read_function('examples/feature_selection_pymm.py', 'do_work')
+    env, imports = disassemble.read_function('examples/feature_selection_ram.py', 'do_work_inline')
+    # env, imports = disassemble.read_function('examples/feature_selection_ram.py', 'Linear_Regression')
     # env, imports = disassemble.read_function('examples/simple.py')
     # env, imports = disassemble.read_function('examples/imports.py', 'foo')
 
@@ -118,5 +119,5 @@ if __name__ == '__main__':
     # print_analysis(cfg)
 
     for k, func in env.items():
-        cfg = run(func, simplify=False)
+        cfg = run(func, simplify=True)
         print_analysis(cfg)
