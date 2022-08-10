@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 
 
 def cost_function(X, y, theta):
@@ -43,7 +42,7 @@ def run(X, y):
     return final_cost, predict(X, theta)
 
 
-def Linear_Regression(features: np.ndarray, target: np.ndarray, dims):
+def Linear_Regression(features: np.ndarray, target: np.ndarray, dims) -> np.ndarray:
     # preprocess features and target
     target = np.array(target).reshape(target.shape[0], -1)
     if features[:, dims].size > 0:
@@ -58,80 +57,40 @@ def Linear_Regression(features: np.ndarray, target: np.ndarray, dims):
     return grad
 
 
-def do_actual_work(features: np.ndarray, target: np.ndarray, S: np.ndarray):
-    # define vals
-    grad = Linear_Regression(features, target, np.unique(S[S >= 0]))
-    A = np.array(range(len(grad)))
-    point = []
-    for a in np.setdiff1d(A, S):
-        point = np.append(point, a)
-    out = [[point, len(np.setdiff1d(A, S))]]
-    out = np.array(out, dtype='object')
-
-    # get feasible points
-    points = np.array([])
-    points = np.append(points, np.array(out[0, 0]))
-    points = points.astype('int')
-    # break if points are no longer feasible
-    if len(points) == 0:
-        return None
-
-    # otherwise add maximum point to current solution
-    a = points[0]
-    for i in points:
-        if grad[i] > grad[a]:
-            a = i
-
-    if grad[a] >= 0:
-        return np.unique(np.append(S, a))
-        # Better: incremental update of S
-        #
-        # return pymm.unique(np.append(S, a))
-    else:
-        return None
-
-
 def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
+    # define rounds
+    rounds = 0
+    rounds_ind = 0
+
+    # define new solution
     S = np.array([], int)
-    header = "hello"
-
-    # This LOOP!
-
-    if recovery:
-        S = load()
 
     for idx in range(k):
-        begin(idx)
-        S = do_actual_work(features, target, S)
-        if S is None:
-            break
-        commit()
-        COMMIT(S)
-    return S
+        persist_start(idx)
 
-
-def do_work_inline(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
-    S = np.array([], int)
-    header = "hello"
-
-    # This LOOP!
-    for idx in range(k):
-        begin(idx)
-
+        # define and train model
+        # preprocess current solution
         grad = Linear_Regression(features, target, np.unique(S[S >= 0]))
+        rounds += 1
+
+        # define vals
         A = np.array(range(len(grad)))
         point = []
         for a in np.setdiff1d(A, S):
             point = np.append(point, a)
         out = [[point, len(np.setdiff1d(A, S))]]
         out = np.array(out, dtype='object')
+        rounds_ind += np.max(out[:, -1])
 
+        # get feasible points
         points = np.array([])
         points = np.append(points, np.array(out[0, 0]))
         points = points.astype('int')
+        # break if points are no longer feasible
         if len(points) == 0:
             break
 
+        # otherwise add maximum point to current solution
         a = points[0]
         for i in points:
             if grad[i] > grad[a]:
@@ -142,9 +101,7 @@ def do_work_inline(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarr
         else:
             break
 
-        commit()
-        COMMIT(S)
-
+        persist_commit()
     return S
 
 
