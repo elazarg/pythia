@@ -1,3 +1,4 @@
+import persist
 import numpy as np
 
 
@@ -66,7 +67,7 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     S = np.array([], int)
 
     for idx in range(k):
-        persist_start(idx)
+        persist.start(idx)
 
         # define and train model
         # preprocess current solution
@@ -101,7 +102,7 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
         else:
             break
 
-        persist_commit()
+        persist.commit()
     return S
 
 

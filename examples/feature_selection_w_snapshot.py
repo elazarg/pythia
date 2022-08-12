@@ -1,3 +1,4 @@
+import persist
 import numpy as np
 
 
@@ -64,13 +65,12 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
 
     # define new solution
     S = np.array([], int)
-    _persist_mark(S)
+    persist._mark(S)
 
     for idx in range(k):
-        persist_start(idx)
-        if now_recovering():
-            idx, S = _persist_recover(snapshot)  # load snapshot and set local variables to saved state
-        _persist_mark(idx)
+        if persist._now_recovering():
+            idx, S = persist._recover(snapshot)  # load snapshot and set local variables to saved state
+        persist._mark(idx)
 
         # define and train model
         # preprocess current solution
@@ -101,14 +101,13 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
                 a = i
 
         if grad[a] >= 0:
-            _persist_unmark(S)
+            persist._unmark(S)
             S = np.unique(np.append(S, a))
-            _persist_mark_shallow(S)  # for now S must be ndarray (can use pickle when committing)
+            persist._mark_shallow(S)  # for now S must be ndarray (can use pickle when committing)
         else:
             break
 
-        persist_commit()
-        _persist_commit(idx, S)
+        persist._commit(idx, S)
     return S
 
 

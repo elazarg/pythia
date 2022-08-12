@@ -190,7 +190,9 @@ NUMPY_MODULE = ObjectType('/numpy', frozendict({
     'setdiff1d': ARRAY_GEN,
     'unique': ARRAY_GEN,
     'append': ARRAY_GEN,
-    'random': ARRAY_GEN,
+    'random': ObjectType('/numpy.random', frozendict({
+        'rand': ARRAY_GEN,
+    })),
     'argmax': make_function_type(INT, new=False),
     'c_': ObjectType('slice_trick', frozendict({
         '__getitem__': make_function_type(NDARRAY),
@@ -389,6 +391,10 @@ class TypeLattice(Lattice[TypeElement]):
         #     return self.top()
         return result
 
+    def narrow_overload(self, overload: OverloadedFunctionType, args: list[TypeElement]) -> OverloadedFunctionType:
+        return OverloadedFunctionType(tuple(func for func in overload.types
+                                            if self.is_match(args, func.params)))
+
     def call(self, function: TypeElement, args: list[TypeElement]) -> TypeElement:
         if self.is_top(function):
             return self.top()
@@ -399,10 +405,8 @@ class TypeLattice(Lattice[TypeElement]):
         if not isinstance(function, OverloadedFunctionType):
             print(f'{function} is not an overloaded function')
             return self.bottom()
-        return self.join_all(
-            self.resolve(func.return_type) for func in function.types
-            if self.is_match(args, func.params)
-        )
+        return self.join_all(self.resolve(func.return_type)
+                             for func in self.narrow_overload(function, args).types)
 
     def _get_binary_op(self, op: str) -> OverloadedFunctionType:
         if isinstance(op, tac.Var):
@@ -441,7 +445,7 @@ class TypeLattice(Lattice[TypeElement]):
                 else:
                     unseen[obj.name].add(attr)
                     return self.top()
-            case make_function_type():
+            case TypeType():
                 return self.bottom()
         return self.top()
 
@@ -480,7 +484,7 @@ class TypeLattice(Lattice[TypeElement]):
     def is_supertype(self, left: TypeElement, right: TypeElement) -> bool:
         return self.join(left, right) == left
 
-    def is_allocation_function(self, overloaded_function: TypeElement):
+    def is_allocation_function(self, overloaded_function: TypeElement) -> Optional[bool]:
         if isinstance(overloaded_function, OverloadedFunctionType):
             if all(function.new for function in overloaded_function.types):
                 return True
@@ -490,7 +494,8 @@ class TypeLattice(Lattice[TypeElement]):
 
     def is_allocation_binary(self, left: TypeElement, right: TypeElement, op: str) -> bool:
         overloaded_function = self._get_binary_op(op)
-        return self.is_allocation_function(overloaded_function)
+        narrowed = self.narrow_overload(overloaded_function, [left, right])
+        return self.is_allocation_function(narrowed)
 
     def is_allocation_attribute(self, var: TypeElement, attr: str) -> bool:
         p = self._attribute(var, attr)
