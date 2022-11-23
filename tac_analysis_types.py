@@ -271,6 +271,12 @@ MATPLOTLIB_MODULE = ObjectType('/matplotlib', frozendict({
     })),
 }))
 
+PERSIST_MODULE = ObjectType('/persist', frozendict({
+    'range': make_function_type(ObjectType('range', frozendict({
+        '__iter__': iter_method(INT),
+    }))),
+}))
+
 GLOBALS_OBJECT = ObjectType('globals()', frozendict({
     '__future__': FUTURE_MODULE,
     'numpy': NUMPY_MODULE,
@@ -283,6 +289,7 @@ GLOBALS_OBJECT = ObjectType('globals()', frozendict({
     'pymm': ObjectType('/pymm'),
     'mt': SKLEARN_MODULE.fields['metrics'],
     'matplotlib': MATPLOTLIB_MODULE,
+    'persist': PERSIST_MODULE,
     **BUILTINS_MODULE.fields
 }))
 

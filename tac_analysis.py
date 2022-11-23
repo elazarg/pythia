@@ -15,7 +15,7 @@ from tac_analysis_domain import IterationStrategy, VarAnalysis, BackwardIteratio
     Analysis
 from tac_analysis_liveness import LivenessLattice, Liveness
 from tac_analysis_pointer import PointerAnalysis, pretty_print_pointers
-from tac_analysis_types import TypeLattice
+from tac_analysis_types import TypeLattice, TypeElement
 
 
 T = TypeVar('T')
@@ -64,6 +64,9 @@ def analyze(_cfg: gu.Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]
 
 def run(f, simplify=True, module=False):
     cfg = make_tacblock_cfg(f, simplify=simplify)
+
+    gu.pretty_print_cfg(cfg)
+
     annotations = {}
     if not module:
         annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
@@ -71,12 +74,14 @@ def run(f, simplify=True, module=False):
     #     rewrite_remove_useless_movs_pairs(block, label)
     #     rewrite_aliases(block, label)
     #     rewrite_remove_useless_movs(block, label)
-    var_analysis = VarAnalysis[tac.Var, tac_analysis_types.TypeElement](TypeLattice())
+    var_analysis = VarAnalysis[tac.Var, TypeElement](TypeLattice())
+    liveness_analysis = VarAnalysis[tac.Var, Liveness](LivenessLattice(), backward=True)
+    constant_analysis = VarAnalysis[tac.Var, Constant](ConstLattice())
 
-    analyze(cfg, VarAnalysis[tac.Var, Liveness](LivenessLattice(), backward=True), annotations)
-    analyze(cfg, VarAnalysis[tac.Var, Constant](ConstLattice()), annotations)
+    analyze(cfg, liveness_analysis, annotations)
+    analyze(cfg, constant_analysis, annotations)
     analyze(cfg, var_analysis, annotations)
-    analyze(cfg, PointerAnalysis(var_analysis), annotations)
+    analyze(cfg, PointerAnalysis(var_analysis, liveness_analysis), annotations)
     return cfg
 
 

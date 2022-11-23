@@ -131,6 +131,7 @@ class Cfg(Generic[T]):
         for label in sorted(self.graph.nodes()):
             print(label, ':', self[label])
 
+
     def predecessors(self, label) -> Iterator[int]:
         return self.graph.predecessors(label)
 
@@ -242,6 +243,7 @@ def pretty_print_cfg(cfg: Cfg[T]) -> None:
         if math.isinf(label):
             continue
         print_block(label, block)
+        print(list(cfg.graph.neighbors(label)))
         print()
 
 

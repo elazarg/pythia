@@ -27,39 +27,17 @@ def is_jump(ins: Instruction):
     return ins.opcode in dis.hasjrel or ins.opcode in dis.hasjabs
 
 
-# static int
-# instr_size(struct instr *instruction)
-# {
-#     int opcode = instruction->i_opcode;
-#     int oparg = HAS_ARG(opcode) ? instruction->i_oparg : 0;
-#     int extended_args = (0xFFFFFF < oparg) + (0xFFFF < oparg) + (0xFF < oparg);
-#     int caches = _PyOpcode_Caches[opcode];
-#     return extended_args + 1 + caches;
-# }
-def size(ins: Instruction) -> int:
-    return 2
-    has_arg = ins.opcode >= dis.HAVE_ARGUMENT
-    oparg = self.arg if has_arg else 0
-    extended_args = (0xFFFFFF < oparg) + (0xFFFF < oparg) + (0xFF < oparg)
-    return extended_args + 1
-    return 1 if ins.opcode < dis.HAVE_ARGUMENT else 2
-
-
-def fallthrough_offset(ins: Instruction) -> int:
-    return ins.offset + size(ins)
-
-
-def next_list(ins: Instruction) -> list[tuple[int, int]]:
+def next_list(ins: Instruction, fallthrough: int, se: int) -> list[tuple[int, int]]:
     if is_raise(ins):
         return []
     if is_for_iter(ins):
-        return [(fallthrough_offset(ins), stack_effect(ins)),
+        return [(fallthrough, se),
                 (ins.argval, -1)]
     res = []
     if not is_sequencer(ins):
-        res.append((fallthrough_offset(ins), stack_effect(ins)))
+        res.append((fallthrough, se))
     if is_jump_source(ins):
-        res.append((ins.argval, stack_effect(ins)))
+        res.append((ins.argval, se))
     return res
 
 
@@ -77,6 +55,8 @@ def stack_effect(ins: Instruction) -> int:
         return -1
     if ins.opname == 'BREAK_LOOP' and ins.argrepr.startswith('FOR'):
         return -1
+    # if ins.opname == 'PRECALL':
+    #     return ins.argval // 2
     return dis.stack_effect(ins.opcode, ins.arg)
 
 
@@ -86,12 +66,6 @@ def is_for_iter(ins: Instruction) -> bool:
 
 def is_raise(ins: Instruction) -> bool:
     return ins.opname == 'RAISE_VARARGS'
-
-#
-# def __str__(ins: Instruction):
-#     return "BCode(opname='{0.opname}', opcode={0.opcode}, arg={0.arg}, argval={0.argval}, argrepr={1}, " \
-#            "offset={0.offset}, is_jump_target={0.is_jump_target})".format(
-#         self, repr(self.argrepr))
 
 
 def calculate_stack_depth(cfg: Cfg) -> dict[int, int]:
@@ -111,10 +85,16 @@ def calculate_stack_depth(cfg: Cfg) -> dict[int, int]:
 
 
 def make_instruction_block_cfg(instructions: Iterable[Instruction]) -> tuple[dict[int, int], Cfg]:
+    instructions = list(instructions)
+
+    next_instruction = [instructions[i+1].offset for i in range(len(instructions)-1)]
+    next_instruction.append(None)
+
     dbs = {ins.offset: ins for ins in instructions}
-    edges = [(b.offset, dbs[j].offset, {'stack_effect': stack_effect})
-             for b in dbs.values()
-             for (j, stack_effect) in next_list(b) if dbs.get(j) is not None]
+    edges = [(ins.offset, dbs[j].offset, {'stack_effect': se})
+             for i, ins in enumerate(instructions)
+             for (j, se) in next_list(ins, fallthrough=next_instruction[i], se=stack_effect(ins))
+             if dbs.get(j) is not None]
     cfg = gu.Cfg(edges, blocks={k: [v] for k, v in dbs.items()})
     depths = calculate_stack_depth(cfg)
     # each node will hold a block of dictionaries - instruction and stack_depth

@@ -30,9 +30,10 @@ class PointerAnalysis(Analysis[Graph]):
     def name(self) -> str:
         return "Pointer"
 
-    def __init__(self, analysis: VarAnalysis) -> None:
+    def __init__(self, type_analysis: VarAnalysis, liveness_analysis: VarAnalysis) -> None:
         super().__init__()
-        self.analysis = analysis
+        self.type_analysis = type_analysis
+        self.liveness_analysis = liveness_analysis
         self.backward = False
 
     def is_less_than(self, left, right) -> bool:
@@ -43,7 +44,7 @@ class PointerAnalysis(Analysis[Graph]):
 
     def copy(self, values) -> Graph:
         return {obj: {field: targets.copy() for field, targets in fields.items() if targets}
-                      for obj, fields in values.items()}
+                for obj, fields in values.items()}
 
     def initial(self, annotations: dict[tac.Var, str]) -> Graph:
         return {LOCALS: {k: frozenset({Object(f'param {k}')}) for k in annotations},
