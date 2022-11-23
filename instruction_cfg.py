@@ -55,8 +55,6 @@ def stack_effect(ins: Instruction) -> int:
         return -1
     if ins.opname == 'BREAK_LOOP' and ins.argrepr.startswith('FOR'):
         return -1
-    # if ins.opname == 'PRECALL':
-    #     return ins.argval // 2
     return dis.stack_effect(ins.opcode, ins.arg)
 
 

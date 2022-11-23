@@ -484,7 +484,7 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             #        call(stackvar(out), stackvar(out), (stackvar(stack_depth),))]
             # IVY-Specific: :(
             return [Assign(stackvar(out), Subscript(stackvar(stack_depth - 1), stackvar(stack_depth)))]
-        case ['BINARY', 'OP']:
+        case ['BINARY' | 'COMPARE', 'OP']:
             lhs = stackvar(out)
             left = stackvar(stack_depth - 1)
             right = stackvar(stack_depth)
@@ -493,7 +493,7 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             lhs = stackvar(out)
             right = stackvar(stack_depth)
             return [InplaceBinary(lhs, argrepr, right)]
-        case ['POP', 'JUMP', 'IF', *v]:
+        case ['POP', 'JUMP', 'FORWARD' | 'BACKWARD', 'IF', *v]:
             op = '_'.join(v)
             # ('FALSE',) | ('TRUE',) | ('NONE',) | ('NOT, 'NONE')
             res: list[Tac] = [Assign(stackvar(stack_depth),
@@ -563,9 +563,9 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
         case ['STORE', 'SUBSCR']:
             return [Assign(Subscript(stackvar(stack_depth - 1), stackvar(stack_depth)), stackvar(stack_depth - 2))]
         case ['POP', 'BLOCK']:
-            return [NOP]
+            return []
         case ['SETUP', 'LOOP']:
-            return [NOP]
+            return []
         case ['RAISE', 'VARARGS']:
             return [Raise(stackvar(stack_depth))]
         case ['UNPACK', 'SEQUENCE']:
@@ -585,7 +585,7 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             return [Assign(stackvar(out),
                            Call(Predefined.lookup(op), tuple(stackvar(i + 1) for i in range(stack_depth - val, stack_depth))))]
         case ['PRECALL']:
-            return [NOP]
+            return []
         case ['CALL']:
             nargs = val & 0xFF
             mid = [stackvar(i + 1) for i in range(stack_depth, stack_depth + nargs)]
@@ -627,10 +627,6 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             return [Assign(stackvar(out), function)]
     return [Unsupported(opname)]
 
-# TODO. == to __eq__, etc.
-CMPOP_TO_OP = {
-
-}
 
 UN_TO_OP = {
     # __abs__ ?
@@ -643,4 +639,9 @@ UN_TO_OP = {
 }
 
 if __name__ == '__main__':
-    test()
+    env, imports = disassemble.read_function('examples/toy.py')
+
+    for k, func in env.items():
+        cfg = make_tacblock_cfg(func)
+        cfg = gu.simplify_cfg(cfg)
+        gu.pretty_print_cfg(cfg)
