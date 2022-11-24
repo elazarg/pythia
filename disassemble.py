@@ -5,6 +5,7 @@ import inspect
 import marshal
 import struct
 import ast
+from typing import Optional, Any
 
 
 # Based on https://stackoverflow.com/a/67428655/2289509
@@ -37,7 +38,7 @@ def read_function_using_compile(file_path, function_name):
     raise ValueError(f'Could not find function {function_name} in {file_path}')
 
 
-def read_function(file_path, funcname=None):
+def read_function(file_path: str, funcname: Optional[str] = None) -> tuple[dict, Any]:
     module = ast.parse("from __future__ import annotations\n", filename=file_path)
 
     with open(file_path, 'r', encoding='utf-8') as file:

@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Iterable, Optional
 
 import dis
 from dis import Instruction
@@ -27,7 +27,7 @@ def is_jump(ins: Instruction):
     return ins.opcode in dis.hasjrel or ins.opcode in dis.hasjabs
 
 
-def next_list(ins: Instruction, fallthrough: int, se: int) -> list[tuple[int, int]]:
+def next_list(ins: Instruction, fallthrough: Optional[int], se: int) -> list[tuple[int, int]]:
     if is_raise(ins):
         return []
     if is_for_iter(ins):
@@ -48,7 +48,7 @@ def is_block_boundary(ins: Instruction) -> bool:
 def stack_effect(ins: Instruction) -> int:
     """not exact.
     see https://github.com/python/cpython/blob/master/Python/compile.c#L860"""
-    if ins.opname in ('SETUP_EXCEPT', 'SETUP_FINALLY', 'POP_EXCEPT', 'END_FINALLY'):
+    if ins.opname in ['SETUP_EXCEPT', 'SETUP_FINALLY', 'POP_EXCEPT', 'END_FINALLY']:
         assert False, 'for all we know. we assume no exceptions'
     if is_raise(ins):
         # if we wish to analyze exception path, we should break to except: and push 3, or something.
@@ -85,7 +85,7 @@ def calculate_stack_depth(cfg: Cfg) -> dict[int, int]:
 def make_instruction_block_cfg(instructions: Iterable[Instruction]) -> tuple[dict[int, int], Cfg]:
     instructions = list(instructions)
 
-    next_instruction = [instructions[i+1].offset for i in range(len(instructions)-1)]
+    next_instruction: list[Optional[int]] = [instructions[i+1].offset for i in range(len(instructions)-1)]
     next_instruction.append(None)
 
     dbs = {ins.offset: ins for ins in instructions}

@@ -13,7 +13,7 @@ def main():
         res = res + temp
         persist.mark('$1')
 
-        persist.commit()
         del temp
+        persist.commit()
 
     return res

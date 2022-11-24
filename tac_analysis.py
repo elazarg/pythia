@@ -1,6 +1,6 @@
 # Data flow analysis and stuff.
 
-from __future__ import annotations
+from __future__ import annotations as _
 
 import math
 from typing import TypeVar
@@ -14,15 +14,15 @@ from tac_analysis_constant import ConstLattice, Constant
 from tac_analysis_domain import IterationStrategy, VarAnalysis, BackwardIterationStrategy, ForwardIterationStrategy, \
     Analysis
 from tac_analysis_liveness import LivenessLattice, Liveness
-from tac_analysis_pointer import PointerAnalysis, pretty_print_pointers
+from tac_analysis_pointer import PointerAnalysis, pretty_print_pointers, find_reachable
 from tac_analysis_types import TypeLattice, TypeElement
 
 
 T = TypeVar('T')
 
 
-def make_tacblock_cfg(f, simplify=True):
-    cfg = tac.make_tacblock_cfg(f)
+def make_tac_cfg(f, simplify=True):
+    cfg = tac.make_tac_cfg(f)
     if simplify:
         cfg = gu.simplify_cfg(cfg)
     return cfg
@@ -43,8 +43,8 @@ def analyze(_cfg: gu.Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]
         block = cfg[label]
 
         invariant = block.pre[name].copy()
-        for index, tac in enumerate(cfg[label]):
-            invariant = analysis.transfer(invariant, tac, f'{label}.{index}')
+        for index, ins in enumerate(cfg[label]):
+            invariant = analysis.transfer(invariant, ins, f'{label}.{index}')
 
         # if analysis.name() is not "Alive":
         #     liveness = typing.cast(typing.Optional[LivenessDomain], block.post.get(LivenessDomain.name()))
@@ -63,7 +63,7 @@ def analyze(_cfg: gu.Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]
 
 
 def run(f, simplify=True, module=False):
-    cfg = make_tacblock_cfg(f, simplify=simplify)
+    cfg = make_tac_cfg(f, simplify=simplify)
 
     gu.pretty_print_cfg(cfg)
 
@@ -77,11 +77,26 @@ def run(f, simplify=True, module=False):
     var_analysis = VarAnalysis[tac.Var, TypeElement](TypeLattice())
     liveness_analysis = VarAnalysis[tac.Var, Liveness](LivenessLattice(), backward=True)
     constant_analysis = VarAnalysis[tac.Var, Constant](ConstLattice())
+    pointer_analysis = PointerAnalysis(var_analysis, liveness_analysis)
 
     analyze(cfg, liveness_analysis, annotations)
     analyze(cfg, constant_analysis, annotations)
     analyze(cfg, var_analysis, annotations)
-    analyze(cfg, PointerAnalysis(var_analysis, liveness_analysis), annotations)
+    analyze(cfg, pointer_analysis, annotations)
+
+    for i, block in cfg.items():
+        if not block:
+            continue
+        if isinstance(block[0], tac.For):
+            assert len(block) == 1
+            ptr = block.post[pointer_analysis.name()]
+            alive = block.post[liveness_analysis.name()]
+            for var in alive.keys():
+                for loc in find_reachable(ptr, var):
+                    label, index = [int(x) for x in str(loc)[1:].split('.')]
+                    ins = cfg[label][index]
+                    ins.expr.allocation = tac.AllocationType.SHELF
+
     return cfg
 
 
@@ -111,16 +126,18 @@ def print_analysis(cfg):
         for k, v in tac_analysis_types.unseen.items():
             print(k, v)
 
-    # cfg.draw()
 
-
-if __name__ == '__main__':
+def main():
     # env, imports = disassemble.read_function('examples/feature_selection.py', 'do_work')
     env, imports = disassemble.read_function('examples/toy.py', 'main')
 
     # cfg = run(imports, simplify=True, module=True)
     # print_analysis(cfg)
 
-    for k, func in env.items():
+    for _, func in env.items():
         cfg = run(func, simplify=True)
         print_analysis(cfg)
+
+
+if __name__ == '__main__':
+    main()

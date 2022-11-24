@@ -6,12 +6,12 @@ from itertools import chain
 from typing import TypeAlias, Callable
 
 import tac
-from tac_analysis_domain import Object, LOCALS, Map, Analysis, GLOBALS, VarAnalysis
+from tac_analysis_domain import Object, LOCALS, Analysis, GLOBALS, VarAnalysis
 
 Graph: TypeAlias = dict[Object, dict[tac.Var, frozenset[Object]]]
 
 
-def pretty_print_pointers(pointers) -> str:
+def pretty_print_pointers(pointers: Graph) -> str:
     return ', '.join(f'{field}->{target_obj}'
                      for source_obj in pointers
                      for field, target_obj in pointers[source_obj].items()
@@ -89,12 +89,7 @@ class PointerAnalysis(Analysis[Graph]):
                 activation[tac.Var('return')] = val
         return values
 
-    def to_string(self, pointers) -> str:
-        return 'Pointers(' + ', '.join(f'{source_obj.pretty(field)}->{target_obj}'
-                                       for source_obj in pointers
-                                       for field, target_obj in pointers[source_obj].items()) + ")"
-
-    def keep_only_live_vars(self, pointers, alive_vars: set[tac.Var]) -> None:
+    def keep_only_live_vars(self, pointers: Graph, alive_vars: set[tac.Var]) -> None:
         for var in pointers[LOCALS].keys() - alive_vars:
             del pointers[LOCALS][var]
 
@@ -108,24 +103,28 @@ class PointerAnalysis(Analysis[Graph]):
                 case tac.Predefined(): return frozenset()
                 case tac.Var(): return locals_state.get(expr, frozenset()).copy()
                 case tac.Attribute():
-                    if expr.is_allocation:
+                    if expr.allocation is not tac.AllocationType.NONE:
                         return frozenset({location_object})
                     if expr.var.name == 'GLOBALS':
                         return state[GLOBALS].get(expr.field, frozenset()).copy()
                     else:
                         return frozenset(chain.from_iterable(state.get(obj, {}).get(expr.field, frozenset()).copy()
-                                                       for obj in inner(expr.var)))
+                                                             for obj in inner(expr.var)))
                 case tac.Call():
-                    if not expr.is_allocation:
+                    if expr.allocation is tac.AllocationType.NONE:
                         return frozenset()
                     return frozenset({location_object})
                 case tac.Subscript(): return frozenset()
                 case tac.Yield(): return frozenset()
                 case tac.Import(): return frozenset()
                 case tac.Binary():
-                    if not expr.is_allocation:  # self.analysis.is_allocation_binary(expr.function):
+                    if expr.allocation is tac.AllocationType.NONE:  # self.analysis.is_allocation_binary(expr.function):
                         return frozenset()
                     return frozenset({location_object})
                 case tac.MakeFunction(): return frozenset()
                 case _: raise Exception(f"Unsupported expression {expr}")
         return inner
+
+
+def find_reachable(pointers: Graph, root: tac.Var) -> frozenset[Object]:
+    return pointers[LOCALS][root]

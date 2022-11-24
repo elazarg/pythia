@@ -32,7 +32,8 @@ import typing
 import graph_utils
 import tac
 from tac import Tac, Var
-from tac_analysis_domain import IterationStrategy, BackwardIterationStrategy, Top, Bottom, Lattice, TOP, BOTTOM
+from tac_analysis_domain import IterationStrategy, BackwardIterationStrategy, Top, Bottom, Lattice, TOP, BOTTOM, \
+    VarAnalysis
 import graph_utils as gu
 
 T = TypeVar('T')
@@ -130,7 +131,8 @@ class LivenessLattice(Lattice[Liveness]):
     def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy:
         return BackwardIterationStrategy(cfg)
 
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         return "Liveness"
 
 
@@ -176,7 +178,7 @@ def is_extended_identifier(name):
 
 
 def rewrite_remove_useless_movs(block: graph_utils.Block, label: int) -> None:
-    alive: LivenessDomain = typing.cast(LivenessDomain, block.post[LivenessDomain.name()])
+    alive: VarAnalysis[Liveness] = block.post[LivenessLattice.name()]
     if alive.is_bottom:
         return
     if len(block) <= 1:
@@ -191,7 +193,7 @@ def rewrite_remove_useless_movs(block: graph_utils.Block, label: int) -> None:
 
 # poor man's use-def
 def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> None:
-    alive: LivenessDomain = typing.cast(LivenessDomain, block.post[LivenessDomain.name()])
+    alive: VarAnalysis[Liveness] = block.post[LivenessLattice.name()]
     if alive.is_bottom:
         return
     for i in reversed(range(1, len(block))):

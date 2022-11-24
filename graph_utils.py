@@ -31,6 +31,9 @@ class ForwardBlock(Generic[T]):
     def __len__(self) -> int:
         return len(self._instructions)
 
+    def __bool__(self):
+        return bool(self._instructions)
+
     def __getitem__(self, index: int) -> T:
         return self._instructions[index]
 
@@ -53,6 +56,9 @@ class BackwardBlock(Generic[T]):
 
     def __len__(self) -> int:
         return len(self.block)
+
+    def __bool__(self):
+        return bool(self.block)
 
     def __getitem__(self, index: int) -> T:
         return self.block[index]
@@ -130,7 +136,6 @@ class Cfg(Generic[T]):
     def print_graph(self) -> None:
         for label in sorted(self.graph.nodes()):
             print(label, ':', self[label])
-
 
     def predecessors(self, label) -> Iterator[int]:
         return self.graph.predecessors(label)
@@ -224,8 +229,8 @@ def node_data_map(cfg: Cfg[T], f: Callable[[int, Block[T]], Block[Q]]) -> Cfg[Q]
 def test_refine_to_chain():
     import code_examples
     tac_name = 'tac_block'
-    from tac_analysis import make_tacblock_cfg
-    cfg = make_tacblock_cfg(code_examples.CreateSphere)
+    from tac_analysis import make_tac_cfg
+    cfg = make_tac_cfg(code_examples.CreateSphere)
     refined = refine_to_chain(cfg, tac_name, 'tac')
     for x in sorted(refined.nodes_iter()):
         print(x, refined.nodes[x]['tac'].format())

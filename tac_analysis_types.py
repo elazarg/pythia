@@ -491,22 +491,26 @@ class TypeLattice(Lattice[TypeElement]):
     def is_supertype(self, left: TypeElement, right: TypeElement) -> bool:
         return self.join(left, right) == left
 
-    def is_allocation_function(self, overloaded_function: TypeElement) -> Optional[bool]:
+    def is_allocation_function(self, overloaded_function: TypeElement) -> tac.AllocationType:
         if isinstance(overloaded_function, OverloadedFunctionType):
             if all(function.new for function in overloaded_function.types):
-                return True
+                return tac.AllocationType.STACK
             if not any(function.new for function in overloaded_function.types):
-                return False
-        return None
+                return tac.AllocationType.NONE
+        return tac.AllocationType.UNKNOWN
 
-    def is_allocation_binary(self, left: TypeElement, right: TypeElement, op: str) -> bool:
+    def is_allocation_binary(self, left: TypeElement, right: TypeElement, op: str) -> tac.AllocationType:
         overloaded_function = self._get_binary_op(op)
         narrowed = self.narrow_overload(overloaded_function, [left, right])
-        return self.is_allocation_function(narrowed)
+        if self.is_allocation_function(narrowed):
+            return tac.AllocationType.STACK
+        return tac.AllocationType.NONE
 
-    def is_allocation_attribute(self, var: TypeElement, attr: str) -> bool:
+    def is_allocation_attribute(self, var: TypeElement, attr: str) -> tac.AllocationType:
         p = self._attribute(var, attr)
-        return isinstance(p, Property) and p.new
+        if isinstance(p, Property) and p.new:
+            return tac.AllocationType.STACK
+        return tac.AllocationType.NONE
 
 
 unseen = defaultdict(set)

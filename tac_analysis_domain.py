@@ -389,11 +389,11 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
                 return self.lattice.var(values[expr])
             case tac.Attribute():
                 val = eval(expr.var)
-                expr.is_allocation = self.lattice.is_allocation_attribute(val, expr.field.name)
+                expr.allocation = self.lattice.is_allocation_attribute(val, expr.field.name)
                 return self.lattice.attribute(val, expr.field.name)
             case tac.Call():
                 func = eval(expr.function)
-                expr.is_allocation = self.lattice.is_allocation_function(func)
+                expr.allocation = self.lattice.is_allocation_function(func)
                 return self.lattice.call(
                     function=func,
                     args=[eval(arg) for arg in expr.args]
@@ -401,7 +401,7 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
             case tac.Binary():
                 left = eval(expr.left)
                 right = eval(expr.right)
-                expr.is_allocation = self.lattice.is_allocation_binary(left, right, tac.Var(expr.op))
+                expr.allocation = self.lattice.is_allocation_binary(left, right, tac.Var(expr.op))
                 return self.lattice.binary(left=left, right=right, op=expr.op)
             case tac.Predefined():
                 expr: tac.Predefined = expr

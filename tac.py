@@ -12,13 +12,6 @@ import disassemble
 import graph_utils as gu
 
 
-def test() -> None:
-    code = disassemble.read_function('__pycache__/code_examples.cpython-310.pyc', 'simple')
-    cfg = gu.simplify_cfg(make_tacblock_cfg(code))
-    print_3addr(cfg)
-    cfg.draw()
-
-
 def linearize_cfg(cfg, no_dels=False) -> Iterable[str]:
     for label in sorted(cfg.nodes):
         # The call for sorted() gives us for free the ordering of blocks by "fallthrough"
@@ -30,21 +23,24 @@ def linearize_cfg(cfg, no_dels=False) -> Iterable[str]:
             yield f'{label}:\t{ins}'
 
 
-def print_3addr(cfg, no_dels=True) -> None:
-    print('\n'.join(linearize_cfg(cfg, no_dels)))
-
-
-def make_tacblock_cfg(f) -> gu.Cfg[Tac]:
+def make_tac_cfg(f) -> gu.Cfg[Tac]:
     depths, cfg = instruction_cfg.make_instruction_block_cfg_from_function(f)
 
     gu.pretty_print_cfg(cfg)
 
     def instruction_block_to_tac_block(n, block: gu.Block[instruction_cfg.Instruction]) -> gu.Block[Tac]:
         return gu.ForwardBlock(list(it.chain.from_iterable(
-            make_TAC(bc.opname, bc.argval, instruction_cfg.stack_effect(bc), depths[bc.offset], bc.argrepr, bc.starts_line)
+            make_tac(bc.opname, bc.argval, instruction_cfg.stack_effect(bc), depths[bc.offset], bc.argrepr, bc.starts_line)
             for bc in block)))
 
     return gu.node_data_map(cfg, instruction_block_to_tac_block)
+
+
+class AllocationType(enum.Enum):
+    NONE = ''
+    STACK = 'STACK'
+    SHELF = 'SHELF'
+    UNKNOWN = 'UNKNOWN'
 
 
 @dataclass(frozen=True)
@@ -105,12 +101,12 @@ Name: TypeAlias = Var | Predefined
 class Attribute:
     var: Name
     field: Var
-    is_allocation: bool = False
+    allocation: AllocationType = AllocationType.NONE
 
     def __str__(self):
         res = f'{self.var}.{self.field}'
-        if self.is_allocation:
-            res += f' #  new'
+        if self.allocation is not AllocationType.NONE:
+            res += f' #  ' + str(self.allocation)
         return res
 
 
@@ -127,17 +123,17 @@ class Subscript:
 Signature: TypeAlias = Var | tuple[Var] | Subscript | Attribute | None
 
 
-@dataclass
+@dataclass(frozen=False)
 class Binary:
     left: Value
     op: str
     right: Value
-    is_allocation = None
+    allocation: AllocationType = AllocationType.NONE
 
     def __str__(self):
         res = f'{self.left} {self.op} {self.right}'
-        if self.is_allocation:
-            res += f' #  new'
+        if self.allocation is not AllocationType.NONE:
+            res += f' #  ' + self.allocation.name
         return res
 
 
@@ -146,7 +142,7 @@ class Call:
     function: Var | Attribute | Predefined
     args: tuple[Value, ...]
     kwargs: Var = None
-    is_allocation = None
+    allocation: AllocationType = AllocationType.NONE
 
     def location(self) -> int:
         return id(self)
@@ -158,8 +154,8 @@ class Call:
         res += f'({", ".join(str(x) for x in self.args)})'
         if self.kwargs:
             res += f', kwargs={self.kwargs}'
-        if self.is_allocation:
-            res += f' #  new'
+        if self.allocation is not AllocationType.NONE:
+            res += f' #  ' + self.allocation.name
         return res
 
 
@@ -178,6 +174,7 @@ class Import:
         if self.feature is not None:
             res += f'.{self.feature}'
         return res
+
 
 @dataclass
 class MakeFunction:
@@ -287,7 +284,7 @@ class Del:
     variables: tuple[Var]
 
     def __str__(self):
-        return f'DEL {self.variables}'
+        return f'DEL {", ".join(str(x) for x in self.variables)}'
 
 
 @dataclass
@@ -308,7 +305,8 @@ def free_vars_expr(expr: Expr) -> set[Var]:
         case Subscript(): return free_vars_expr(expr.var) | free_vars_expr(expr.index)
         case Binary(): return free_vars_expr(expr.left) | free_vars_expr(expr.right)
         case Call():
-            return free_vars_expr(expr.function) | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args)) \
+            return free_vars_expr(expr.function) \
+                   | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args)) \
                    | ({expr.kwargs} if expr.kwargs else set())
         case Yield(): return free_vars_expr(expr.value)
         case Import(): return set()
@@ -408,7 +406,8 @@ def subst_var_in_signature(signature: Signature, target: Var, new_var: Var) -> S
         case Var():
             return signature
         case tuple():
-            return tuple(subst_var_in_signature(arg, target, new_var) for arg in signature)
+            return tuple(subst_var_in_signature(arg, target, new_var)
+                         for arg in signature)
         case Attribute():
             if signature.var == target:
                 return dataclasses.replace(signature, var=new_var)
@@ -432,28 +431,30 @@ def subst_var_in_ins(ins: Tac, target: Var, new_var: Var) -> Tac:
             return dataclasses.replace(ins,
                                        lhs=subst_var_in_signature(ins.lhs, target, new_var),
                                        right=subst_var_in_expr(ins.right, target, new_var))
-        case Return():
-            return dataclasses.replace(ins, value=subst_var_in_expr(ins.value, target, new_var))
-        case Yield():
-            return dataclasses.replace(ins, value=subst_var_in_expr(ins.value, target, new_var))
         case For():
             return dataclasses.replace(ins,
                                        lhs=subst_var_in_signature(ins.lhs, target, new_var),
                                        iterator=subst_var_in_expr(ins.iterator, target, new_var))
+        case Return():
+            return dataclasses.replace(ins,
+                                       value=subst_var_in_expr(ins.value, target, new_var))
+        case Yield():
+            return dataclasses.replace(ins,
+                                       value=subst_var_in_expr(ins.value, target, new_var))
         case Raise():
             return dataclasses.replace(ins,
                                        value=subst_var_in_expr(ins.value, target, new_var))
     return ins
 
 
-def make_TAC(opname, val, stack_effect, stack_depth, argrepr, starts_line=None) -> list[Tac]:
+def make_tac(opname, val, stack_effect, stack_depth, argrepr, starts_line=None) -> list[Tac]:
     if opname == 'LOAD_CONST' and isinstance(val, tuple):
         lst = []
         for v in val:
-            lst += make_TAC('LOAD_CONST', v, 1, stack_depth, argrepr, starts_line)
+            lst += make_tac('LOAD_CONST', v, 1, stack_depth, argrepr, starts_line)
             stack_depth += 1
-        return lst + make_TAC('BUILD_TUPLE', len(val), -len(val) + 1, stack_depth, argrepr, starts_line)
-    tac = make_TAC_no_dels(opname, val, stack_effect, stack_depth, argrepr)
+        return lst + make_tac('BUILD_TUPLE', len(val), -len(val) + 1, stack_depth, argrepr, starts_line)
+    tac = make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr)
     return tac  # [t._replace(starts_line=starts_line) for t in tac]
 
 
@@ -469,7 +470,7 @@ def make_class(name: str) -> Attribute:
     return Attribute(Predefined.NONLOCALS, Var(name))
 
 
-def make_TAC_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Tac]:
+def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Tac]:
     """Translate a bytecode operation into a list of TAC instructions.
     """
     out = stack_depth + stack_effect if stack_depth is not None else None
@@ -495,9 +496,12 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             return [InplaceBinary(lhs, argrepr, right)]
         case ['POP', 'JUMP', 'FORWARD' | 'BACKWARD', 'IF', *v]:
             op = '_'.join(v)
-            # ('FALSE',) | ('TRUE',) | ('NONE',) | ('NOT, 'NONE')
-            res: list[Tac] = [Assign(stackvar(stack_depth),
-                                     Call(Var('not'), (stackvar(stack_depth),)))] if op == 'FALSE' else []
+            # 'FALSE' | 'TRUE' | 'NONE' | 'NOT_NONE'
+            res: list[Tac]
+            if op == 'FALSE':
+                res = [Assign(stackvar(stack_depth), Call(Var('not'), (stackvar(stack_depth),)))]
+            else:
+                res = []
             return res + [Jump(val, stackvar(stack_depth))]
         case ['JUMP', 'ABSOLUTE' | 'FORWARD' | 'BACKWARD'] | ['BREAK', 'LOOP'] | ['CONTINUE', 'LOOP']:
             return [Jump(val)]
@@ -546,7 +550,7 @@ def make_TAC_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
                 case ['GLOBAL']:
                     return [Assign(lhs, make_global(val))]
                 case ['CLOSURE']:
-                    print("Uknown: LOAD CLOSURE")
+                    print("Unknown: LOAD CLOSURE")
                     return [Assign(lhs, Const(None))]
                 case ['BUILD', 'CLASS']:
                     return [Assign(lhs, make_class(val))]
@@ -638,10 +642,15 @@ UN_TO_OP = {
     'GET_YIELD_FROM_ITER': 'YIELD_FROM_ITER '
 }
 
-if __name__ == '__main__':
+
+def main():
     env, imports = disassemble.read_function('examples/toy.py')
 
     for k, func in env.items():
-        cfg = make_tacblock_cfg(func)
+        cfg = make_tac_cfg(func)
         cfg = gu.simplify_cfg(cfg)
         gu.pretty_print_cfg(cfg)
+
+
+if __name__ == '__main__':
+    main()
