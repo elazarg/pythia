@@ -588,8 +588,6 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
                 return [Assign(stackvar(out), Call(Predefined.SLICE, args))]
             return [Assign(stackvar(out),
                            Call(Predefined.lookup(op), tuple(stackvar(i + 1) for i in range(stack_depth - val, stack_depth))))]
-        case ['PRECALL']:
-            return []
         case ['CALL']:
             nargs = val & 0xFF
             mid = [stackvar(i + 1) for i in range(stack_depth, stack_depth + nargs)]
@@ -599,7 +597,7 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             mid = [stackvar(i + 1) for i in range(stack_depth - nargs - 1, stack_depth - 1)]
             res = [Assign(stackvar(out), Call(stackvar(stack_depth - nargs - 1), tuple(mid), stackvar(stack_depth)))]
             return res
-        case ["NOP" | 'RESUME']:
+        case ["NOP" | 'RESUME' | 'PRECALL']:
             return []
         case ["MAKE", "FUNCTION"]:
             """
