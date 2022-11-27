@@ -86,7 +86,7 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
         points = points.astype('int')
         # break if points are no longer feasible
         if len(points) == 0:
-            pass
+            break
 
         # otherwise add maximum point to current solution
         a = points[0]
@@ -97,15 +97,7 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
         if grad[a] >= 0:
             S = np.unique(np.append(S, a))
         else:
-            pass
-
-        del grad
-        del A
-        del out
-        del rounds_ind
-        del points
-        del a
-        del i
+            break
 
     return S
 
