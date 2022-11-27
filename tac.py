@@ -46,6 +46,22 @@ class Predefined(enum.Enum):
         return cls.__members__[op]
 
 
+class UnOp(enum.Enum):
+    NOT = 0
+    POS = 1
+    INVERT = 2
+    NEG = 3
+    ITER = 4
+    YIELD_ITER = 5
+
+    def __str__(self):
+        return self.name
+
+    @classmethod
+    def lookup(cls, op):
+        return cls.__members__[op]
+
+
 @dataclass(frozen=True)
 class Const:
     value: object
@@ -75,16 +91,21 @@ Value: TypeAlias = Var | Const
 Name: TypeAlias = Var | Predefined
 
 
+def allocation_to_str(t: AllocationType) -> str:
+    if t is not AllocationType.NONE:
+        return f' #  ' + t.name
+    return ''
+
+
 @dataclass(frozen=False)
 class Attribute:
     var: Name
     field: Var
-    allocation: AllocationType = AllocationType.NONE
+    allocation: AllocationType = AllocationType.UNKNOWN
 
     def __str__(self):
         res = f'{self.var}.{self.field}'
-        if self.allocation is not AllocationType.NONE:
-            res += f' #  ' + self.allocation.name
+        res += allocation_to_str(self.allocation)
         return res
 
 
@@ -107,21 +128,32 @@ class Binary:
     op: str
     right: Value
     inplace: bool
-    allocation: AllocationType = AllocationType.NONE
+    allocation: AllocationType = AllocationType.UNKNOWN
 
     def __str__(self):
         res = f'{self.left} {self.op} {self.right}'
-        if self.allocation is not AllocationType.NONE:
-            res += f' #  ' + self.allocation.name
+        res += allocation_to_str(self.allocation)
+        return res
+
+
+@dataclass(frozen=False)
+class Unary:
+    op: UnOp
+    var: Value
+    allocation: AllocationType = AllocationType.UNKNOWN
+
+    def __str__(self):
+        res = f'{self.op} {self.var}'
+        res += allocation_to_str(self.allocation)
         return res
 
 
 @dataclass(frozen=False)
 class Call:
-    function: Var | Attribute | Predefined
+    function: Var | Attribute | Predefined | UnOp
     args: tuple[Value, ...]
     kwargs: Var = None
-    allocation: AllocationType = AllocationType.NONE
+    allocation: AllocationType = AllocationType.UNKNOWN
 
     def location(self) -> int:
         return id(self)
@@ -133,8 +165,7 @@ class Call:
         res += f'({", ".join(str(x) for x in self.args)})'
         if self.kwargs:
             res += f', kwargs={self.kwargs}'
-        if self.allocation is not AllocationType.NONE:
-            res += f' #  ' + self.allocation.name
+        res += allocation_to_str(self.allocation)
         return res
 
 
@@ -170,7 +201,7 @@ class MakeClass:
     name: str
 
 
-Expr: TypeAlias = Value | Attribute | Subscript | Binary | Call | Yield | Import | MakeFunction | MakeClass
+Expr: TypeAlias = Value | Attribute | Subscript | Binary | Unary | Call | Yield | Import | MakeFunction | MakeClass
 
 
 def stackvar(x) -> Var:
@@ -466,10 +497,16 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
     """
     out = stack_depth + stack_effect if stack_depth is not None else None
     match opname.split('_'):
-        case ['UNARY', 'POSITIVE' | 'NEGATIVE' | 'INVERT']:
-            return [Assign(stackvar(stack_depth), Call(Var(UN_TO_OP[opname]), (stackvar(stack_depth),)))]
-        case ['GET', 'ITER'] | ['UNARY', 'NOT'] | ['GET', 'YIELD', 'FROM', 'ITER']:
-            return [Assign(stackvar(out), Call(Attribute(stackvar(stack_depth), Var(UN_TO_OP[opname])), ()))]
+        case ['UNARY', sop] | ['GET', 'ITER' as sop] | ['GET', 'YIELD' as sop, 'FROM', 'ITER']:
+            match sop:
+                case 'POSITIVE': op = UnOp.POS
+                case 'NEGATIVE': op = UnOp.NEG
+                case 'INVERT': op = UnOp.INVERT
+                case 'NOT': op = UnOp.NOT
+                case 'ITER': op = UnOp.ITER
+                case 'YIELD': op = UnOp.YIELD_ITER
+                case _: raise NotImplementedError(f'UNARY_{sop}')
+            return [Assign(stackvar(stack_depth), Unary(op, stackvar(stack_depth)))]
         case ['BINARY', 'SUBSCR']:
             #
             # return [call(stackvar(out), 'BUILTINS.getattr', (stackvar(stack_depth - 1), "'__getitem__'")),
@@ -640,7 +677,7 @@ UN_TO_OP = {
     'UNARY_NEGATIVE': '__neg__',
     'UNARY_NOT': '__bool__',  # not exactly the same semantics
     'UNARY_INVERT': '__invert__',
-    'GET_ITER': '__iter__',
+    'GET_ITER': 'iter',
     'GET_YIELD_FROM_ITER': 'YIELD_FROM_ITER '
 }
 

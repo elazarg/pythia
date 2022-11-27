@@ -84,6 +84,9 @@ class Lattice(Generic[T]):
     def binary(self, left: T, right: T, op: str) -> T:
         return self.top()
 
+    def unary(self, value: T, op: tac.UnOp) -> T:
+        return tac.AllocationType.NONE
+
     def predefined(self, name: tac.Predefined) -> T:
         return self.top()
 
@@ -107,6 +110,9 @@ class Lattice(Generic[T]):
 
     def back_binary(self, value: T) -> tuple[T, T]:
         return (self.top(), self.top())
+
+    def back_unary(self, value: T) -> T:
+        return self.top()
 
     def back_predefined(self, value: T) -> None:
         return None
@@ -158,7 +164,10 @@ class Lattice(Generic[T]):
     def allocation_type_function(self, function: T) -> tac.AllocationType:
         return tac.AllocationType.NONE
 
-    def allocation_type_binary(self, left: T, right: T, op: tac.Var) -> tac.AllocationType:
+    def allocation_type_binary(self, left: T, right: T, op: str) -> tac.AllocationType:
+        return tac.AllocationType.NONE
+
+    def allocation_type_unary(self, value: T, op: tac.UnOp) -> tac.AllocationType:
         return tac.AllocationType.NONE
 
     def allocation_type_attribute(self, val, name) -> tac.AllocationType:
@@ -401,10 +410,14 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
                     function=func,
                     args=[eval(arg) for arg in expr.args]
                 )
+            case tac.Unary():
+                value = eval(expr.var)
+                expr.allocation = self.lattice.allocation_type_unary(value, expr.op)
+                return self.lattice.unary(value=value, op=expr.op)
             case tac.Binary():
                 left = eval(expr.left)
                 right = eval(expr.right)
-                expr.allocation = self.lattice.allocation_type_binary(left, right, tac.Var(expr.op))
+                expr.allocation = self.lattice.allocation_type_binary(left, right, expr.op)
                 return self.lattice.binary(left=left, right=right, op=expr.op)
             case tac.Predefined():
                 expr: tac.Predefined = expr
@@ -479,6 +492,10 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
                 return self.make_map({
                     expr.left: left,
                     expr.right: right
+                })
+            case tac.Unary():
+                return self.make_map({
+                    expr.var: self.lattice.back_unary(assigned)
                 })
             case tac.Predefined():
                 return self.make_map()

@@ -59,6 +59,14 @@ class ConstLattice(Lattice[Constant]):
             case Predefined.SLICE: return Const(slice(*args))
         return self.top()
 
+    def unary(self, value: Const, op: tac.UnOp) -> Const:
+        match op:
+            case tac.UnOp.NEG: return Const(-value.value)
+            case tac.UnOp.NOT: return Const(not value.value)
+            case tac.UnOp.POS: return Const(+value.value)
+            case tac.UnOp.INVERT: return Const(~value.value)
+        return self.top()
+
     def binary(self, left: Constant, right: Constant, op: str) -> Constant:
         if self.is_bottom(left) or self.is_bottom(right):
             return self.bottom()

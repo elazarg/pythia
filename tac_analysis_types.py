@@ -9,7 +9,7 @@ from typing import TypeVar, TypeAlias, Optional, Iterable
 from frozendict import frozendict
 
 import tac
-from tac import Predefined
+from tac import Predefined, UnOp
 from tac_analysis_domain import Bottom, Lattice, BOTTOM
 
 T = TypeVar('T')
@@ -138,6 +138,9 @@ LIST_CONSTRUCTOR = make_function_type(LIST, new=False)
 SLICE_CONSTRUCTOR = make_function_type(SLICE, new=False)
 DICT_CONSTRUCTOR = make_function_type(DICT, new=True)
 NOT = make_function_type(BOOL, new=False)
+INVERT = make_function_type(INT, new=False)
+NEG = make_function_type(INT, new=False)
+POS = make_function_type(INT, new=False)
 
 
 NDARRAY = ObjectType('ndarray', frozendict({
@@ -417,13 +420,23 @@ class TypeLattice(Lattice[TypeElement]):
                              for func in self.narrow_overload(function, args).types)
 
     def _get_binary_op(self, op: str) -> OverloadedFunctionType:
-        if isinstance(op, tac.Var):
-            op = op.name
         return BINARY.get(op)
 
     def binary(self, left: TypeElement, right: TypeElement, op: str) -> TypeElement:
         overloaded_function = self._get_binary_op(op)
         return self.call(overloaded_function, [left, right])
+
+    def unary(self, value: TypeElement, op: UnOp) -> TypeElement:
+        match op:
+            case UnOp.NOT: overloaded_function = NOT
+            case UnOp.POS: overloaded_function = POS
+            case UnOp.INVERT: overloaded_function = INVERT
+            case UnOp.NEG: overloaded_function = NEG
+            case UnOp.ITER: return self.call(self.resolve(value).fields['__iter__'], [])
+            case UnOp.YIELD_ITER: return BUILTINS_MODULE.fields["iter"]
+            case x:
+                raise NotImplementedError(f'Unary operation {x} not implemented')
+        return self.call(overloaded_function, [value])
 
     def predefined(self, name: Predefined) -> Optional[TypeElement]:
         match name:
@@ -434,7 +447,6 @@ class TypeLattice(Lattice[TypeElement]):
             case Predefined.LOCALS: return LOCALS_OBJECT
             case Predefined.SLICE: return SLICE_CONSTRUCTOR
             case Predefined.CONST_KEY_MAP: return DICT_CONSTRUCTOR
-            case Predefined.NOT: return NOT
         return None
 
     def const(self, value: object) -> TypeElement:
