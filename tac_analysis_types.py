@@ -137,6 +137,7 @@ TUPLE_CONSTRUCTOR = make_function_type(make_tuple(OBJECT), new=False)
 LIST_CONSTRUCTOR = make_function_type(LIST, new=False)
 SLICE_CONSTRUCTOR = make_function_type(SLICE, new=False)
 DICT_CONSTRUCTOR = make_function_type(DICT, new=True)
+NOT = make_function_type(BOOL, new=False)
 
 
 NDARRAY = ObjectType('ndarray', frozendict({
@@ -241,7 +242,6 @@ BUILTINS_MODULE = ObjectType('/builtins', frozendict({
         '__iter__': iter_method(INT),
     }))),
     'len': make_function_type(INT, new=False),
-    'not': make_function_type(BOOL, new=False),
     'print': make_function_type(NONE, new=False),
     'abs': make_function_type(FLOAT, new=False),
     'round': make_function_type(FLOAT, new=False),
@@ -434,6 +434,7 @@ class TypeLattice(Lattice[TypeElement]):
             case Predefined.LOCALS: return LOCALS_OBJECT
             case Predefined.SLICE: return SLICE_CONSTRUCTOR
             case Predefined.CONST_KEY_MAP: return DICT_CONSTRUCTOR
+            case Predefined.NOT: return NOT
         return None
 
     def const(self, value: object) -> TypeElement:
@@ -492,7 +493,7 @@ class TypeLattice(Lattice[TypeElement]):
     def is_supertype(self, left: TypeElement, right: TypeElement) -> bool:
         return self.join(left, right) == left
 
-    def is_allocation_function(self, overloaded_function: TypeElement) -> tac.AllocationType:
+    def allocation_type_function(self, overloaded_function: TypeElement) -> tac.AllocationType:
         if isinstance(overloaded_function, OverloadedFunctionType):
             if all(function.new for function in overloaded_function.types):
                 return tac.AllocationType.STACK
@@ -500,14 +501,14 @@ class TypeLattice(Lattice[TypeElement]):
                 return tac.AllocationType.NONE
         return tac.AllocationType.UNKNOWN
 
-    def is_allocation_binary(self, left: TypeElement, right: TypeElement, op: str) -> tac.AllocationType:
+    def allocation_type_binary(self, left: TypeElement, right: TypeElement, op: str) -> tac.AllocationType:
         overloaded_function = self._get_binary_op(op)
         narrowed = self.narrow_overload(overloaded_function, [left, right])
-        if self.is_allocation_function(narrowed):
+        if self.allocation_type_function(narrowed):
             return tac.AllocationType.STACK
         return tac.AllocationType.NONE
 
-    def is_allocation_attribute(self, var: TypeElement, attr: str) -> tac.AllocationType:
+    def allocation_type_attribute(self, var: TypeElement, attr: str) -> tac.AllocationType:
         p = self._attribute(var, attr)
         if isinstance(p, Property) and p.new:
             return tac.AllocationType.STACK

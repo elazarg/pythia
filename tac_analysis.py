@@ -3,7 +3,7 @@
 from __future__ import annotations as _
 
 import math
-from typing import TypeVar
+from typing import TypeVar, TypeAlias
 
 import disassemble
 import graph_utils as gu
@@ -19,6 +19,7 @@ from tac_analysis_types import TypeLattice, TypeElement
 
 
 T = TypeVar('T')
+Cfg: TypeAlias = gu.Cfg[tac.Tac]
 
 
 def make_tac_cfg(f, simplify=True):
@@ -28,7 +29,7 @@ def make_tac_cfg(f, simplify=True):
     return cfg
 
 
-def analyze(_cfg: gu.Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]) -> None:
+def analyze(_cfg: Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]) -> None:
     name = analysis.name()
     for label in _cfg.labels:
         _cfg[label].pre[name] = analysis.bottom()
@@ -62,7 +63,7 @@ def analyze(_cfg: gu.Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]
                 wl.add(succ)
 
 
-def run(f, simplify=True, module=False):
+def run(f, simplify=True, module=False) -> Cfg:
     cfg = make_tac_cfg(f, simplify=simplify)
 
     gu.pretty_print_cfg(cfg)
@@ -74,16 +75,24 @@ def run(f, simplify=True, module=False):
     #     rewrite_remove_useless_movs_pairs(block, label)
     #     rewrite_aliases(block, label)
     #     rewrite_remove_useless_movs(block, label)
-    var_analysis = VarAnalysis[tac.Var, TypeElement](TypeLattice())
+    type_analysis = VarAnalysis[tac.Var, TypeElement](TypeLattice())
     liveness_analysis = VarAnalysis[tac.Var, Liveness](LivenessLattice(), backward=True)
     constant_analysis = VarAnalysis[tac.Var, Constant](ConstLattice())
-    pointer_analysis = PointerAnalysis(var_analysis, liveness_analysis)
+    pointer_analysis = PointerAnalysis(type_analysis, liveness_analysis)
 
     analyze(cfg, liveness_analysis, annotations)
     analyze(cfg, constant_analysis, annotations)
-    analyze(cfg, var_analysis, annotations)
+    analyze(cfg, type_analysis, annotations)
     analyze(cfg, pointer_analysis, annotations)
 
+    mark_shelf(cfg, liveness_analysis, pointer_analysis)
+
+    return cfg
+
+
+def mark_shelf(cfg: Cfg,
+               liveness_analysis: VarAnalysis[tac.Var, Liveness],
+               pointer_analysis: PointerAnalysis) -> None:
     for i, block in cfg.items():
         if not block:
             continue
@@ -97,10 +106,8 @@ def run(f, simplify=True, module=False):
                     ins = cfg[label][index]
                     ins.expr.allocation = tac.AllocationType.SHELF
 
-    return cfg
 
-
-def print_analysis(cfg):
+def print_analysis(cfg: Cfg) -> None:
     for label, block in sorted(cfg.items()):
         if math.isinf(label):
             continue
@@ -127,16 +134,16 @@ def print_analysis(cfg):
             print(k, v)
 
 
-def analyze_function(filename, function_name):
+def analyze_function(filename: str, function_name: str) -> None:
     env, imports = disassemble.read_function(filename, function_name)
     for _, func in env.items():
-        cfg = run(func, simplify=True)
+        cfg = run(func, simplify=False)
         print_analysis(cfg)
 
 
-def main():
-    # analyze_function('examples/feature_selection.py', 'do_work')
-    analyze_function('examples/toy.py', 'main')
+def main() -> None:
+    analyze_function('examples/feature_selection.py', 'do_work')
+    # analyze_function('examples/toy.py', 'main')
 
 
 if __name__ == '__main__':

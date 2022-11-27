@@ -118,7 +118,7 @@ class PointerAnalysis(Analysis[Graph]):
                 case tac.Yield(): return frozenset()
                 case tac.Import(): return frozenset()
                 case tac.Binary():
-                    if expr.allocation is tac.AllocationType.NONE:  # self.analysis.is_allocation_binary(expr.function):
+                    if expr.allocation is tac.AllocationType.NONE:  # self.analysis.allocation_type_binary(expr.function):
                         return frozenset()
                     return frozenset({location_object})
                 case tac.MakeFunction(): return frozenset()

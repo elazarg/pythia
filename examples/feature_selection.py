@@ -1,4 +1,3 @@
-import persist
 import numpy as np
 
 
@@ -43,7 +42,7 @@ def run(X, y):
     return final_cost, predict(X, theta)
 
 
-def Linear_Regression(features: np.ndarray, target: np.ndarray, dims) -> np.ndarray:
+def linear_regression(features: np.ndarray, target: np.ndarray, dims) -> np.ndarray:
     # preprocess features and target
     target = np.array(target).reshape(target.shape[0], -1)
     if features[:, dims].size > 0:
@@ -51,10 +50,10 @@ def Linear_Regression(features: np.ndarray, target: np.ndarray, dims) -> np.ndar
         sparse_features = features[:, dims]
         if sparse_features.ndim == 1:
             sparse_features = sparse_features.reshape(sparse_features.shape[0], 1)
-        predict = run(sparse_features, target)
+        prediction = run(sparse_features, target)
     else:
-        predict = np.zeros(features.shape[0]).reshape(features.shape[0], -1)
-    grad = np.dot(features.T, target - predict)
+        prediction = np.zeros(features.shape[0]).reshape(features.shape[0], -1)
+    grad = np.dot(features.T, target - prediction)
     return grad
 
 
@@ -67,11 +66,9 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     S = np.array([], int)
 
     for idx in range(k):
-        persist.start(idx)
-
         # define and train model
         # preprocess current solution
-        grad = Linear_Regression(features, target, np.unique(S[S >= 0]))
+        grad = linear_regression(features, target, np.unique(S[S >= 0]))
         rounds += 1
 
         # define vals
@@ -101,8 +98,6 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
             S = np.unique(np.append(S, a))
         else:
             break
-
-        persist.commit()
     return S
 
 

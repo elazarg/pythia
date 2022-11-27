@@ -152,14 +152,16 @@ class Lattice(Generic[T]):
     def back_inplace_binary(self, lhs: T, rhs: T, op: str) -> tuple[T, T]:
         raise NotImplementedError
 
-    def is_allocation_function(self, function: T):
-        pass
+    # TODO: Fix defaults, make it a proper lattice
 
-    def is_allocation_binary(self, left: T, right: T, op: tac.Var):
-        pass
+    def allocation_type_function(self, function: T) -> tac.AllocationType:
+        return tac.AllocationType.NONE
 
-    def is_allocation_attribute(self, val, name):
-        pass
+    def allocation_type_binary(self, left: T, right: T, op: tac.Var) -> tac.AllocationType:
+        return tac.AllocationType.NONE
+
+    def allocation_type_attribute(self, val, name) -> tac.AllocationType:
+        return tac.AllocationType.NONE
 
 
 @dataclass(frozen=True)
@@ -389,11 +391,11 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
                 return self.lattice.var(values[expr])
             case tac.Attribute():
                 val = eval(expr.var)
-                expr.allocation = self.lattice.is_allocation_attribute(val, expr.field.name)
+                expr.allocation = self.lattice.allocation_type_attribute(val, expr.field.name)
                 return self.lattice.attribute(val, expr.field.name)
             case tac.Call():
                 func = eval(expr.function)
-                expr.allocation = self.lattice.is_allocation_function(func)
+                expr.allocation = self.lattice.allocation_type_function(func)
                 return self.lattice.call(
                     function=func,
                     args=[eval(arg) for arg in expr.args]
@@ -401,7 +403,7 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
             case tac.Binary():
                 left = eval(expr.left)
                 right = eval(expr.right)
-                expr.allocation = self.lattice.is_allocation_binary(left, right, tac.Var(expr.op))
+                expr.allocation = self.lattice.allocation_type_binary(left, right, tac.Var(expr.op))
                 return self.lattice.binary(left=left, right=right, op=expr.op)
             case tac.Predefined():
                 expr: tac.Predefined = expr

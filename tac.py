@@ -26,7 +26,8 @@ def linearize_cfg(cfg, no_dels=False) -> Iterable[str]:
 def make_tac_cfg(f) -> gu.Cfg[Tac]:
     depths, cfg = instruction_cfg.make_instruction_block_cfg_from_function(f)
 
-    gu.pretty_print_cfg(cfg)
+    simplified_cfg = gu.simplify_cfg(cfg)
+    gu.pretty_print_cfg(simplified_cfg)
 
     def instruction_block_to_tac_block(n, block: gu.Block[instruction_cfg.Instruction]) -> gu.Block[Tac]:
         return gu.ForwardBlock(list(it.chain.from_iterable(
@@ -59,6 +60,7 @@ class Predefined(enum.Enum):
     TUPLE = 4
     SLICE = 5
     CONST_KEY_MAP = 6
+    NOT = 7
 
     def __str__(self):
         return self.name
@@ -106,7 +108,7 @@ class Attribute:
     def __str__(self):
         res = f'{self.var}.{self.field}'
         if self.allocation is not AllocationType.NONE:
-            res += f' #  ' + str(self.allocation)
+            res += f' #  ' + self.allocation.name
         return res
 
 
@@ -238,6 +240,8 @@ class Jump:
     cond: Value = Const(True)
 
     def __str__(self):
+        if self.cond == Const(True):
+            return f'GOTO {self.jump_target}'
         return f'IF {self.cond} GOTO {self.jump_target}'
 
 
@@ -483,7 +487,7 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             # 'FALSE' | 'TRUE' | 'NONE' | 'NOT_NONE'
             res: list[Tac]
             if op == 'FALSE':
-                res = [Assign(stackvar(stack_depth), Call(make_global('not'), (stackvar(stack_depth),)))]
+                res = [Assign(stackvar(stack_depth), Call(Predefined.NOT, (stackvar(stack_depth),)))]
             else:
                 res = []
             return res + [Jump(val, stackvar(stack_depth))]
