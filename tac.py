@@ -4,6 +4,7 @@ from __future__ import annotations
 import enum
 import itertools as it
 import dataclasses
+import sys
 from dataclasses import dataclass
 from typing import Optional, TypeAlias
 
@@ -440,6 +441,7 @@ def make_class(name: str) -> Attribute:
 
 
 def make_tac_cfg(f) -> gu.Cfg[Tac]:
+    assert sys.version_info[:2] == (3, 11), f'Python version is {sys.version_info} but only 3.11 is supported'
     depths, ins_cfg = instruction_cfg.make_instruction_block_cfg_from_function(f)
 
     simplified_cfg = gu.simplify_cfg(ins_cfg)
