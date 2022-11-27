@@ -40,7 +40,7 @@ def make_tac_cfg(f) -> gu.Cfg[Tac]:
 class AllocationType(enum.Enum):
     NONE = ''
     STACK = 'STACK'
-    SHELF = 'SHELF'
+    HEAP = 'HEAP'
     UNKNOWN = 'UNKNOWN'
 
 

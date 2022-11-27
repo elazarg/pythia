@@ -104,7 +104,7 @@ def mark_shelf(cfg: Cfg,
                 for loc in find_reachable(ptr, var):
                     label, index = [int(x) for x in str(loc)[1:].split('.')]
                     ins = cfg[label][index]
-                    ins.expr.allocation = tac.AllocationType.SHELF
+                    ins.expr.allocation = tac.AllocationType.HEAP
 
 
 def print_analysis(cfg: Cfg) -> None:
@@ -137,13 +137,14 @@ def print_analysis(cfg: Cfg) -> None:
 def analyze_function(filename: str, function_name: str) -> None:
     env, imports = disassemble.read_function(filename, function_name)
     for _, func in env.items():
-        cfg = run(func, simplify=False)
+        cfg = run(func, simplify=True)
         print_analysis(cfg)
 
 
 def main() -> None:
-    analyze_function('examples/feature_selection.py', 'do_work')
-    # analyze_function('examples/toy.py', 'main')
+    # analyze_function('examples/feature_selection.py', 'do_work')
+    analyze_function('examples/toy.py', 'main')
+    # analyze_function('examples/toy.py', 'toy3')
 
 
 if __name__ == '__main__':

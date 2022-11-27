@@ -339,7 +339,7 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
         self.backward = backward
 
     def name(self) -> str:
-        return f"VarAnalysis({self.lattice.name()})"
+        return f"{self.lattice.name()}"
 
     def is_less_than(self, left: T, right: T) -> bool:
         return self.join(left, right) == right
