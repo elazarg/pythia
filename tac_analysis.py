@@ -119,7 +119,7 @@ def print_analysis(cfg: Cfg) -> None:
                     print(f'\t{k}:', pretty_print_pointers(block.pre[k]))
                 else:
                     print(f'\t{k}:', block.pre[k])
-        gu.print_block(label, block)
+        gu.print_block(label, block, cfg.annotator)
         if print_analysis:
             print('Post:')
             for k in block.post:
@@ -143,8 +143,8 @@ def analyze_function(filename: str, function_name: str) -> None:
 
 
 def main() -> None:
-    analyze_function('examples/feature_selection.py', 'do_work')
-    # analyze_function('examples/toy.py', 'main')
+    # analyze_function('examples/feature_selection.py', 'do_work')
+    analyze_function('examples/toy.py', 'main')
     # analyze_function('examples/toy.py', 'toy3')
 
 

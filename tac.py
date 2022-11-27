@@ -5,36 +5,11 @@ import enum
 import itertools as it
 import dataclasses
 from dataclasses import dataclass
-from typing import Iterable, Optional, TypeAlias
+from typing import Optional, TypeAlias, Callable
 
 import instruction_cfg
 import disassemble
 import graph_utils as gu
-
-
-def linearize_cfg(cfg, no_dels=False) -> Iterable[str]:
-    for label in sorted(cfg.nodes):
-        # The call for sorted() gives us for free the ordering of blocks by "fallthrough"
-        # It is not guaranteed anywhere, but it makes sense - the order of blocks is the 
-        # order of the lines in the code
-        for ins in cfg[label]:
-            if no_dels and isinstance(ins, Del):
-                continue
-            yield f'{label}:\t{ins}'
-
-
-def make_tac_cfg(f) -> gu.Cfg[Tac]:
-    depths, cfg = instruction_cfg.make_instruction_block_cfg_from_function(f)
-
-    simplified_cfg = gu.simplify_cfg(cfg)
-    gu.pretty_print_cfg(simplified_cfg)
-
-    def instruction_block_to_tac_block(n, block: gu.Block[instruction_cfg.Instruction]) -> gu.Block[Tac]:
-        return gu.ForwardBlock(list(it.chain.from_iterable(
-            make_tac(bc.opname, bc.argval, instruction_cfg.stack_effect(bc), depths[bc.offset], bc.argrepr, bc.starts_line)
-            for bc in block)))
-
-    return gu.node_data_map(cfg, instruction_block_to_tac_block)
 
 
 class AllocationType(enum.Enum):
@@ -205,7 +180,7 @@ def is_stackvar(v: Var | Const) -> bool:
     return isinstance(v, Var) and v.is_stackvar
 
 
-@dataclass
+@dataclass(frozen=True)
 class Nop:
     pass
 
@@ -234,7 +209,7 @@ class Assign:
         return self.lhs is None or isinstance(self.lhs, Var) and is_stackvar(self.lhs)
 
 
-@dataclass
+@dataclass(frozen=True)
 class Jump:
     jump_target: str
     cond: Value = Const(True)
@@ -245,7 +220,7 @@ class Jump:
         return f'IF {self.cond} GOTO {self.jump_target}'
 
 
-@dataclass
+@dataclass(frozen=True)
 class For:
     lhs: Signature
     iterator: Value
@@ -258,7 +233,7 @@ class For:
         return Assign(self.lhs, Call(Attribute(self.iterator, Var('__next__')), ()))
 
 
-@dataclass
+@dataclass(frozen=True)
 class Return:
     value: Value
 
@@ -266,7 +241,7 @@ class Return:
         return f'RETURN {self.value}'
 
 
-@dataclass
+@dataclass(frozen=True)
 class Raise:
     value: Value
 
@@ -274,7 +249,7 @@ class Raise:
         return f'RAISE {self.value}'
 
 
-@dataclass
+@dataclass(frozen=True)
 class Del:
     variables: tuple[Var]
 
@@ -282,7 +257,7 @@ class Del:
         return f'DEL {", ".join(str(x) for x in self.variables)}'
 
 
-@dataclass
+@dataclass(frozen=True)
 class Unsupported:
     name: str
 
@@ -436,15 +411,20 @@ def subst_var_in_ins(ins: Tac, target: Var, new_var: Var) -> Tac:
     return ins
 
 
-def make_tac(opname, val, stack_effect, stack_depth, argrepr, starts_line=None) -> list[Tac]:
-    if opname == 'LOAD_CONST' and isinstance(val, tuple):
+def make_tac(ins: instruction_cfg.Instruction, stack_depth: int,
+             trace_origin: dict[int, instruction_cfg.Instruction]) -> list[Tac]:
+    stack_effect = instruction_cfg.stack_effect(ins)
+    if ins.opname == 'LOAD_CONST' and isinstance(ins.argval, tuple):
         lst = []
-        for v in val:
-            lst += make_tac('LOAD_CONST', v, 1, stack_depth, argrepr, starts_line)
+        for v in ins.argval:
+            lst += make_tac_no_dels('LOAD_CONST', v, 1, stack_depth, ins.argrepr)
             stack_depth += 1
-        return lst + make_tac('BUILD_TUPLE', len(val), -len(val) + 1, stack_depth, argrepr, starts_line)
-    tac = make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr)
-    return tac  # [t._replace(starts_line=starts_line) for t in tac]
+        tac_list = lst + make_tac_no_dels('BUILD_TUPLE', len(ins.argval), -len(ins.argval) + 1, stack_depth, ins.argrepr)
+    else:
+        tac_list = make_tac_no_dels(ins.opname, ins.argval, stack_effect, stack_depth, ins.argrepr)
+    for tac in tac_list:
+        trace_origin[id(tac)] = ins
+    return tac_list  # [t._replace(starts_line=starts_line) for t in tac]
 
 
 def make_global(field: str) -> Attribute:
@@ -457,6 +437,26 @@ def make_nonlocal(field: str) -> Attribute:
 
 def make_class(name: str) -> Attribute:
     return Attribute(Predefined.NONLOCALS, Var(name))
+
+
+def make_tac_cfg(f) -> gu.Cfg[Tac]:
+    depths, ins_cfg = instruction_cfg.make_instruction_block_cfg_from_function(f)
+
+    simplified_cfg = gu.simplify_cfg(ins_cfg)
+    gu.pretty_print_cfg(simplified_cfg)
+
+    trace_origin: dict[int, instruction_cfg.Instruction] = {}
+
+    def instruction_block_to_tac_block(n, block: gu.Block[instruction_cfg.Instruction]) -> gu.Block[Tac]:
+        return gu.ForwardBlock(list(it.chain.from_iterable(make_tac(ins, depths[ins.offset], trace_origin) for ins in block)))
+
+    def annotator(n: Tac) -> str:
+        pos = trace_origin[id(n)].positions
+        return f'{pos.lineno}:{pos.col_offset}'
+
+    tac_cfg = gu.node_data_map(ins_cfg, instruction_block_to_tac_block)
+    tac_cfg.annotator = annotator
+    return tac_cfg
 
 
 def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Tac]:
@@ -644,7 +644,7 @@ UN_TO_OP = {
 
 
 def main():
-    env, imports = disassemble.read_function('examples/toy.py')
+    env, imports = disassemble.read_function('examples/toy.py', 'main')
 
     for k, func in env.items():
         cfg = make_tac_cfg(func)

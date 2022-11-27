@@ -80,6 +80,15 @@ Block: TypeAlias = ForwardBlock | BackwardBlock
 
 class Cfg(Generic[T]):
     graph: nx.DiGraph
+    _annotator: Callable[[T], str] = staticmethod(lambda x: '')
+
+    @property
+    def annotator(self) -> Callable[[T], str]:
+        return self._annotator
+
+    @annotator.setter
+    def annotator(self, annotator: Callable[[T], str]) -> None:
+        self._annotator = staticmethod(annotator)
 
     def __init__(self, graph: nx.DiGraph | dict | list[tuple[int, int, dict]], blocks=None) -> None:
         if isinstance(graph, nx.DiGraph):
@@ -194,6 +203,7 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
             blocks.graph.add_node(label)
         blocks.graph.add_edges_from((label, suc) for suc in g.successors(n))
         blocks[label] = ForwardBlock(instructions)
+    blocks.annotator = cfg.annotator
     return blocks
 
 
@@ -236,18 +246,18 @@ def test_refine_to_chain():
         print(x, refined.nodes[x]['tac'].format())
 
 
-def print_block(n, block):
+def print_block(n: int, block: Block[T], annotator) -> None:
     print(n, ':')
     for i, ins in enumerate(block):
         label = f'{n}.{i}'
-        print(f'\t{label:6}\t', ins)
+        print(f'\t{label:6} {annotator(ins):5}\t', ins)
 
 
 def pretty_print_cfg(cfg: Cfg[T]) -> None:
     for label, block in sorted(cfg.items()):
         if math.isinf(label):
             continue
-        print_block(label, block)
+        print_block(label, block, cfg.annotator)
         print(list(cfg.graph.neighbors(label)))
         print()
 
