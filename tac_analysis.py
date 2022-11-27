@@ -105,6 +105,7 @@ def mark_shelf(cfg: Cfg,
                     label, index = [int(x) for x in str(loc)[1:].split('.')]
                     ins = cfg[label][index]
                     ins.expr.allocation = tac.AllocationType.HEAP
+            break
 
 
 def print_analysis(cfg: Cfg) -> None:
@@ -142,8 +143,8 @@ def analyze_function(filename: str, function_name: str) -> None:
 
 
 def main() -> None:
-    # analyze_function('examples/feature_selection.py', 'do_work')
-    analyze_function('examples/toy.py', 'main')
+    analyze_function('examples/feature_selection.py', 'do_work')
+    # analyze_function('examples/toy.py', 'main')
     # analyze_function('examples/toy.py', 'toy3')
 
 
