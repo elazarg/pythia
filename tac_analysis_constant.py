@@ -75,7 +75,8 @@ class ConstLattice(Lattice[Constant]):
     def const(self, value: object) -> Constant:
         return Const(value)
 
-    def attribute(self, var: Constant, attr: str) -> Constant:
+    def attribute(self, var: Constant, attr: tac.Var) -> Constant:
+        assert isinstance(attr, tac.Var)
         return self.top()
 
     def subscr(self, array: Constant, index: Constant) -> Constant:

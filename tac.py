@@ -5,7 +5,7 @@ import enum
 import itertools as it
 import dataclasses
 from dataclasses import dataclass
-from typing import Optional, TypeAlias, Callable
+from typing import Optional, TypeAlias
 
 import instruction_cfg
 import disassemble

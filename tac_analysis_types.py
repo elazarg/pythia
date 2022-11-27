@@ -442,23 +442,25 @@ class TypeLattice(Lattice[TypeElement]):
             return NONE
         return self.annotation(type(value).__name__)
 
-    def _attribute(self, var: TypeElement, attr: str) -> TypeElement:
+    def _attribute(self, var: TypeElement, attr: tac.Var) -> TypeElement:
         if self.is_top(var):
             return self.top()
         if self.is_bottom(var):
             return self.bottom()
         match var:
             case ObjectType() as obj:
-                if attr in obj.fields:
-                    return self.resolve(obj.fields[attr])
+                name = attr.name
+                if name in obj.fields:
+                    return self.resolve(obj.fields[name])
                 else:
-                    unseen[obj.name].add(attr)
+                    unseen[obj.name].add(name)
                     return self.top()
             case TypeType():
                 return self.bottom()
         return self.top()
 
-    def attribute(self, var: TypeElement, attr: str) -> TypeElement:
+    def attribute(self, var: TypeElement, attr: tac.Var) -> TypeElement:
+        assert isinstance(attr, tac.Var)
         res = self._attribute(var, attr)
         if isinstance(res, Property):
             return res.return_type
@@ -508,7 +510,7 @@ class TypeLattice(Lattice[TypeElement]):
             return tac.AllocationType.STACK
         return tac.AllocationType.NONE
 
-    def allocation_type_attribute(self, var: TypeElement, attr: str) -> tac.AllocationType:
+    def allocation_type_attribute(self, var: TypeElement, attr: tac.Var) -> tac.AllocationType:
         p = self._attribute(var, attr)
         if isinstance(p, Property) and p.new:
             return tac.AllocationType.STACK

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypeVar, Protocol, Generic, TypeAlias, Final, Iterator, Type, Callable
+from typing import TypeVar, Protocol, Generic, TypeAlias, Final, Iterator, Type, Callable, Iterable
 import graph_utils as gu
 
 import tac
@@ -72,6 +72,7 @@ class Lattice(Generic[T]):
         return value
 
     def attribute(self, var: T, attr: tac.Var) -> T:
+        assert isinstance(attr, tac.Var)
         return self.top()
 
     def subscr(self, array: T, index: T) -> T:
@@ -140,7 +141,7 @@ class Lattice(Generic[T]):
     def back_assign_subscr(self, var: T, index: T) -> T:
         return self.top()
 
-    def back_assign_attribute(self, var: T, attr: str) -> T:
+    def back_assign_attribute(self, var: T, attr: tac.Var) -> T:
         return self.top()
 
     def back_return(self) -> T:
@@ -263,10 +264,10 @@ class Map(Generic[K, T]):
     def __str__(self) -> str:
         return repr(self)
 
-    def items(self) -> Iterator[tuple[tac.Var, T]]:
+    def items(self) -> Iterable[tuple[tac.Var, T]]:
         return self._map.items()
 
-    def values(self) -> Iterator[T]:
+    def values(self) -> Iterable[T]:
         return self._map.values()
 
     def keys(self) -> set[tac.Var]:
@@ -391,8 +392,8 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
                 return self.lattice.var(values[expr])
             case tac.Attribute():
                 val = eval(expr.var)
-                expr.allocation = self.lattice.allocation_type_attribute(val, expr.field.name)
-                return self.lattice.attribute(val, expr.field.name)
+                expr.allocation = self.lattice.allocation_type_attribute(val, expr.field)
+                return self.lattice.attribute(val, expr.field)
             case tac.Call():
                 func = eval(expr.function)
                 expr.allocation = self.lattice.allocation_type_function(func)
@@ -506,7 +507,7 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
             case tac.Var():
                 return self.lattice.back_assign_var(values[signature])
             case tac.Attribute():
-                return self.lattice.back_assign_attribute(self.transformer_expr(values, signature.var), signature.field.name)
+                return self.lattice.back_assign_attribute(self.transformer_expr(values, signature.var), signature.field)
             case tac.Subscript():
                 return self.lattice.back_assign_subscr(self.transformer_expr(values, signature.var), self.transformer_expr(values, signature.var))
             case _:
@@ -537,26 +538,6 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
                 del values[var]
         values.update(to_update)
         return normalize(values)
-
-
-class AbstractAnalysis(Protocol[T]):
-    def name(self) -> str:
-        raise NotImplementedError
-
-    def view(self, cfg: gu.Cfg[T]) -> IterationStrategy[T]:
-        raise NotImplementedError
-
-    def transfer(self, inv: VarAnalysis, ins: T, location: str) -> None:
-        raise NotImplementedError
-
-    def initial(self) -> T:
-        raise NotImplementedError
-
-    def top(self) -> T:
-        raise NotImplementedError
-
-    def bottom(self) -> T:
-        raise NotImplementedError
 
 
 @dataclass(frozen=True)

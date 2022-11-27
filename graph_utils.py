@@ -8,7 +8,7 @@ import networkx as nx
 from itertools import chain
 
 if typing.TYPE_CHECKING:
-    from tac_analysis_domain import AbstractDomain
+    from tac_analysis_domain import Analysis
 
 T = TypeVar('T')
 Q = TypeVar('Q')
@@ -17,8 +17,8 @@ Q = TypeVar('Q')
 @dataclass
 class ForwardBlock(Generic[T]):
     _instructions: list[T]
-    pre: dict[str, AbstractDomain]
-    post: dict[str, AbstractDomain]
+    pre: dict[str, Analysis]
+    post: dict[str, Analysis]
 
     def __init__(self, instructions: list[T]):
         self._instructions = instructions
@@ -64,11 +64,11 @@ class BackwardBlock(Generic[T]):
         return self.block[index]
 
     @property
-    def pre(self) -> dict[str, AbstractDomain]:
+    def pre(self) -> dict[str, Analysis]:
         return self.block.post
 
     @property
-    def post(self) -> dict[str, AbstractDomain]:
+    def post(self) -> dict[str, Analysis]:
         return self.block.pre
 
     def __reversed__(self) -> Block[T]:
@@ -80,7 +80,7 @@ Block: TypeAlias = ForwardBlock | BackwardBlock
 
 class Cfg(Generic[T]):
     graph: nx.DiGraph
-    _annotator: Callable[[T], str] = staticmethod(lambda x: '')
+    _annotator: Callable[[T], str]
 
     @property
     def annotator(self) -> Callable[[T], str]:
@@ -104,6 +104,8 @@ class Cfg(Generic[T]):
         sinks = {label for label in self.labels if self.graph.out_degree(label) == 0}
         for label in sinks:
             self.graph.add_edge(label, self.exit_label)
+
+        self.annotator = lambda x: ''
 
     @property
     def entry_label(self) -> int:
@@ -262,9 +264,9 @@ def pretty_print_cfg(cfg: Cfg[T]) -> None:
         print()
 
 
-if __name__ == '__main__':
-    test_refine_to_chain()
-
-
 def single_source_dijkstra_path_length(cfg: Cfg, source: int, weight='weight'):
     return nx.single_source_dijkstra_path_length(cfg.graph, source, weight=weight)
+
+
+if __name__ == '__main__':
+    test_refine_to_chain()
