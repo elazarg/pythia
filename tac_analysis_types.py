@@ -258,7 +258,7 @@ BUILTINS_MODULE = ObjectType('/builtins', frozendict({
     'code': TypeType(CODE),
     'AssertionError': TypeType(ASSERTION_ERROR),
 
-    'Linear_Regression': make_function_type(NDARRAY, new=True),
+    'linear_regression': make_function_type(NDARRAY, new=True),
 }))
 
 FUTURE_MODULE = ObjectType('/future', frozendict({
