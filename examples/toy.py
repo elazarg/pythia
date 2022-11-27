@@ -6,7 +6,7 @@ def main():
 
     for i in range(1000):
         temp = np.random.rand(3, 5)
-        res = res + temp
+        res += temp
 
         del temp
     return res

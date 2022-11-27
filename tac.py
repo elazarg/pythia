@@ -128,6 +128,7 @@ class Binary:
     left: Value
     op: str
     right: Value
+    inplace: bool
     allocation: AllocationType = AllocationType.NONE
 
     def __str__(self):
@@ -232,16 +233,6 @@ class Assign:
 
 
 @dataclass
-class InplaceBinary:
-    lhs: Var
-    op: str
-    right: Value
-
-    def __str__(self):
-        return f'{self.lhs} {self.op}= {self.right}'
-
-
-@dataclass
 class Jump:
     jump_target: str
     cond: Value = Const(True)
@@ -292,7 +283,7 @@ class Unsupported:
     name: str
 
 
-Tac = Nop | Assign | InplaceBinary | Jump | For | Return | Raise | Del | Unsupported
+Tac = Nop | Assign | Jump | For | Return | Raise | Del | Unsupported
 
 NOP = Nop()
 
@@ -329,7 +320,6 @@ def free_vars(tac: Tac) -> set[Var]:
     match tac:
         case Nop(): return set()
         case Assign(): return free_vars_lval(tac.lhs) | free_vars_expr(tac.expr)
-        case InplaceBinary(): return {tac.lhs} | free_vars_expr(tac.right)
         case Jump(): return free_vars_expr(tac.cond)
         case For(): return free_vars_expr(tac.iterator)
         case Return(): return free_vars_expr(tac.value)
@@ -351,7 +341,6 @@ def gens(tac: Tac) -> set[Var]:
                 case Subscript(): return set()
                 case None: return set()
                 case _: raise NotImplementedError(f'gens({tac})')
-        case InplaceBinary(): return {tac.lhs}
         case Jump(): return set()
         case For(): return {tac.lhs}
         case Return(): return set()
@@ -427,10 +416,6 @@ def subst_var_in_ins(ins: Tac, target: Var, new_var: Var) -> Tac:
             return dataclasses.replace(ins,
                                        lhs=subst_var_in_signature(ins.lhs, target, new_var),
                                        expr=subst_var_in_expr(ins.expr, target, new_var))
-        case InplaceBinary():
-            return dataclasses.replace(ins,
-                                       lhs=subst_var_in_signature(ins.lhs, target, new_var),
-                                       right=subst_var_in_expr(ins.right, target, new_var))
         case For():
             return dataclasses.replace(ins,
                                        lhs=subst_var_in_signature(ins.lhs, target, new_var),
@@ -489,17 +474,16 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             lhs = stackvar(out)
             left = stackvar(stack_depth - 1)
             right = stackvar(stack_depth)
-            return [Assign(lhs, Binary(left, argrepr, right))]
-        case ['INPLACE', 'OP']:
-            lhs = stackvar(out)
-            right = stackvar(stack_depth)
-            return [InplaceBinary(lhs, argrepr, right)]
+            if argrepr[-1] == '=' and argrepr[0] != '=':
+                return [Assign(lhs, Binary(left, argrepr[:-1], right, inplace=True))]
+            else:
+                return [Assign(lhs, Binary(left, argrepr, right, inplace=False))]
         case ['POP', 'JUMP', 'FORWARD' | 'BACKWARD', 'IF', *v]:
             op = '_'.join(v)
             # 'FALSE' | 'TRUE' | 'NONE' | 'NOT_NONE'
             res: list[Tac]
             if op == 'FALSE':
-                res = [Assign(stackvar(stack_depth), Call(Var('not'), (stackvar(stack_depth),)))]
+                res = [Assign(stackvar(stack_depth), Call(make_global('not'), (stackvar(stack_depth),)))]
             else:
                 res = []
             return res + [Jump(val, stackvar(stack_depth))]
@@ -598,6 +582,20 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             res = [Assign(stackvar(out), Call(stackvar(stack_depth - nargs - 1), tuple(mid), stackvar(stack_depth)))]
             return res
         case ["NOP" | 'RESUME' | 'PRECALL']:
+            return []
+        case ['EXTENDED', 'ARG']:
+            """
+            Prefixes any opcode which has an argument too big to fit into the default one byte.
+            ext holds an additional byte which act as higher bits in the argument.
+            For each opcode, at most three prefixal EXTENDED_ARG are allowed,
+            forming an argument from two-byte to four-byte.
+            """
+            return []
+        case ['KW', 'NAMES']:
+            """
+            Prefixes PRECALL. Stores a reference to co_consts[consti] into an internal variable for use by CALL.
+            co_consts[consti] must be a tuple of strings.
+            """
             return []
         case ["MAKE", "FUNCTION"]:
             """

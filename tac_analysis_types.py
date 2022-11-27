@@ -241,6 +241,7 @@ BUILTINS_MODULE = ObjectType('/builtins', frozendict({
         '__iter__': iter_method(INT),
     }))),
     'len': make_function_type(INT, new=False),
+    'not': make_function_type(BOOL, new=False),
     'print': make_function_type(NONE, new=False),
     'abs': make_function_type(FLOAT, new=False),
     'round': make_function_type(FLOAT, new=False),

@@ -210,9 +210,6 @@ def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> N
             match ins:
                 case tac.Return():
                     merged_instruction = tac.subst_var_in_ins(ins, prev.lhs, prev.expr)
-                case tac.InplaceBinary():
-                    if ins.right == prev.lhs:
-                        merged_instruction = tac.subst_var_in_ins(ins, prev.lhs, prev.expr)
                 case tac.Assign():
                     if isinstance(prev.expr, (tac.Var, tac.Liveness)):
                         merged_instruction = tac.subst_var_in_ins(ins, prev.lhs, prev.expr)

@@ -453,8 +453,6 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
                 return self.make_map({
                     tac.Var('return'): self.transformer_expr(values, ins.value)
                 })
-            case tac.InplaceBinary():
-                return self.make_map()
             case tac.Del():
                 return self.make_map()
         return self.make_map()
@@ -522,9 +520,6 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
             return self.back_transformer(assigned, ins.expr)
         if isinstance(ins, tac.Return):
             return self.make_map({ins.value: self.lattice.back_return()})
-        if isinstance(ins, tac.InplaceBinary):
-            left, right = self.lattice.back_inplace_binary(values[ins.lhs], values[ins.right], ins.op)
-            return self.make_map({ins.lhs: left, ins.right: right})
         return values
 
     def transfer(self, values: MapDomain[K, T], ins: tac.Tac, location: str) -> MapDomain[K, T]:

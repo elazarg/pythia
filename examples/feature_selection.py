@@ -61,7 +61,7 @@ def Linear_Regression(features: np.ndarray, target: np.ndarray, dims) -> np.ndar
 def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     # define rounds
     rounds = 0
-    rounds_ind = 0
+    rounds_ind = 0.0
 
     # define new solution
     S = np.array([], int)

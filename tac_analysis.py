@@ -127,16 +127,16 @@ def print_analysis(cfg):
             print(k, v)
 
 
-def main():
-    # env, imports = disassemble.read_function('examples/feature_selection.py', 'do_work')
-    env, imports = disassemble.read_function('examples/toy.py', 'main')
-
-    # cfg = run(imports, simplify=True, module=True)
-    # print_analysis(cfg)
-
+def analyze_function(filename, function_name):
+    env, imports = disassemble.read_function(filename, function_name)
     for _, func in env.items():
         cfg = run(func, simplify=True)
         print_analysis(cfg)
+
+
+def main():
+    # analyze_function('examples/feature_selection.py', 'do_work')
+    analyze_function('examples/toy.py', 'main')
 
 
 if __name__ == '__main__':
