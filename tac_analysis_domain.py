@@ -487,6 +487,8 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
                 if isinstance(expr.function, tac.Var):
                     d[expr.function] = f
                 return self.make_map(d)
+            case tac.For():
+                return self.make_map()
             case tac.Binary():
                 left, right = self.lattice.back_binary(assigned)
                 return self.make_map({

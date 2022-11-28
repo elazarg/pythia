@@ -96,7 +96,7 @@ def make_tuple(t: ObjectType) -> ObjectType:
 def iter_method(element_type: ObjectType) -> OverloadedFunctionType:
     return make_function_type(ObjectType(f'iterator[{element_type}]', frozendict({
         '__next__': make_function_type(element_type),
-    })))
+    })), new=True)
 
 
 OBJECT = ObjectType('object')
@@ -104,7 +104,10 @@ OBJECT = ObjectType('object')
 FLOAT = ObjectType('float')
 INT = ObjectType('int')
 STRING = ObjectType('str')
-BOOL = ObjectType('bool')
+BOOL = ObjectType('bool', frozendict({
+    '__bool__': make_function_type(Ref('bool'), new=False),
+}))
+
 NONE = ObjectType('None')
 CODE = ObjectType('code')
 ASSERTION_ERROR = ObjectType('AssertionError')
@@ -137,10 +140,6 @@ TUPLE_CONSTRUCTOR = make_function_type(make_tuple(OBJECT), new=False)
 LIST_CONSTRUCTOR = make_function_type(LIST, new=False)
 SLICE_CONSTRUCTOR = make_function_type(SLICE, new=False)
 DICT_CONSTRUCTOR = make_function_type(DICT, new=True)
-NOT = make_function_type(BOOL, new=False)
-INVERT = make_function_type(INT, new=False)
-NEG = make_function_type(INT, new=False)
-POS = make_function_type(INT, new=False)
 
 
 NDARRAY = ObjectType('ndarray', frozendict({
@@ -260,8 +259,6 @@ BUILTINS_MODULE = ObjectType('/builtins', frozendict({
     'bool': TypeType(BOOL),
     'code': TypeType(CODE),
     'AssertionError': TypeType(ASSERTION_ERROR),
-
-    'linear_regression': make_function_type(NDARRAY, new=True),
 }))
 
 FUTURE_MODULE = ObjectType('/future', frozendict({
@@ -294,7 +291,14 @@ GLOBALS_OBJECT = ObjectType('globals()', frozendict({
     'mt': SKLEARN_MODULE.fields['metrics'],
     'matplotlib': MATPLOTLIB_MODULE,
     'persist': PERSIST_MODULE,
-    **BUILTINS_MODULE.fields
+    **BUILTINS_MODULE.fields,
+    'builtins': BUILTINS_MODULE,
+
+    'linear_regression': make_function_type(NDARRAY, new=True),
+    'A':  TypeType(ObjectType('A', frozendict({
+        'score': INT,
+        'vector': NDARRAY,
+    }))),
 }))
 
 
@@ -426,17 +430,23 @@ class TypeLattice(Lattice[TypeElement]):
         overloaded_function = self._get_binary_op(op)
         return self.call(overloaded_function, [left, right])
 
-    def unary(self, value: TypeElement, op: UnOp) -> TypeElement:
+    def get_unary_attribute(self, value: TypeElement, op: UnOp) -> TypeElement:
         match op:
-            case UnOp.NOT: overloaded_function = NOT
-            case UnOp.POS: overloaded_function = POS
-            case UnOp.INVERT: overloaded_function = INVERT
-            case UnOp.NEG: overloaded_function = NEG
-            case UnOp.ITER: return self.call(self.resolve(value).fields['__iter__'], [])
-            case UnOp.YIELD_ITER: return BUILTINS_MODULE.fields["iter"]
+            case UnOp.NOT: dunder = '__bool__'
+            case UnOp.POS: dunder = '__pos__'
+            case UnOp.INVERT: dunder = '__invert__'
+            case UnOp.NEG: dunder = '__neg__'
+            case UnOp.ITER | UnOp.YIELD_ITER: dunder = '__iter__'
+            case UnOp.NEXT: dunder = '__next__'
             case x:
                 raise NotImplementedError(f'Unary operation {x} not implemented')
-        return self.call(overloaded_function, [value])
+        return self._attribute(value, tac.Var(dunder))
+
+    def unary(self, value: TypeElement, op: UnOp) -> TypeElement:
+        if op == UnOp.NOT:
+            return BOOL
+        f = self.get_unary_attribute(value, op)
+        return self.call(f, [value])
 
     def predefined(self, name: Predefined) -> Optional[TypeElement]:
         match name:
@@ -519,6 +529,14 @@ class TypeLattice(Lattice[TypeElement]):
         overloaded_function = self._get_binary_op(op)
         narrowed = self.narrow_overload(overloaded_function, [left, right])
         if self.allocation_type_function(narrowed):
+            return tac.AllocationType.STACK
+        return tac.AllocationType.NONE
+
+    def allocation_type_unary(self, value: TypeElement, op: tac.UnOp) -> tac.AllocationType:
+        if op is UnOp.NOT:
+            return tac.AllocationType.NONE
+        f = self.get_unary_attribute(value, op)
+        if f.types[0].new:
             return tac.AllocationType.STACK
         return tac.AllocationType.NONE
 

@@ -60,6 +60,10 @@ class ConstLattice(Lattice[Constant]):
         return self.top()
 
     def unary(self, value: Const, op: tac.UnOp) -> Const:
+        if self.is_bottom(value):
+            return self.bottom()
+        if self.is_top(value):
+            return self.top()
         match op:
             case tac.UnOp.NEG: return Const(-value.value)
             case tac.UnOp.NOT: return Const(not value.value)

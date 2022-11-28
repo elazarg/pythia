@@ -12,7 +12,7 @@ Graph: TypeAlias = dict[Object, dict[tac.Var, frozenset[Object]]]
 
 
 def pretty_print_pointers(pointers: Graph) -> str:
-    return ', '.join(f'{field}->{target_obj}'
+    return ', '.join((f'{source_obj}:' if source_obj is not LOCALS else '') + f'{field}->{target_obj}'
                      for source_obj in pointers
                      for field, target_obj in pointers[source_obj].items()
                      if pointers[source_obj][field]

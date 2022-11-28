@@ -99,8 +99,9 @@ def mark_shelf(cfg: Cfg,
         if isinstance(block[0], tac.For):
             assert len(block) == 1
             ptr = block.post[pointer_analysis.name()]
-            alive = block.post[liveness_analysis.name()]
+            alive = block.pre[liveness_analysis.name()]
             for var in alive.keys():
+                print(f'{var} is alive')
                 for loc in find_reachable(ptr, var):
                     label, index = [int(x) for x in str(loc)[1:].split('.')]
                     ins = cfg[label][index]
@@ -143,8 +144,9 @@ def analyze_function(filename: str, function_name: str) -> None:
 
 
 def main() -> None:
-    # analyze_function('examples/feature_selection.py', 'do_work')
-    analyze_function('examples/toy.py', 'main')
+    analyze_function('examples/feature_selection.py', 'do_work')
+    # analyze_function('examples/toy.py', 'minimal')
+    # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/toy.py', 'toy3')
 
 

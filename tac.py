@@ -53,6 +53,7 @@ class UnOp(enum.Enum):
     NEG = 3
     ITER = 4
     YIELD_ITER = 5
+    NEXT = 6
 
 
 @dataclass(frozen=True)
@@ -255,7 +256,7 @@ class For:
         return f'{self.lhs} = next({self.iterator}) HANDLE: GOTO {self.jump_target}'
 
     def as_call(self) -> Assign:
-        return Assign(self.lhs, Call(Attribute(self.iterator, Var('__next__')), ()))
+        return Assign(self.lhs, Unary(UnOp.NEXT, self.iterator))
 
 
 @dataclass(frozen=True)
@@ -519,7 +520,7 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             # 'FALSE' | 'TRUE' | 'NONE' | 'NOT_NONE'
             res: list[Tac]
             if op == 'FALSE':
-                res = [Assign(stackvar(stack_depth), Call(Predefined.NOT, (stackvar(stack_depth),)))]
+                res = [Assign(stackvar(stack_depth), Unary(UnOp.NOT, stackvar(stack_depth)))]
             else:
                 res = []
             return res + [Jump(val, stackvar(stack_depth))]
