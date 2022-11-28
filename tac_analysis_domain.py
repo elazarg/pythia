@@ -138,11 +138,11 @@ class Lattice(Generic[T]):
     def back_yield(self, value: T) -> T:
         return self.top()
 
-    def back_assign_tuple(self, values: tuple[T]) -> T:
-        return self.top()
-
     def back_assign_var(self, value: T) -> T:
         return value
+
+    def back_assign_tuple(self, values: tuple[T]) -> T:
+        return self.top()
 
     def back_assign_subscr(self, var: T, index: T) -> T:
         return self.top()

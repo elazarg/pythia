@@ -54,13 +54,6 @@ class UnOp(enum.Enum):
     ITER = 4
     YIELD_ITER = 5
 
-    def __str__(self):
-        return self.name
-
-    @classmethod
-    def lookup(cls, op):
-        return cls.__members__[op]
-
 
 @dataclass(frozen=True)
 class Const:
@@ -143,7 +136,7 @@ class Unary:
     allocation: AllocationType = AllocationType.UNKNOWN
 
     def __str__(self):
-        res = f'{self.op} {self.var}'
+        res = f'{self.op.name} {self.var}'
         res += allocation_to_str(self.allocation)
         return res
 

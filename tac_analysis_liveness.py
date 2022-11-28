@@ -84,21 +84,26 @@ class LivenessLattice(Lattice[Liveness]):
     def bottom(cls) -> Liveness:
         return BOTTOM
 
+    def back_assign_var(self, var: T) -> T:
+        return True
+
     def back_assign_subscr(self, var: T, index: T) -> T:
-        return self.top()
+        return True
 
     def back_assign_attribute(self, var: T, attr: str) -> T:
-        return self.top()
+        return True
 
     def back_assign_tuple(self, values: tuple[T]) -> T:
-        return self.top()
+        return True
 
     def back_call(self, value: Liveness, size: int) -> tuple[Liveness, list[Liveness]]:
-        result = (True, [True] * size)
-        return result
+        return (True, [True] * size)
 
     def back_binary(self, value: Liveness) -> tuple[Liveness, Liveness]:
         return (True, True)
+
+    def back_unary(self, value: Liveness) -> Liveness:
+        return True
 
     def back_inplace_binary(self, lhs: Liveness, right: Liveness, op: str) -> tuple[Liveness, Liveness]:
         return (True, True)
