@@ -15,11 +15,11 @@ def not_so_minimal():
     #     score: float
     #     vector: np.ndarray
     a = A()
-    a.vector = np.zeros((5,))
+    a.vector = np.zeros((5, 7))
     a.score = 0.0
     for i in range(1000):
-        temp = np.random.rand(5,)
-        norm = np.linalg.norm(temp)
+        temp = np.random.rand((5, 7))
+        norm = np.sum(temp)
         if a.score < norm:
             a.vector = temp
             a.score = norm

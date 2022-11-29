@@ -584,7 +584,8 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
         case ['STORE', 'GLOBAL']:
             return [Assign(make_global(val), stackvar(stack_depth))]
         case ['STORE', 'ATTR']:
-            return [Assign(Attribute(stackvar(stack_depth), Var(val)), stackvar(stack_depth - 1))]
+            attr = Attribute(stackvar(stack_depth), Var(val), allocation=AllocationType.NONE)
+            return [Assign(attr, stackvar(stack_depth - 1))]
         case ['STORE', 'SUBSCR']:
             return [Assign(Subscript(stackvar(stack_depth - 1), stackvar(stack_depth)), stackvar(stack_depth - 2))]
         case ['POP', 'BLOCK']:

@@ -401,9 +401,6 @@ class TypeLattice(Lattice[TypeElement]):
         result = TypeLattice.bottom()
         for t in types:
             result = self.join(result, t)
-        #
-        # if self.is_bottom(result):
-        #     return self.top()
         return result
 
     def narrow_overload(self, overload: OverloadedFunctionType, args: list[TypeElement]) -> OverloadedFunctionType:
@@ -423,12 +420,13 @@ class TypeLattice(Lattice[TypeElement]):
         return self.join_all(self.resolve(func.return_type)
                              for func in self.narrow_overload(function, args).types)
 
-    def _get_binary_op(self, op: str) -> OverloadedFunctionType:
-        return BINARY.get(op)
-
     def binary(self, left: TypeElement, right: TypeElement, op: str) -> TypeElement:
-        overloaded_function = self._get_binary_op(op)
-        return self.call(overloaded_function, [left, right])
+        overloaded_function = BINARY.get(op)
+        result = self.call(overloaded_function, [left, right])
+        # Shorthand for: "we assume that there is an implementation"
+        if self.is_bottom(result):
+            return self.top()
+        return result
 
     def get_unary_attribute(self, value: TypeElement, op: UnOp) -> TypeElement:
         match op:
@@ -526,7 +524,7 @@ class TypeLattice(Lattice[TypeElement]):
         return tac.AllocationType.UNKNOWN
 
     def allocation_type_binary(self, left: TypeElement, right: TypeElement, op: str) -> tac.AllocationType:
-        overloaded_function = self._get_binary_op(op)
+        overloaded_function = BINARY.get(op)
         narrowed = self.narrow_overload(overloaded_function, [left, right])
         if self.allocation_type_function(narrowed):
             return tac.AllocationType.STACK
