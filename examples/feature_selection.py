@@ -18,7 +18,7 @@ def gradient_descent(X, y, theta, alpha, iters):
     return theta, cost_array
 
 
-def predict(X, theta):
+def predict(X: np.ndarray, theta: np.ndarray) -> np.ndarray:
     result = np.zeros((len(X), 1))
     for j in range(len(X)):
         x = X[j]

@@ -143,8 +143,9 @@ def analyze_function(filename: str, function_name: str) -> None:
 
 
 def main() -> None:
-    analyze_function('examples/feature_selection.py', 'do_work')
-    # analyze_function('examples/toy.py', 'minimal')
+    # analyze_function('examples/feature_selection.py', 'do_work')
+    # analyze_function('examples/feature_selection.py', 'run')
+    analyze_function('examples/toy.py', 'minimal')
     # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/toy.py', 'toy3')
 

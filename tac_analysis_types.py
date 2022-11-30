@@ -244,6 +244,10 @@ BUILTINS_MODULE = ObjectType('/builtins', frozendict({
     'range': make_function_type(ObjectType('range', frozendict({
         '__iter__': iter_method(INT),
     }))),
+    'zip': make_function_type(ObjectType('zip', frozendict({
+        '__iter__': iter_method(make_tuple(OBJECT)),
+    }))),
+
     'len': make_function_type(INT, new=False),
     'print': make_function_type(NONE, new=False),
     'abs': make_function_type(FLOAT, new=False),
