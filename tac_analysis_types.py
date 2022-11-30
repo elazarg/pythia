@@ -27,6 +27,7 @@ class ObjectType:
 @dataclass(frozen=True)
 class Ref:
     name: str
+    static: bool = True
 
 
 @dataclass(frozen=True)
@@ -258,6 +259,7 @@ BUILTINS_MODULE = ObjectType('/builtins', frozendict({
     'str': TypeType(STRING),
     'bool': TypeType(BOOL),
     'code': TypeType(CODE),
+    'object': TypeType(OBJECT),
     'AssertionError': TypeType(ASSERTION_ERROR),
 }))
 
@@ -278,33 +280,30 @@ PERSIST_MODULE = ObjectType('/persist', frozendict({
     }))),
 }))
 
-GLOBALS_OBJECT = ObjectType('globals()', frozendict({
+MODULES = frozendict({
     '__future__': FUTURE_MODULE,
     'numpy': NUMPY_MODULE,
-    'np': NUMPY_MODULE,
     'pandas': PANDAS_MODULE,
-    'pd': PANDAS_MODULE,
     'time': TIME_MODULE,
     'sklearn': SKLEARN_MODULE,
-    'sk': SKLEARN_MODULE,
-    'pymm': ObjectType('/pymm'),
-    'mt': SKLEARN_MODULE.fields['metrics'],
     'matplotlib': MATPLOTLIB_MODULE,
     'persist': PERSIST_MODULE,
-    **BUILTINS_MODULE.fields,
     'builtins': BUILTINS_MODULE,
-
-    'linear_regression': make_function_type(NDARRAY, new=True),
-    'A':  TypeType(ObjectType('A', frozendict({
-        'score': INT,
-        'vector': NDARRAY,
-    }))),
-}))
+})
 
 
-def transpose(double_dispatch_table: dict[tuple[SimpleType, SimpleType], dict[str, tuple[SimpleType, bool]]])\
-        -> dict[str, OverloadedFunctionType]:
-    ops = ['+', '-', '*', '/', '**', '//', '%', '@', '==', '!=', '<', '<=', '>', '>=']
+def resolve_module(path: str, modules: dict = MODULES) -> ObjectType:
+    path = path.split('.')
+    obj = modules[path[0]]
+    for part in path[1:]:
+        obj = obj.fields[part]
+    return obj
+
+
+def transpose(double_dispatch_table: dict[tuple[SimpleType, SimpleType], dict[str, tuple[SimpleType, bool]]]
+              ) -> dict[str, OverloadedFunctionType]:
+    ops = ['+', '-', '*', '/', '**', '//', '%', '@',
+           '==', '!=', '<', '<=', '>', '>=']
     result: dict[str, list[FunctionType]] = {op: [] for op in ops}
     for op in ops:
         for params, table in double_dispatch_table.items():
@@ -317,7 +316,7 @@ def transpose(double_dispatch_table: dict[tuple[SimpleType, SimpleType], dict[st
 BINARY = transpose({
     (INT, INT): {
         '/':   (FLOAT, False),
-        **{op: (INT, False) for op in ['+', '-', '*', '**', '//', '%']},
+        **{op: (INT, False) for op in ['+', '-', '*',       '**', '//', '%']},
         **{op: (INT, False) for op in ['&', '|', '^', '<<', '>>']},
         **{op: (BOOL, False) for op in ['<', '>', '<=', '>=', '==', '!=']},
     },
@@ -345,6 +344,25 @@ class TypeLattice(Lattice[TypeElement]):
     """
     Abstract domain for type analysis with lattice operations.
     """
+    def __init__(self, functions, globals: dict[str, str]):
+        global_state = {
+            **{name: resolve_module(path) for name, path in globals.items()},
+            **BUILTINS_MODULE.fields,
+        }
+
+        def resolve(path: str) -> ObjectType:
+            path = path.split('.')
+            obj = global_state[path[0]]
+            for part in path[1:]:
+                obj = obj.fields[part]
+            return obj
+        global_state.update({f: make_function_type(
+                                    return_type=resolve(functions[f].__annotations__.get('return', 'object')).type,
+                                    new=False,
+                                )
+                             for f in functions})
+
+        self.globals = ObjectType('globals()', frozendict(global_state))
 
     def name(self) -> str:
         return "Type"
@@ -382,7 +400,11 @@ class TypeLattice(Lattice[TypeElement]):
 
     def resolve(self, ref: TypeElement) -> TypeElement:
         if isinstance(ref, Ref):
-            result = GLOBALS_OBJECT
+            if ref.static:
+                result = resolve_module(ref.name)
+                assert isinstance(result, TypeType)
+                return result.type
+            result = self.globals
             for attr in ref.name.split('.'):
                 result = result.fields[attr]
             assert isinstance(result, TypeType)
@@ -450,7 +472,7 @@ class TypeLattice(Lattice[TypeElement]):
         match name:
             case Predefined.LIST: return LIST_CONSTRUCTOR
             case Predefined.TUPLE: return TUPLE_CONSTRUCTOR
-            case Predefined.GLOBALS: return GLOBALS_OBJECT
+            case Predefined.GLOBALS: return self.globals
             case Predefined.NONLOCALS: return NONLOCALS_OBJECT
             case Predefined.LOCALS: return LOCALS_OBJECT
             case Predefined.SLICE: return SLICE_CONSTRUCTOR
@@ -498,12 +520,12 @@ class TypeLattice(Lattice[TypeElement]):
         return self.call(f, [index])
 
     def annotation(self, code: str) -> TypeElement:
-        return self.resolve(Ref(code))
+        return self.resolve(Ref(code, static=False))
         return ObjectType(type(code).__name__, {})
 
     def imported(self, modname: tac.Var) -> TypeElement:
         if isinstance(modname, tac.Var):
-            return GLOBALS_OBJECT.fields[modname.name]
+            return resolve_module(modname.name)
         elif isinstance(modname, tac.Attribute):
             return self.attribute(modname.var, modname.field)
 

@@ -182,9 +182,9 @@ class Import:
 
 @dataclass
 class MakeFunction:
-    name: Value
     code: Value
     free_vars: set[Var] = frozenset()
+    name: Optional[Var] = None
     annotations: dict[Var, str] = None
     defaults: dict[Var, Var] = None
     positional_only_defaults: dict[Var, Var] = None
@@ -649,7 +649,7 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             the code associated with the function (at TOS1)
             the qualified name of the function (at TOS)
             """
-            function = MakeFunction(stackvar(stack_depth), stackvar(stack_depth - 1))
+            function = MakeFunction(stackvar(stack_depth))
             i = 2
             if val & 0x01:
                 function.defaults = stackvar(stack_depth - i)
@@ -664,17 +664,6 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
                 function.free_var_cells = stackvar(stack_depth - i)
             return [Assign(stackvar(out), function)]
     return [Unsupported(opname)]
-
-
-UN_TO_OP = {
-    # __abs__ ?
-    'UNARY_POSITIVE': '__pos__',
-    'UNARY_NEGATIVE': '__neg__',
-    'UNARY_NOT': '__bool__',  # not exactly the same semantics
-    'UNARY_INVERT': '__invert__',
-    'GET_ITER': 'iter',
-    'GET_YIELD_FROM_ITER': 'YIELD_FROM_ITER '
-}
 
 
 def main():

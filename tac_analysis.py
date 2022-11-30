@@ -63,19 +63,17 @@ def analyze(_cfg: Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]) -
                 wl.add(succ)
 
 
-def run(f, simplify=True, module=False) -> Cfg:
+def run(f, functions, globals, simplify=True) -> Cfg:
     cfg = make_tac_cfg(f, simplify=simplify)
 
     gu.pretty_print_cfg(cfg)
 
-    annotations = {}
-    if not module:
-        annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
+    annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
     # for label, block in cfg.items():
     #     rewrite_remove_useless_movs_pairs(block, label)
     #     rewrite_aliases(block, label)
     #     rewrite_remove_useless_movs(block, label)
-    type_analysis = VarAnalysis[tac.Var, TypeElement](TypeLattice())
+    type_analysis = VarAnalysis[tac.Var, TypeElement](TypeLattice(functions, globals))
     liveness_analysis = VarAnalysis[tac.Var, Liveness](LivenessLattice(), backward=True)
     constant_analysis = VarAnalysis[tac.Var, Constant](ConstLattice())
     pointer_analysis = PointerAnalysis(type_analysis, liveness_analysis)
@@ -136,16 +134,18 @@ def print_analysis(cfg: Cfg) -> None:
 
 
 def analyze_function(filename: str, function_name: str) -> None:
-    env, imports = disassemble.read_function(filename, function_name)
-    for _, func in env.items():
-        cfg = run(func, simplify=True)
-        print_analysis(cfg)
+    functions, imports = disassemble.read_file(filename)
+    cfg = run(functions[function_name],
+              functions=functions,
+              globals=imports,
+              simplify=True)
+    print_analysis(cfg)
 
 
 def main() -> None:
-    # analyze_function('examples/feature_selection.py', 'do_work')
+    analyze_function('examples/feature_selection.py', 'do_work')
     # analyze_function('examples/toy.py', 'minimal')
-    analyze_function('examples/toy.py', 'not_so_minimal')
+    # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/toy.py', 'toy3')
 
 

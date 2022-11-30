@@ -38,7 +38,7 @@ def read_function_using_compile(file_path, function_name):
     raise ValueError(f'Could not find function {function_name} in {file_path}')
 
 
-def read_function(file_path: str, funcname: Optional[str] = None) -> tuple[dict, Any]:
+def read_file(file_path: str) -> tuple[dict, Any]:
     module = ast.parse("from __future__ import annotations\n", filename=file_path)
 
     with open(file_path, 'r', encoding='utf-8') as file:
@@ -47,8 +47,6 @@ def read_function(file_path: str, funcname: Optional[str] = None) -> tuple[dict,
 
     for node in code.body:
         if isinstance(node, ast.FunctionDef):
-            if funcname and node.name != funcname:
-                continue
             module.body.append(node)
     functions = compile(module, '', 'exec', dont_inherit=True, flags=0, optimize=0)
     env = {}
@@ -56,15 +54,15 @@ def read_function(file_path: str, funcname: Optional[str] = None) -> tuple[dict,
     exec(functions, {}, env)
     del env['annotations']
 
-    module = ast.parse("from __future__ import annotations\n", filename=file_path)
+    globals = {}
     for node in code.body:
-        if False and isinstance(node, (ast.Import, ast.ImportFrom)):
-            module.body.append(node)
-        if isinstance(node, ast.FunctionDef):
-            module.body.append(node)
-    imports = compile(module, '', 'exec', dont_inherit=True, flags=0, optimize=0)
-
-    return env, imports
+        if isinstance(node, ast.Import):
+            for name in node.names:
+                globals[name.asname or name.name] = name.name
+        if isinstance(node, ast.ImportFrom):
+            for name in node.names:
+                globals[name.asname or name.name] = node.module + '.' + name.name
+    return env, globals
 
 
 if __name__ == '__main__':

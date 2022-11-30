@@ -221,7 +221,7 @@ TOP = Top()
 
 
 class Map(Generic[K, T]):
-    # Essentially a defaultdict, but a defaultdict make values appear out of nowhere
+    # Essentially a defaultdict, but a defaultdict makes values appear out of nowhere
     _map: dict[tac.Var, T]
     default: T
 
