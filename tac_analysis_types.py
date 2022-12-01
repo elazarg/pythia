@@ -408,7 +408,6 @@ BINARY = transpose({
 
 
 def parse_type_annotation(expr: ast.expr, global_state: dict[str, SimpleType]) -> SimpleType:
-    print(expr)
     match expr:
         case ast.Name(id=name):
             res = global_state[name]
