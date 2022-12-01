@@ -2,26 +2,17 @@
 
 from __future__ import annotations as _
 
+import ast
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TypeVar, TypeAlias, Optional, Iterable
+from typing import TypeAlias, Optional, Iterable
+import typing
 
 from frozendict import frozendict
 
 import tac
 from tac import Predefined, UnOp
 from tac_analysis_domain import Bottom, Lattice, BOTTOM
-
-T = TypeVar('T')
-
-
-@dataclass(frozen=True)
-class ObjectType:
-    name: str
-    fields: frozendict[str, SimpleType] = frozendict({})
-
-    def __repr__(self):
-        return self.name
 
 
 @dataclass(frozen=True)
@@ -31,8 +22,40 @@ class Ref:
 
 
 @dataclass(frozen=True)
+class TypeVar:
+    name: str
+
+
+@dataclass(frozen=True)
+class ObjectType:
+    name: str
+    fields: frozendict[str, SimpleType] = frozendict({})
+    type_params: frozendict[TypeVar, Optional[SimpleType]] = frozendict({})
+
+    def __repr__(self):
+        if self.type_params:
+            return f'{self.name}[{", ".join(f"{v}" for k, v in self.type_params.items())}]'
+        else:
+            return self.name
+
+    def __getitem__(self, *items):
+        return instantiate(self, {k: item for k, item in zip(self.type_params.keys(), items)})
+
+
+@dataclass(frozen=True)
+class FunctionType:
+    params: ParamsType
+    return_type: SimpleType
+    new: bool = True
+    type_params: frozendict[TypeVar, Optional[SimpleType]] = frozendict({})
+
+    def __repr__(self):
+        return f'{self.params} -> {"new " if self.new else ""}{self.return_type}'
+
+
+@dataclass(frozen=True)
 class ParamsType:
-    params: tuple[SimpleType, ...]
+    params: tuple[SimpleType | tac.Var, ...]
     varargs: bool = False
 
     def __repr__(self):
@@ -41,16 +64,6 @@ class ParamsType:
         if params:
             varargs = ', ' + varargs
         return f'({params}{varargs})'
-
-
-@dataclass(frozen=True)
-class FunctionType:
-    params: ParamsType
-    return_type: SimpleType
-    new: bool = True
-
-    def __repr__(self):
-        return f'{self.params} -> {"new " if self.new else ""}{self.return_type}'
 
 
 @dataclass(frozen=True)
@@ -66,14 +79,6 @@ def make_function_type(return_type: SimpleType, new: bool = True, pure=True) -> 
 
 
 @dataclass(frozen=True)
-class TypeType:
-    type: SimpleType
-
-    def __repr__(self):
-        return f'Type[{self.type}]'
-
-
-@dataclass(frozen=True)
 class Property:
     return_type: SimpleType
     new: bool = False
@@ -82,10 +87,63 @@ class Property:
         return f'-> {self.return_type}'
 
 
-SimpleType: TypeAlias = ObjectType | Ref | FunctionType
+SimpleType: TypeAlias = ObjectType | Ref | FunctionType | OverloadedFunctionType | TypeVar
 
 
 TypeElement: TypeAlias = ObjectType | OverloadedFunctionType | Property | Ref | Bottom
+
+
+def is_generic(self):
+    return all(v is None for v in self.type_params.values())
+
+
+T = typing.TypeVar('T')
+
+
+def instantiate(self: T, type_args: dict[TypeVar, SimpleType]) -> T:
+    assert is_generic(self)
+    match self:
+        case ObjectType(name, fields, type_params):
+            assert list(type_args.keys()) == list(self.type_params.keys()), f'{type_args} {self.type_params}'
+            type_params = {k: type_args[k] for k in type_params}
+            fields = {k: bind(v, type_params) for k, v in fields.items()}
+            return ObjectType(name, frozendict(fields), frozendict(type_params))
+        case OverloadedFunctionType(overloads):
+            return OverloadedFunctionType(tuple(instantiate(overload, type_args)
+                                                for overload in overloads))
+        case FunctionType(params, return_type, new, type_params):
+            assert list(type_args.keys()) == list(self.type_params.keys()), f'{type_args} {self.type_params}'
+            type_params = {k: v for k, v in zip(type_params.keys(), type_args)}
+            return FunctionType(params=bind(params, type_args),
+                                return_type=bind(return_type, type_args),
+                                new=new,
+                                type_params=frozendict(type_params))
+        case _: raise NotImplementedError(f'{self}')
+
+
+def bind(self: T, type_args: dict[TypeVar, SimpleType]) -> T:
+    match self:
+        case ObjectType(name, fields, type_params):
+            type_args = {k: v for k, v in type_args.items() if k not in type_params}
+            type_params = {k: (bind(v, type_args) if v is not None else None)
+                           for k, v in type_params.items()}
+            fields = {k: bind(v, type_args) for k, v in fields.items()}
+            return ObjectType(name, frozendict(fields), frozendict(type_params))
+        case FunctionType(params, return_type, new, type_params):
+            return FunctionType(params=bind(params, type_args),
+                                return_type=bind(return_type, type_args),
+                                new=new,
+                                type_params=type_params)
+        case OverloadedFunctionType(overloads):
+            return OverloadedFunctionType(tuple(bind(overload, type_args)
+                                                for overload in overloads))
+        case ParamsType(params, varargs):
+            return ParamsType(tuple(instantiate(t, type_args) if isinstance(t, SimpleType) else type_args[t]
+                                    for t in params),
+                              varargs)
+        case TypeVar(name):
+            return type_args.get(self, self)
+        case _: raise NotImplementedError(f'{self}')
 
 
 def make_tuple(t: ObjectType) -> ObjectType:
@@ -95,9 +153,9 @@ def make_tuple(t: ObjectType) -> ObjectType:
 
 
 def iter_method(element_type: ObjectType) -> OverloadedFunctionType:
-    return make_function_type(ObjectType(f'iterator[{element_type}]', frozendict({
+    return make_function_type(ObjectType(f'iterator', frozendict({
         '__next__': make_function_type(element_type),
-    })), new=True)
+    }), type_params=frozendict({'Iterator': element_type})), new=True)
 
 
 OBJECT = ObjectType('object')
@@ -108,6 +166,11 @@ STRING = ObjectType('str')
 BOOL = ObjectType('bool', frozendict({
     '__bool__': make_function_type(Ref('bool'), new=False),
 }))
+
+TYPE = ObjectType('type', frozendict({
+    '__call__': make_function_type(TypeVar('T'), new=False),
+}), type_params=frozendict({'T': None}))
+
 
 NONE = ObjectType('None')
 CODE = ObjectType('code')
@@ -130,7 +193,7 @@ LIST = ObjectType('list', frozendict({
     'remove': make_function_type(NONE, new=False),
     'reverse': make_function_type(NONE, new=False),
     'sort': make_function_type(NONE, new=False),
-}))
+}), type_params=frozendict({'T': None}))
 
 DICT = ObjectType('dict', frozendict({
     '__getitem__': make_function_type(OBJECT, new=False),
@@ -151,7 +214,7 @@ NDARRAY = ObjectType('ndarray', frozendict({
     '__getitem__': OverloadedFunctionType(
         tuple([
             FunctionType(ParamsType((INT,), varargs=False), FLOAT, new=True),
-            FunctionType(ParamsType((FLOAT,), varargs=False), FLOAT, new=True), # Fix: ad-hoc
+            FunctionType(ParamsType((FLOAT,), varargs=False), FLOAT, new=True),  # Fix: ad-hoc
             FunctionType(ParamsType((SLICE,), varargs=False), Ref('numpy.ndarray'), new=True),
             FunctionType(ParamsType((Ref('numpy.ndarray'),), varargs=False), Ref('numpy.ndarray'), new=True),
             FunctionType(ParamsType((make_tuple(OBJECT),), varargs=False), OBJECT, new=True),  # FIX: not necessarily new
@@ -173,7 +236,7 @@ DATAFRAME = ObjectType('DataFrame', frozendict({
 TIME_MODULE = ObjectType('/time')
 
 NUMPY_MODULE = ObjectType('/numpy', frozendict({
-    'ndarray': TypeType(NDARRAY),
+    'ndarray': TYPE[NDARRAY],
     'array': ARRAY_GEN,
     'dot': make_function_type(FLOAT, new=False),
     'zeros': ARRAY_GEN,
@@ -237,7 +300,7 @@ SKLEARN_MODULE = ObjectType('/sklearn', frozendict({
 }))
 
 PANDAS_MODULE = ObjectType('/pandas', frozendict({
-    'DataFrame': TypeType(DATAFRAME),
+    'DataFrame': TYPE[DATAFRAME],
 }))
 
 BUILTINS_MODULE = ObjectType('/builtins', frozendict({
@@ -258,13 +321,13 @@ BUILTINS_MODULE = ObjectType('/builtins', frozendict({
     'all': make_function_type(BOOL, new=False),
     'any': make_function_type(BOOL, new=False),
 
-    'int': TypeType(INT),
-    'float': TypeType(FLOAT),
-    'str': TypeType(STRING),
-    'bool': TypeType(BOOL),
-    'code': TypeType(CODE),
-    'object': TypeType(OBJECT),
-    'AssertionError': TypeType(ASSERTION_ERROR),
+    'int': TYPE[INT],
+    'float': TYPE[FLOAT],
+    'str': TYPE[STRING],
+    'bool': TYPE[BOOL],
+    'code': TYPE[CODE],
+    'object': TYPE[OBJECT],
+    'AssertionError': TYPE[ASSERTION_ERROR],
 }))
 
 FUTURE_MODULE = ObjectType('/future', frozendict({
@@ -344,24 +407,44 @@ BINARY = transpose({
 })
 
 
+def parse_type_annotation(expr: ast.expr, global_state: dict[str, SimpleType]) -> SimpleType:
+    print(expr)
+    match expr:
+        case ast.Name(id=name):
+            res = global_state[name]
+            assert res.name == 'type'
+            return res.fields['T']
+        case ast.Attribute(value=ast.Name(id=name), attr=attr):
+            obj = global_state[name]
+            res = obj.fields[attr]
+            assert res.name == 'type'
+            return res.type_params['T']
+        case ast.Subscript(value=ast.Name(id=generic), slice=index):
+            if generic == 'tuple':
+                return make_tuple(OBJECT)
+            generic = global_state[generic]
+            index = global_state[index]
+            return generic[index]
+        case ast.Constant(value=None):
+            return NONE
+    assert False, f'Unsupported type annotation: {expr}'
+
+
 class TypeLattice(Lattice[TypeElement]):
     """
     Abstract domain for type analysis with lattice operations.
     """
-    def __init__(self, functions, globals: dict[str, str]):
+    def __init__(self, functions, imports: dict[str, str]):
         global_state = {
-            **{name: resolve_module(path) for name, path in globals.items()},
+            **{name: resolve_module(path) for name, path in imports.items()},
             **BUILTINS_MODULE.fields,
         }
 
-        def resolve(path: str) -> ObjectType:
-            path = path.split('.')
-            obj = global_state[path[0]]
-            for part in path[1:]:
-                obj = obj.fields[part]
-            return obj
         global_state.update({f: make_function_type(
-                                    return_type=resolve(functions[f].__annotations__.get('return', 'object')).type,
+                                    return_type=parse_type_annotation(
+                                        ast.parse(functions[f].__annotations__.get('return', 'object'), mode='eval').body,
+                                        global_state,
+                                    ),
                                     new=False,
                                 )
                              for f in functions})
@@ -406,13 +489,13 @@ class TypeLattice(Lattice[TypeElement]):
         if isinstance(ref, Ref):
             if ref.static:
                 result = resolve_module(ref.name)
-                assert isinstance(result, TypeType)
-                return result.type
+                assert result.name == 'type'
+                return result.type_params['T']
             result = self.globals
             for attr in ref.name.split('.'):
                 result = result.fields[attr]
-            assert isinstance(result, TypeType)
-            return result.type
+            assert result.name == 'type'
+            return result.type_params['T']
         return ref
 
     def is_match(self, args: list[TypeElement], params: ParamsType):
@@ -438,8 +521,9 @@ class TypeLattice(Lattice[TypeElement]):
             return self.top()
         if self.is_bottom(function) or any(self.is_bottom(arg) for arg in args):
             return self.bottom()
-        if isinstance(function, TypeType):
-            return function.type
+        if isinstance(function, ObjectType):
+            if function.fields.get('__call__'):
+                return self.call(function.fields['__call__'], args)
         if not isinstance(function, OverloadedFunctionType):
             print(f'{function} is not an overloaded function')
             return self.bottom()
@@ -501,8 +585,6 @@ class TypeLattice(Lattice[TypeElement]):
                 else:
                     unseen[obj.name].add(name)
                     return self.top()
-            case TypeType():
-                return self.bottom()
         return self.top()
 
     def attribute(self, var: TypeElement, attr: tac.Var) -> TypeElement:
@@ -519,7 +601,7 @@ class TypeLattice(Lattice[TypeElement]):
             return self.top()
         f = array.fields.get('__getitem__')
         if f is None:
-            print(f'{array} is not indexable')
+            print(f'{array} is not subscriptable')
             return self.bottom()
         return self.call(f, [index])
 

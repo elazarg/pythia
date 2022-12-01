@@ -63,17 +63,17 @@ def analyze(_cfg: Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]) -
                 wl.add(succ)
 
 
-def run(f, functions, globals, simplify=True) -> Cfg:
+def run(f, functions, imports, simplify=True) -> Cfg:
     cfg = make_tac_cfg(f, simplify=simplify)
 
-    gu.pretty_print_cfg(cfg)
+    # gu.pretty_print_cfg(cfg)
 
     annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
     # for label, block in cfg.items():
     #     rewrite_remove_useless_movs_pairs(block, label)
     #     rewrite_aliases(block, label)
     #     rewrite_remove_useless_movs(block, label)
-    type_analysis = VarAnalysis[tac.Var, TypeElement](TypeLattice(functions, globals))
+    type_analysis = VarAnalysis[tac.Var, TypeElement](TypeLattice(functions, imports))
     liveness_analysis = VarAnalysis[tac.Var, Liveness](LivenessLattice(), backward=True)
     constant_analysis = VarAnalysis[tac.Var, Constant](ConstLattice())
     pointer_analysis = PointerAnalysis(type_analysis, liveness_analysis)
@@ -83,12 +83,12 @@ def run(f, functions, globals, simplify=True) -> Cfg:
     analyze(cfg, type_analysis, annotations)
     analyze(cfg, pointer_analysis, annotations)
 
-    mark_shelf(cfg, liveness_analysis, pointer_analysis)
+    mark_heap(cfg, liveness_analysis, pointer_analysis)
 
     return cfg
 
 
-def mark_shelf(cfg: Cfg,
+def mark_heap(cfg: Cfg,
                liveness_analysis: VarAnalysis[tac.Var, Liveness],
                pointer_analysis: PointerAnalysis) -> None:
     for i, block in cfg.items():
@@ -137,15 +137,15 @@ def analyze_function(filename: str, function_name: str) -> None:
     functions, imports = disassemble.read_file(filename)
     cfg = run(functions[function_name],
               functions=functions,
-              globals=imports,
+              imports=imports,
               simplify=True)
     print_analysis(cfg)
 
 
 def main() -> None:
-    # analyze_function('examples/feature_selection.py', 'do_work')
+    analyze_function('examples/feature_selection.py', 'do_work')
     # analyze_function('examples/feature_selection.py', 'run')
-    analyze_function('examples/toy.py', 'minimal')
+    # analyze_function('examples/toy.py', 'minimal')
     # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/toy.py', 'toy3')
 

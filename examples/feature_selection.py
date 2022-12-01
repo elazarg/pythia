@@ -1,14 +1,14 @@
 import numpy as np
 
 
-def cost_function(X, y, theta):
+def cost_function(X: np.ndarray, y: np.ndarray, theta: np.ndarray) -> tuple[float, np.ndarray]:
     m = y.size
     error = np.dot(X, theta.T) - y
     cost = 1 / (2 * m) * np.dot(error.T, error)
     return cost, error
 
 
-def gradient_descent(X, y, theta, alpha, iters):
+def gradient_descent(X: np.ndarray, y: np.ndarray, theta: np.ndarray, alpha: float, iters) -> tuple[np.ndarray, np.ndarray]:
     cost_array = np.zeros(iters)
     m = y.size
     for i in range(iters):
@@ -29,7 +29,7 @@ def predict(X: np.ndarray, theta: np.ndarray) -> np.ndarray:
     return result
 
 
-def run(X, y):
+def run(X: np.ndarray, y: np.ndarray) -> tuple[float, np.ndarray]:
     y = np.concatenate(y)
     X = (X - X.mean()) / X.std()
     X = np.c_[np.ones(X.shape[0]), X]
@@ -58,10 +58,6 @@ def linear_regression(features: np.ndarray, target: np.ndarray, dims) -> np.ndar
 
 
 def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
-    # define rounds
-    rounds = 0
-    rounds_ind = 0.0
-
     # define new solution
     S = np.array([], int)
 
@@ -69,7 +65,6 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
         # define and train model
         # preprocess current solution
         grad = linear_regression(features, target, np.unique(S[S >= 0]))
-        rounds += 1
 
         # define vals
         A = np.array(range(len(grad)))
@@ -78,7 +73,6 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
             point = np.append(point, a)
         out = [[point, len(np.setdiff1d(A, S))]]
         out = np.array(out, dtype='object')
-        rounds_ind += np.max(out[:, -1])
 
         # get feasible points
         points = np.array([])
@@ -102,7 +96,7 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     return S
 
 
-def main():
+def main() -> None:
     dataset_name = "dataset_20KB"
     features = np.load(dataset_name + "_features.npy")
     target = np.load(dataset_name + "_target.npy")

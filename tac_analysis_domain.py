@@ -419,8 +419,7 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
                 right = eval(expr.right)
                 expr.allocation = self.lattice.allocation_type_binary(left, right, expr.op)
                 return self.lattice.binary(left=left, right=right, op=expr.op)
-            case tac.Predefined():
-                expr: tac.Predefined = expr
+            case tac.Predefined() as expr:
                 return self.lattice.predefined(expr)
             case tac.Const():
                 return self.lattice.const(expr.value)
