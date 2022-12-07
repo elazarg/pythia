@@ -118,27 +118,25 @@ def is_generic(self):
 def simplify_generic(t, context: dict[TypeVar, TypeExpr]):
     match t:
         case Generic(type_params, type):
-            context = context.copy()
-            for t in type_params:
-                if t in context:
-                    del context[t]
-            return simplify_generic(type, context)
+            new_context = {k: v for k, v in context.items() if k not in type_params}
+            return simplify_generic(type, new_context)
         case Instantiation(generic, type_params):
-            context = context.copy()
-            for param, arg in zip(generic.type_params, type_params):
-                context[param] = arg
-            return simplify_generic(generic.type, context)
+            new_type_params = tuple(simplify_generic(t, context) for t in type_params)
+            new_context = {**context, **dict(zip(generic.type_params, new_type_params))}
+            return simplify_generic(generic.type, new_context)
         case Ref():
             return t
         case TypeVar():
             return context.get(t, t)
         case MapType(items):
-            return MapType(tuple(VarDecl(item.name,simplify_generic(item.type, context))
+            return MapType(tuple(VarDecl(item.name, simplify_generic(item.type, context))
                                  for item in items))
         case FunctionType(params, return_type, new):
-            return FunctionType(tuple(VarDecl(item.name, simplify_generic(item.type, context))
-                                      for item in params),
-                                simplify_generic(return_type, context), new)
+            new_params = tuple(VarDecl(item.name, simplify_generic(item.type, context))
+                               for item in params)
+            new_return_type = simplify_generic(return_type, context)
+            print(return_type, new_return_type)
+            return FunctionType(new_params, new_return_type, new)
         case OverloadedFunctionType(types): raise NotImplementedError
         case _: raise NotImplementedError(f'{t!r}')
 
@@ -149,10 +147,7 @@ def main():
 
     NEXT_METHOD = VarDecl('__next__', FunctionType((VarDecl('self', TypeVar('Self')),), TypeVar('T'), new=False))
 
-    ITERATOR_PROTOCOL = Generic((TypeVar('T'),),
-                                Struct((NEXT_METHOD,)))
-
-    ITERATOR_INT = ITERATOR_PROTOCOL[TypeVar('int')]
+    ITERATOR_PROTOCOL = Struct((NEXT_METHOD,))
 
     ITERABLE_METHOD = FunctionType((VarDecl('self', TypeVar('Self')),), ITERATOR_PROTOCOL, new=False)
 
