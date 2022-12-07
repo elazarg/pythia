@@ -1,10 +1,12 @@
 import numpy as np
 
+import type_system
+
 
 def cost_function(X: np.ndarray, y: np.ndarray, theta: np.ndarray) -> tuple[float, np.ndarray]:
     m = y.size
     error = np.dot(X, theta.T) - y
-    cost = 1 / (2 * m) * np.dot(error.T, error)
+    cost = 1 / (2 * m) * np.dot(type_system.T, error)
     return cost, error
 
 

@@ -5,6 +5,12 @@ def three() -> int:
     return 3
 
 
+def listing():
+    res = [1]
+    for i in res:
+        print(i)
+
+
 def minimal():
     res = np.zeros((5, 7))
 

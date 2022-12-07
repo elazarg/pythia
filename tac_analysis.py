@@ -17,7 +17,6 @@ from tac_analysis_liveness import LivenessLattice, Liveness
 from tac_analysis_pointer import PointerAnalysis, pretty_print_pointers, find_reachable
 from tac_analysis_types import TypeLattice, TypeElement
 
-
 T = TypeVar('T')
 Cfg: TypeAlias = gu.Cfg[tac.Tac]
 
@@ -143,8 +142,9 @@ def analyze_function(filename: str, function_name: str) -> None:
 
 
 def main() -> None:
-    analyze_function('examples/feature_selection.py', 'do_work')
+    # analyze_function('examples/feature_selection.py', 'do_work')
     # analyze_function('examples/feature_selection.py', 'run')
+    analyze_function('examples/toy.py', 'listing')
     # analyze_function('examples/toy.py', 'minimal')
     # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/toy.py', 'toy3')
