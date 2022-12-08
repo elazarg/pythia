@@ -53,9 +53,9 @@ T = typing.TypeVar('T', bound=TypeExpr)
 
 
 @dataclass(frozen=True)
-class Generic(TypeExpr):
+class Generic(TypeExpr, typing.Generic[T]):
     type_params: tuple[TypeVar]
-    type: TypeExpr
+    type: T
 
     def __repr__(self) -> str:
         return f'[{", ".join(repr(x) for x in self.type_params)}]{self.type}'
@@ -65,8 +65,8 @@ class Generic(TypeExpr):
 
 
 @dataclass(frozen=True)
-class Instantiation(TypeExpr):
-    generic: Generic
+class Instantiation(TypeExpr, typing.Generic[T]):
+    generic: Generic[T]
     type_params: tuple[TypeExpr]
 
     def __repr__(self):
@@ -125,14 +125,15 @@ def simplify_generic(t):
             case _: raise NotImplementedError(f'{t!r}')
     return simplify_generic(t, {})
 
-def protocol(items: typing.Iterable[VarDecl], type_params=(), implements: typing.Iterable[MapType] = ()):
+
+def protocol(items: typing.Iterable[VarDecl], type_params=(), implements: typing.Iterable[Generic[MapType[str]]] = ()) -> Generic[MapType[str]]:
     m = Generic((TypeVar('Self'),), MapType[str](tuple([*items, *chain.from_iterable(x.type.items for x in implements)])))
     if type_params:
         return Generic(tuple(TypeVar(x) for x in type_params), m)
     return m
 
 
-def klass(name: str, items: typing.Iterable[VarDecl], *, implements: typing.Iterable[MapType] = ()):
+def klass(name: str, items: typing.Iterable[VarDecl], *, implements: typing.Iterable[Generic[MapType[str]]] = ()) -> MapType[str]:
     res = protocol(items, implements=implements)
     return res[Ref(name)]
 
