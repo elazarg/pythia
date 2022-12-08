@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import typing
 from dataclasses import dataclass
-from itertools import chain
 from typing import Optional
 
 
 class TypeExpr:
-    pass
+    def __and__(self, other):
+        if isinstance(other, Intersection):
+            return other & self
+        return Intersection(frozenset({self, other}))
 
 
 @dataclass(frozen=True)
@@ -31,7 +33,7 @@ Field = typing.TypeVar('Field', str, int)
 
 
 @dataclass(frozen=True)
-class VarDecl(typing.Generic[Field]):
+class Row(typing.Generic[Field]):
     name: Field
     type: TypeExpr
 
@@ -39,17 +41,28 @@ class VarDecl(typing.Generic[Field]):
         return f'{self.name}: {self.type}'
 
 
+T = typing.TypeVar('T', bound=TypeExpr)
+
+
 @dataclass(frozen=True)
-class MapType(TypeExpr, typing.Generic[Field]):
-    items: tuple[VarDecl, ...]
+class Intersection(TypeExpr, typing.Generic[T]):
+    items: frozenset[T]
 
     def __repr__(self) -> str:
-        return f'{{{", ".join(f"{decl.name}: {decl.type}" for decl in self.items)}}}'
+        return f'{{{" & ".join(f"{decl}" for decl in self.items)}}}'
 
+    def __and__(self, other: TypeExpr) -> Intersection[T]:
+        if not isinstance(other, Intersection):
+            raise TypeError(f'Cannot intersect {self} with {other}')
+        if not self.items:
+            return other
+        if not other.items:
+            return self
+        res = Intersection(self.items | other.items)
+        t = next(iter(res.items))
+        assert all(type(item) == type(t) for item in res.items)
+        return res
 
-Tuple: typing.TypeAlias = MapType[int]
-
-T = typing.TypeVar('T', bound=TypeExpr)
 
 
 @dataclass(frozen=True)
@@ -73,9 +86,12 @@ class Instantiation(TypeExpr, typing.Generic[T]):
         return f'{self.generic}[{", ".join(repr(x) for x in self.type_params)}]'
 
 
+TypedDict: typing.TypeAlias = Intersection[Row[str]]
+
+
 @dataclass(frozen=True)
 class FunctionType(TypeExpr):
-    params: Optional[tuple[VarDecl, ...]]
+    params: Optional[TypedDict]
     return_type: TypeExpr
     new: bool
 
@@ -83,19 +99,10 @@ class FunctionType(TypeExpr):
         if self.params is None:
             return f'->{self.return_type}'
         else:
-            params = ', '.join(repr(x) for x in self.params)
-            return f'({params}) -> {"new " if self.new else ""}{self.return_type}'
+            return f'({self.params} -> {"new " if self.new else ""}{self.return_type})'
 
     def is_property(self) -> bool:
         return self.params is None
-
-
-@dataclass(frozen=True)
-class OverloadedFunctionType:
-    types: tuple[Generic, ...]
-
-    def __repr__(self):
-        return f'({", ".join(map(str, self.types))})'
 
 
 def simplify_generic(t):
@@ -104,71 +111,84 @@ def simplify_generic(t):
             case Generic(type_params, type):
                 new_context = {k: v for k, v in context.items() if k not in type_params}
                 return Generic(type_params, simplify_generic(type, new_context))
-            case Instantiation(generic, type_params):
+            case Instantiation(Generic() as generic, type_params):
                 new_type_params = tuple(simplify_generic(t, context) for t in type_params)
                 new_context = {k: v for k, v in zip(generic.type_params, new_type_params)}
                 new_context = context | new_context
                 return simplify_generic(generic.type, new_context)
+            case Instantiation(Intersection() as items, type_params):
+                return Intersection(frozenset(simplify_generic(Instantiation(item, type_params), context) for item in items))
             case Ref():
                 return t
             case TypeVar():
                 return context.get(t, t)
-            case MapType(items):
-                return MapType(tuple(VarDecl(item.name, simplify_generic(item.type, context))
-                                     for item in items))
+            case Intersection(items):
+                return Intersection(frozenset(simplify_generic(x, context) for x in items))
+            case Row(name, type):
+                return Row(name, simplify_generic(type, context))
             case FunctionType(params, return_type, new):
-                new_params = tuple(VarDecl(item.name, simplify_generic(item.type, context))
-                                   for item in params)
+                new_params = simplify_generic(params, context)
                 new_return_type = simplify_generic(return_type, context)
                 return FunctionType(new_params, new_return_type, new)
-            case OverloadedFunctionType(types): raise NotImplementedError
             case _: raise NotImplementedError(f'{t!r}')
     return simplify_generic(t, {})
 
 
-def protocol(items: typing.Iterable[VarDecl], type_params=(), implements: typing.Iterable[Generic[MapType[str]]] = ()) -> Generic[MapType[str]]:
-    m = Generic((TypeVar('Self'),), MapType[str](tuple([*items, *chain.from_iterable(x.type.items for x in implements)])))
+def intersect(*rows: Row) -> TypedDict:
+    return Intersection[Row](frozenset(rows))
+
+
+TOP = intersect()
+
+
+def protocol(typed_dict: TypedDict, type_params=(), implements: TypedDict = TOP) -> Generic[TypedDict]:
+    m = Generic((TypeVar('Self'),), typed_dict & implements)
     if type_params:
         return Generic(tuple(TypeVar(x) for x in type_params), m)
     return m
 
 
-def klass(name: str, items: typing.Iterable[VarDecl], *, implements: typing.Iterable[Generic[MapType[str]]] = ()) -> MapType[str]:
-    res = protocol(items, implements=implements)
+def klass(name: str, class_dict: TypedDict, implements: TypedDict = TOP) -> TypedDict:
+    res = protocol(class_dict, implements=implements)
     return res[Ref(name)]
 
 
-def method(*vardecls: VarDecl, return_type: TypeExpr, new: bool):
-    return FunctionType((VarDecl('self', TypeVar('Self')), *vardecls),
+def method(*rows: Row, return_type: TypeExpr, new: bool):
+    return FunctionType(intersect(Row('self', TypeVar('Self')), *rows),
                         return_type=return_type,
                         new=new)
 
 def main():
     INT = Ref('builtins.int', static=True)
-    LEN = Generic((TypeVar('T'),), FunctionType((VarDecl('obj', TypeVar('T')),), INT, new=False))
 
-    NEXT_METHOD = VarDecl('__next__', method(return_type=TypeVar('T'), new=False))
+    SIZEABLE_PROTOCOL = protocol(intersect(Row('__len__', method(return_type=INT, new=False))))
 
-    ITERATOR_PROTOCOL = protocol((NEXT_METHOD,))
+    LEN = FunctionType(intersect(Row('obj', SIZEABLE_PROTOCOL)), INT, new=False)
 
-    ITERABLE_METHOD = method(return_type=ITERATOR_PROTOCOL, new=True)
+    NEXT_METHOD = Row('__next__', method(return_type=TypeVar('T'), new=False))
 
-    ITERABLE_PROTOCOL = protocol(
-        (VarDecl('__iter__', ITERABLE_METHOD),),
-        type_params=('T',)
-    )
+    ITERATOR_PROTOCOL = intersect(NEXT_METHOD)
+
+    ITERABLE_METHOD = method(return_type=protocol(ITERATOR_PROTOCOL), new=True)
+
+    ITERABLE_PROTOCOL = Generic((TypeVar('T'),), intersect(Row('__iter__', ITERABLE_METHOD)))
 
     NONE = Ref('builtins.None', static=True)
-    STR_METHOD = VarDecl('__str__', method(return_type=NONE, new=False))
     ITERABLE_INT = ITERABLE_PROTOCOL[INT]
-    OBJECT = klass("object", [STR_METHOD])
-    RANGE = klass("range", [], implements=[ITERABLE_INT])
-    print(f'{LEN=}')
-    print(f'{OBJECT}')
-    print(f'{RANGE=}')
+
+    OBJECT_DICT = intersect(
+           Row('__str__', method(return_type=NONE, new=False)),
+           Row('__hash__', method(return_type=INT, new=False)),
+    )
+    print(f'      {OBJECT_DICT=}')
+    OBJECT = klass("object", OBJECT_DICT)
+    RANGE = klass("range", intersect(), implements=ITERABLE_INT)
+    print(f'              {LEN=}')
+    print(f'           {OBJECT=}')
     print(f'{ITERABLE_PROTOCOL=}')
-    print(f'{ITERABLE_INT=}')
-    print(f'{OBJECT=}')
+    print(f'     {ITERABLE_INT=}')
+    print(f'            {RANGE=}')
+    print(f'           {OBJECT=}')
     
     
 if __name__ == '__main__':
