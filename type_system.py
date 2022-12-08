@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typing
 from dataclasses import dataclass
+from itertools import chain
 from typing import Optional, TypeAlias
 
 
@@ -39,7 +40,7 @@ class VarDecl(typing.Generic[Field]):
 
 
 @dataclass(frozen=True)
-class MapType(typing.Generic[Field]):
+class MapType(TypeExpr, typing.Generic[Field]):
     items: tuple[VarDecl, ...]
 
     def __repr__(self) -> str:
@@ -47,8 +48,23 @@ class MapType(typing.Generic[Field]):
 
 
 Tuple: typing.TypeAlias = MapType[int]
-Struct: typing.TypeAlias = MapType[str]
 
+def protocol(items: typing.Iterable[VarDecl], type_params=(), implements: typing.Iterable[MapType] = ()):
+    m = Generic((TypeVar('Self'),), MapType[str](tuple([*items, *chain.from_iterable(x.type.items for x in implements)])))
+    if type_params:
+        return Generic(tuple(TypeVar(x) for x in type_params), m)
+    return m
+
+
+def klass(name: str, items: typing.Iterable[VarDecl], *, implements: typing.Iterable[MapType] = ()):
+    res = protocol(items, implements=implements)
+    return res[Ref(name)]
+
+
+def method(*vardecls: VarDecl, return_type: TypeExpr, new: bool):
+    return FunctionType((VarDecl('self', TypeVar('Self')), *vardecls),
+                        return_type=return_type,
+                        new=new)
 
 T = typing.TypeVar('T', bound=TypeExpr)
 
@@ -61,8 +77,8 @@ class Generic(TypeExpr, typing.Generic[T]):
     def __repr__(self) -> str:
         return f'[{", ".join(repr(x) for x in self.type_params)}]{self.type}'
 
-    def __getitem__(self, *items: TypeExpr) -> Instantiation:
-        return Instantiation(self, items)
+    def __getitem__(self, *items: TypeExpr) -> T:
+        return simplify_generic(Instantiation(self, items))
 
 
 @dataclass(frozen=True)
@@ -115,50 +131,62 @@ def is_generic(self):
     return all(v is None for v in self.type_params.values())
 
 
-def simplify_generic(t, context: dict[TypeVar, TypeExpr]):
-    match t:
-        case Generic(type_params, type):
-            new_context = {k: v for k, v in context.items() if k not in type_params}
-            return simplify_generic(type, new_context)
-        case Instantiation(generic, type_params):
-            new_type_params = tuple(simplify_generic(t, context) for t in type_params)
-            new_context = {**context, **dict(zip(generic.type_params, new_type_params))}
-            return simplify_generic(generic.type, new_context)
-        case Ref():
-            return t
-        case TypeVar():
-            return context.get(t, t)
-        case MapType(items):
-            return MapType(tuple(VarDecl(item.name, simplify_generic(item.type, context))
-                                 for item in items))
-        case FunctionType(params, return_type, new):
-            new_params = tuple(VarDecl(item.name, simplify_generic(item.type, context))
-                               for item in params)
-            new_return_type = simplify_generic(return_type, context)
-            print(return_type, new_return_type)
-            return FunctionType(new_params, new_return_type, new)
-        case OverloadedFunctionType(types): raise NotImplementedError
-        case _: raise NotImplementedError(f'{t!r}')
-
+def simplify_generic(t):
+    def simplify_generic(t, context: dict[TypeVar, TypeExpr]):
+        match t:
+            case Generic(type_params, type):
+                new_context = {k: v for k, v in context.items() if k not in type_params}
+                return Generic(type_params, simplify_generic(type, new_context))
+            case Instantiation(generic, type_params):
+                new_type_params = tuple(simplify_generic(t, context) for t in type_params)
+                new_context = {k: v for k, v in zip(generic.type_params, new_type_params)}
+                new_context = context | new_context
+                return simplify_generic(generic.type, new_context)
+            case Ref():
+                return t
+            case TypeVar():
+                return context.get(t, t)
+            case MapType(items):
+                return MapType(tuple(VarDecl(item.name, simplify_generic(item.type, context))
+                                     for item in items))
+            case FunctionType(params, return_type, new):
+                new_params = tuple(VarDecl(item.name, simplify_generic(item.type, context))
+                                   for item in params)
+                new_return_type = simplify_generic(return_type, context)
+                return FunctionType(new_params, new_return_type, new)
+            case OverloadedFunctionType(types): raise NotImplementedError
+            case _: raise NotImplementedError(f'{t!r}')
+    return simplify_generic(t, {})
 
 def main():
     LEN = Generic((TypeVar('T'),), FunctionType((VarDecl('obj', TypeVar('T')),), TypeVar('int'), new=False))
-    print(LEN)
 
-    NEXT_METHOD = VarDecl('__next__', FunctionType((VarDecl('self', TypeVar('Self')),), TypeVar('T'), new=False))
+    NEXT_METHOD = VarDecl('__next__', method(return_type=TypeVar('T'), new=False))
 
-    ITERATOR_PROTOCOL = Struct((NEXT_METHOD,))
+    ITERATOR_PROTOCOL = protocol((NEXT_METHOD,))
 
-    ITERABLE_METHOD = FunctionType((VarDecl('self', TypeVar('Self')),), ITERATOR_PROTOCOL, new=False)
+    ITERABLE_METHOD = method(return_type=ITERATOR_PROTOCOL, new=False)
 
-    ITERABLE_PROTOCOL = Generic((TypeVar('T'),), Struct(
-        (VarDecl('__iter__', ITERABLE_METHOD),)
-    ))
-
-    print(ITERABLE_PROTOCOL[TypeVar('int')])
-    print(simplify_generic(ITERABLE_PROTOCOL[TypeVar('int')], {}))
+    ITERABLE_PROTOCOL = protocol(
+        (VarDecl('__iter__', ITERABLE_METHOD),),
+        type_params=('T',)
+    )
 
 
+
+    NONE = Ref('builtins.None', static=True)
+    STR_METHOD = VarDecl('__str__', method(return_type=NONE, new=False))
+    ITERABLE_INT = ITERABLE_PROTOCOL[TypeVar("int")]
+    OBJECT = klass("object", [STR_METHOD])
+    RANGE = klass("range", [], implements=[ITERABLE_INT])
+    print(f'{LEN=}')
+    print(f'{OBJECT}')
+    print(f'{RANGE=}')
+    print(f'{ITERABLE_PROTOCOL=}')
+    print(f'{ITERABLE_INT=}')
+    print(f'{OBJECT=}')
+    
+    
 if __name__ == '__main__':
     main()
 
