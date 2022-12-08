@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing
 from dataclasses import dataclass
 from itertools import chain
-from typing import Optional, TypeAlias
+from typing import Optional
 
 
 class TypeExpr:
@@ -49,30 +49,13 @@ class MapType(TypeExpr, typing.Generic[Field]):
 
 Tuple: typing.TypeAlias = MapType[int]
 
-def protocol(items: typing.Iterable[VarDecl], type_params=(), implements: typing.Iterable[MapType] = ()):
-    m = Generic((TypeVar('Self'),), MapType[str](tuple([*items, *chain.from_iterable(x.type.items for x in implements)])))
-    if type_params:
-        return Generic(tuple(TypeVar(x) for x in type_params), m)
-    return m
-
-
-def klass(name: str, items: typing.Iterable[VarDecl], *, implements: typing.Iterable[MapType] = ()):
-    res = protocol(items, implements=implements)
-    return res[Ref(name)]
-
-
-def method(*vardecls: VarDecl, return_type: TypeExpr, new: bool):
-    return FunctionType((VarDecl('self', TypeVar('Self')), *vardecls),
-                        return_type=return_type,
-                        new=new)
-
 T = typing.TypeVar('T', bound=TypeExpr)
 
 
 @dataclass(frozen=True)
-class Generic(TypeExpr, typing.Generic[T]):
+class Generic(TypeExpr):
     type_params: tuple[TypeVar]
-    type: T
+    type: TypeExpr
 
     def __repr__(self) -> str:
         return f'[{", ".join(repr(x) for x in self.type_params)}]{self.type}'
@@ -109,26 +92,10 @@ class FunctionType(TypeExpr):
 
 @dataclass(frozen=True)
 class OverloadedFunctionType:
-    types: tuple[Generic[FunctionType], ...]
+    types: tuple[Generic, ...]
 
     def __repr__(self):
         return f'({", ".join(map(str, self.types))})'
-
-
-def make_function_type(return_type: TypeExpr,
-                       params: tuple[VarDecl, ...] = (),
-                       new: bool = True,
-                       pure=True) -> OverloadedFunctionType:
-    f = FunctionType(params, return_type, new=new)
-    g = Generic((), f)
-    return OverloadedFunctionType((g,))
-
-
-SimpleType: TypeAlias = Ref | TypeVar | OverloadedFunctionType | MapType | Generic | Instantiation | FunctionType
-
-
-def is_generic(self):
-    return all(v is None for v in self.type_params.values())
 
 
 def simplify_generic(t):
@@ -158,25 +125,41 @@ def simplify_generic(t):
             case _: raise NotImplementedError(f'{t!r}')
     return simplify_generic(t, {})
 
+def protocol(items: typing.Iterable[VarDecl], type_params=(), implements: typing.Iterable[MapType] = ()):
+    m = Generic((TypeVar('Self'),), MapType[str](tuple([*items, *chain.from_iterable(x.type.items for x in implements)])))
+    if type_params:
+        return Generic(tuple(TypeVar(x) for x in type_params), m)
+    return m
+
+
+def klass(name: str, items: typing.Iterable[VarDecl], *, implements: typing.Iterable[MapType] = ()):
+    res = protocol(items, implements=implements)
+    return res[Ref(name)]
+
+
+def method(*vardecls: VarDecl, return_type: TypeExpr, new: bool):
+    return FunctionType((VarDecl('self', TypeVar('Self')), *vardecls),
+                        return_type=return_type,
+                        new=new)
+
 def main():
-    LEN = Generic((TypeVar('T'),), FunctionType((VarDecl('obj', TypeVar('T')),), TypeVar('int'), new=False))
+    INT = Ref('builtins.int', static=True)
+    LEN = Generic((TypeVar('T'),), FunctionType((VarDecl('obj', TypeVar('T')),), INT, new=False))
 
     NEXT_METHOD = VarDecl('__next__', method(return_type=TypeVar('T'), new=False))
 
     ITERATOR_PROTOCOL = protocol((NEXT_METHOD,))
 
-    ITERABLE_METHOD = method(return_type=ITERATOR_PROTOCOL, new=False)
+    ITERABLE_METHOD = method(return_type=ITERATOR_PROTOCOL, new=True)
 
     ITERABLE_PROTOCOL = protocol(
         (VarDecl('__iter__', ITERABLE_METHOD),),
         type_params=('T',)
     )
 
-
-
     NONE = Ref('builtins.None', static=True)
     STR_METHOD = VarDecl('__str__', method(return_type=NONE, new=False))
-    ITERABLE_INT = ITERABLE_PROTOCOL[TypeVar("int")]
+    ITERABLE_INT = ITERABLE_PROTOCOL[INT]
     OBJECT = klass("object", [STR_METHOD])
     RANGE = klass("range", [], implements=[ITERABLE_INT])
     print(f'{LEN=}')
@@ -190,6 +173,8 @@ def main():
 if __name__ == '__main__':
     main()
 
+
+# SimpleType: TypeAlias = Ref | TypeVar | OverloadedFunctionType | MapType | Generic | Instantiation | FunctionType
 #
 # def instantiate(self: T, type_args: dict[TypeVar, SimpleType]) -> T: pass
 #
