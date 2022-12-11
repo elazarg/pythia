@@ -56,15 +56,17 @@ class Row(TypeExpr):
         return index_or_name.value == self.index or index_or_name.value == self.name
 
 
+R = typing.TypeVar('R', bound=Row)
+
 
 @dataclass(frozen=True)
-class Intersection(TypeExpr, typing.Generic[T]):
-    items: frozenset[T]
+class Intersection(TypeExpr, typing.Generic[R]):
+    items: frozenset[R]
 
     def __repr__(self) -> str:
         return f'{{{" & ".join(f"{decl}" for decl in self.items)}}}'
 
-    def __and__(self, other: TypeExpr) -> Intersection[T]:
+    def __and__(self, other: TypeExpr) -> Intersection[R]:
         if not isinstance(other, Intersection):
             raise TypeError(f'Cannot intersect {self} with {other}')
         if not self.items:
@@ -79,10 +81,6 @@ class Intersection(TypeExpr, typing.Generic[T]):
         good = intersect([item for item in self.items if item.match(index)])
         bad = intersect([item for item in self.items if not item.match(index)])
         return good, bad
-
-    def at(self: Intersection[Row], index: Literal[str] | Literal[int]) -> Intersection[TypeExpr]:
-        good, bad = self.split_by_index(index)
-        return Intersection(frozenset({x.type for x in good.items}))
 
 
 TypedDict: typing.TypeAlias = Intersection[Row]
@@ -328,6 +326,10 @@ def join(t1: TypeExpr, t2: TypeExpr):
 
 
 def meet(t1: TypeExpr, t2: TypeExpr):
+    if t1 == TOP:
+        return t2
+    if t2 == TOP:
+        return t1
     match (t1, t2):
         case (Infer(), _):
             return t2
@@ -344,8 +346,10 @@ def meet(t1: TypeExpr, t2: TypeExpr):
             return Union(frozenset(meet(item, t) for item in items))
         case (Intersection(items1), Intersection(items2)):
             return Intersection(items1 | items2)
+        case (Intersection(items), Row() as r) | (Row() as r, Intersection(items)):
+            return Intersection(items | {r})
         case (Intersection(items), t) | (t, Intersection(items)):
-            return Intersection(items | {t})
+            return TOP
         case (FunctionType(params1, return_type1, new1, property1), FunctionType(params2, return_type2, new2, property2)):
             return FunctionType(meet(params1, params2),
                                 join(return_type1, return_type2),
@@ -358,9 +362,9 @@ def meet(t1: TypeExpr, t2: TypeExpr):
                 return Union(frozenset({t1, t2}))
 
 
-def meet_all(param: typing.Iterable[TypeExpr]) -> TypeExpr:
+def meet_all(items: typing.Iterable[TypeExpr]) -> TypeExpr:
     res = TOP
-    for t in param:
+    for t in items:
         res = meet(res, t)
     return res
 
@@ -370,10 +374,10 @@ def apply(t: TypeExpr, action: str, arg: TypeExpr) -> TypeExpr:
         case Intersection(items), action, arg:
             return meet_all(apply(item, action, arg) for item in items)
         case t, ('getattr' | 'getitem'), index:
-            good = t.class_dict.at(index)
+            good, bad = t.class_dict.split_by_index(index)
             if not good.items:
                 raise TypeError(f'No attribute {index} in {t}')
-            return good
+            return Intersection(frozenset({x.type for x in good.items}))
         case FunctionType(return_type=return_type), 'call', arg:
             return return_type
         case Class(), 'call', arg:
