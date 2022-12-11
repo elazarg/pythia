@@ -71,7 +71,7 @@ class Intersection(TypeExpr, typing.Generic[T]):
         return res
 
     def split_by_index(self: Intersection[Row], index: str | int) -> tuple[Intersection[Row], Intersection[Row]]:
-        res = intersect(*[item for item in self.items if item.match(index)])
+        res = intersect([item for item in self.items if item.match(index)])
         return res, Intersection(self.items - res.items)
 
 
@@ -163,31 +163,35 @@ def simplify_generic(t):
     return simplify_generic(t, {})
 
 
-def intersect(*rows: Row) -> TypedDict:
+def intersect(rows: typing.Iterable[Row]) -> TypedDict:
     return Intersection[Row](frozenset(rows))
 
 
-TOP = intersect()
+TOP = intersect([])
 
 
-def protocol(typed_dict: TypedDict, type_params=(), implements: TypedDict = TOP) -> Generic[TypedDict]:
-    m = Generic((TypeVar('Self'),), typed_dict & implements)
-    if type_params:
-        return Generic(tuple(TypeVar(x) for x in type_params), m)
+def protocol(typed_dict: TypedDict, implements: TypedDict = TOP) -> TypedDict:
+    m = typed_dict & implements
     return m
+
+
+def generic_protocol(typed_dict: TypedDict, type_params, implements: TypedDict = TOP) -> Generic[TypedDict]:
+    m = typed_dict & implements
+    return Generic(tuple(TypeVar(x) for x in type_params), m)
 
 
 def klass(name: str, class_dict: TypedDict, implements: TypedDict = TOP) -> Class:
     res = protocol(class_dict, implements=implements)
-    return Class(name, res[Ref(name)])
+    return Class(name, res)
 
 
 def method(*rows: Row, return_type: TypeExpr, new: bool):
-    return FunctionType(intersect(Row(0, 'self', TypeVar('Self')), *rows),
+    return FunctionType(intersect([Row(0, 'self', TypeVar('Self')), *rows]),
                         return_type=return_type,
                         new=new)
 
-def bind_self(function: FunctionType) -> FunctionType:
+
+def infer_self(function: FunctionType) -> Generic[FunctionType]:
     params = function.params
     if not params:
         raise TypeError(f'Cannot bind self to {function}')
@@ -195,9 +199,9 @@ def bind_self(function: FunctionType) -> FunctionType:
     assert len(self_arg.items) == 1
     self_arg = next(iter(self_arg.items))
     if self_arg.type == Infer():
-        self_arg = Row(self_arg.index, self_arg.name, TypeVar('Self'))
-    params = intersect(self_arg) & other_args
-    return FunctionType(params, function.return_type, function.new)
+        self_arg = Row(0, self_arg.name, TypeVar('Self'))
+    params = intersect([self_arg]) & other_args
+    return Generic((TypeVar('Self'),), FunctionType(params, function.return_type, function.new))
 
 
 # convert a Python ast to a type expression
@@ -210,19 +214,20 @@ def ast_to_type(tree: ast.AST):
         case ast.Name(id=id):
             return Ref(id)
         case ast.Module(body):
-            return intersect(*[Row(None, stmt.name, ast_to_type(stmt)) for stmt in body
+            return intersect([Row(None, stmt.name, ast_to_type(stmt)) for stmt in body
                                if isinstance(stmt, (ast.FunctionDef, ast.ClassDef))])
         case ast.ClassDef(name=name, body=body, bases=bases, decorator_list=decorator_list):
-            functions = [Row(i, stmt.name, bind_self(ast_to_type(stmt))) for i, stmt in enumerate(body)
-                         if isinstance(stmt, ast.FunctionDef)]
+            functions = intersect([Row(i, stmt.name, infer_self(ast_to_type(stmt))) for i, stmt in enumerate(body)
+                                   if isinstance(stmt, ast.FunctionDef)])
             for base in bases:
-                if isinstance(base, ast.Name) and base.id == 'Protocol':
-                    return protocol(intersect(*functions))
-                if isinstance(base, ast.Subscript) and isinstance(base.value, ast.Name) and base.value.id == 'Protocol':
-                    return protocol(intersect(*functions))
-            return klass(name, intersect(*functions))
+                match base:
+                    case ast.Name(id='Protocol'):
+                        return protocol(functions)
+                    case ast.Subscript(value=ast.Name(id='Protocol'), slice=ast.Name(id=id)):
+                        return Generic((TypeVar(id),), protocol(functions))
+            return klass(name, functions)
         case ast.FunctionDef(name=name, returns=returns, args=ast.arguments(args=args, vararg=vararg, kwonlyargs=kwonlyargs, kw_defaults=kw_defaults, kwarg=kwarg, defaults=defaults)):
-            params = intersect(*[Row(index, arg.arg, ast_to_type(arg.annotation)) for index, arg in enumerate(args)])
+            params = intersect([Row(index, arg.arg, ast_to_type(arg.annotation)) for index, arg in enumerate(args)])
             returns = ast_to_type(returns)
             return FunctionType(params, returns, new=False)
         case _: raise NotImplementedError(f'{tree!r}, {type(tree)}')
@@ -235,16 +240,20 @@ def pretty_print_type(t: TypeExpr, indent=0):
                 pretty_print_type(row, indent)
         case Row(index, name, typeexpr):
             print(' ' * indent, name, end='', sep='')
+            if isinstance(typeexpr, Generic):
+                print(f'[{", ".join(str(t) for t in typeexpr.type_params)}]', sep='', end='')
+                typeexpr = typeexpr.type
             if isinstance(typeexpr, Intersection):
                 print()
             pretty_print_type(typeexpr, indent + 4)
         case FunctionType(params, return_type, new):
-            print(f'({params} -> {"new " if new else ""}{return_type})')
+            pretty_params = ', '.join(f'{row.name}: {row.type}' for row in sorted(params.items, key=lambda x: x.index))
+            print(f'({pretty_params}) -> {"new " if new else ""}{return_type}')
         case Class(name, typeexpr):
             print(f': class {name}', sep='')
             pretty_print_type(typeexpr, indent)
         case Generic(type_params, typeexpr):
-            print(f'[{", ".join(str(t) for t in type_params)}]', sep='')
+            print(f'[{", ".join(str(t) for t in type_params)}]', sep='', end='')
             pretty_print_type(typeexpr, indent)
 
 
