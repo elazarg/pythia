@@ -3,7 +3,6 @@ from __future__ import annotations
 import typing
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 import ast
 
 
@@ -46,15 +45,15 @@ class TypeVar(TypeExpr):
 
 @dataclass(frozen=True)
 class Row(TypeExpr):
-    index: Optional[int]
-    name: Optional[str]
+    index: typing.Optional[int]
+    name: typing.Optional[str]
     type: TypeExpr
 
     def __repr__(self):
         return f'{self.name}: {self.type}'
 
-    def match(self, index_or_name: int | str):
-        return index_or_name == self.index or index_or_name == self.name
+    def match(self, index_or_name: Literal[int] | Literal[str]):
+        return index_or_name.value == self.index or index_or_name.value == self.name
 
 
 
@@ -76,9 +75,14 @@ class Intersection(TypeExpr, typing.Generic[T]):
         assert len(set(type(item) for item in res.items)) <= 1
         return res
 
-    def split_by_index(self: Intersection[Row], index: str | int) -> tuple[Intersection[Row], Intersection[Row]]:
-        res = intersect([item for item in self.items if item.match(index)])
-        return res, Intersection(self.items - res.items)
+    def split_by_index(self: Intersection[Row], index: Literal[str] | Literal[int]) -> tuple[Intersection[Row], Intersection[Row]]:
+        good = intersect([item for item in self.items if item.match(index)])
+        bad = intersect([item for item in self.items if not item.match(index)])
+        return good, bad
+
+    def at(self: Intersection[Row], index: Literal[str] | Literal[int]) -> Intersection[TypeExpr]:
+        good, bad = self.split_by_index(index)
+        return Intersection(frozenset({x.type for x in good.items}))
 
 
 TypedDict: typing.TypeAlias = Intersection[Row]
@@ -200,7 +204,7 @@ def infer_self(function: FunctionType) -> Generic[FunctionType]:
     params = function.params
     if not params:
         raise TypeError(f'Cannot bind self to {function}')
-    self_arg, other_args = params.split_by_index(0)
+    self_arg, other_args = params.split_by_index(Literal[int](0))
     assert len(self_arg.items) == 1
     self_arg = next(iter(self_arg.items))
     if self_arg.type == Infer():
@@ -233,11 +237,11 @@ def def_to_type(definition: ast.stmt) -> Class | Protocol | FunctionType:
                 match base:
                     case ast.Name(id='Protocol'):
                         protocol = True
-                    case ast.Subscript(value=ast.Name(id='Protocol'), slice=ast.Name(id=id)):
-                        protocol = True
+                    case ast.Subscript(value=ast.Name(id='Protocol' | 'Generic'), slice=ast.Name(id=id)):
+                        protocol = id == 'Protocol'
                         generic_params = (TypeVar(id),)
-                    case ast.Subscript(value=ast.Name(id='Protocol'), slice=ast.Tuple(elts=elts)):
-                        protocol = True
+                    case ast.Subscript(value=ast.Name(id='Protocol' | 'Generic'), slice=ast.Tuple(elts=elts)):
+                        protocol = id == 'Protocol'
                         generic_params = tuple([expr_to_type(id) for id in elts])
                     case ast.Name(id=id):
                         base_classes.append(Ref(id))
@@ -265,7 +269,8 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                             if isinstance(stmt, (ast.FunctionDef, ast.ClassDef))])
     return Module(name, class_dict)
 
-def pretty_print_type(t: TypeExpr, indent=0):
+
+def pretty_print_type(t: Module | TypeExpr, indent=0):
     match t:
         case Intersection(items):
             for row in items:
@@ -340,7 +345,7 @@ def meet(t1: TypeExpr, t2: TypeExpr):
         case (Intersection(items1), Intersection(items2)):
             return Intersection(items1 | items2)
         case (Intersection(items), t) | (t, Intersection(items)):
-            return Intersection(frozenset(meet(item, t) for item in items))
+            return Intersection(items | {t})
         case (FunctionType(params1, return_type1, new1, property1), FunctionType(params2, return_type2, new2, property2)):
             return FunctionType(meet(params1, params2),
                                 join(return_type1, return_type2),
@@ -364,23 +369,30 @@ def apply(t: TypeExpr, action: str, arg: TypeExpr) -> TypeExpr:
     match t, action, arg:
         case Intersection(items), action, arg:
             return meet_all(apply(item, action, arg) for item in items)
-        case t, ('getattr' | 'getitem'), [index]:
-            good, bad = t.split_by_index(index)
-            if not good:
+        case t, ('getattr' | 'getitem'), index:
+            good = t.class_dict.at(index)
+            if not good.items:
                 raise TypeError(f'No attribute {index} in {t}')
             return good
-        case FunctionType(), 'call', arg:
-            return t.return_type
+        case FunctionType(return_type=return_type), 'call', arg:
+            return return_type
         case Class(), 'call', arg:
             return apply(apply(t.class_dict, 'getattr', Literal[str]('__call__')), action, arg)
         case _:
-            raise NotImplementedError(f'{action!r}, {t!r}')
+            raise NotImplementedError(f'{t!r}, {action!r}, {arg!r}')
+
+
+def main():
+    mod = parse_file('typeshed_mini/builtins.pyi')
+    pretty_print_type(mod)
+    S = apply(mod, 'getattr', Literal[str]('sum'))
+    print(S)
+    X = apply(S, 'call', Literal[int](1))
+    print(X)
 
 
 if __name__ == '__main__':
-    mod = parse_file('typeshed_mini/builtins.pyi')
-    pretty_print_type(mod)
-    # main()
+    main()
 
 
 # SimpleType: TypeAlias = Ref | TypeVar | OverloadedFunctionType | MapType | Generic | Instantiation | FunctionType
