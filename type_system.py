@@ -200,113 +200,38 @@ TOP = intersect([])
 BOTTOM = Union(frozenset())
 
 
-def infer_self(function: FunctionType) -> Generic[FunctionType]:
-    params = function.params
-    if not params:
-        raise TypeError(f'Cannot bind self to {function}')
-    self_arg, other_args = params.split_by_index(Literal[int](0))
-    assert len(self_arg.items) == 1
-    self_arg = next(iter(self_arg.items))
-    if self_arg.type == Infer():
-        self_arg = Row(0, self_arg.name, TypeVar('Self'))
-    params = intersect([self_arg]) & other_args
-    return Generic((TypeVar('Self'),), FunctionType(params, function.return_type, function.new))
-
-
-def expr_to_type(expr: ast.expr) -> TypeExpr:
-    match expr:
-        case None:
-            return Infer()
-        case ast.Constant(None):
-            return Ref('None')
-        case ast.Name(id=id):
-            return Ref(id)
-        case ast.Subscript(value=value, slice=ast.Tuple(elts=elts)):
-            return Instantiation(expr_to_type(value), tuple(expr_to_type(x) for x in elts))
-
-# convert a Python ast to a type expression
-def def_to_type(definition: ast.stmt) -> Class | Protocol | FunctionType:
-    match definition:
-        case ast.ClassDef(name=name, body=body, bases=base_expressions, decorator_list=decorator_list):
-            class_dict = intersect([Row(index, stmt.name, infer_self(def_to_type(stmt))) for index, stmt in enumerate(body)
-                                    if isinstance(stmt, ast.FunctionDef)])
-            base_classes = []
-            protocol = None
-            generic_params: tuple[TypeVar] = ()
-            for base in base_expressions:
-                match base:
-                    case ast.Name(id='Protocol'):
-                        protocol = True
-                    case ast.Subscript(value=ast.Name(id='Protocol' | 'Generic'), slice=ast.Name(id=id)):
-                        protocol = id == 'Protocol'
-                        generic_params = (TypeVar(id),)
-                    case ast.Subscript(value=ast.Name(id='Protocol' | 'Generic'), slice=ast.Tuple(elts=elts)):
-                        protocol = id == 'Protocol'
-                        generic_params = tuple([expr_to_type(id) for id in elts])
-                    case ast.Name(id=id):
-                        base_classes.append(Ref(id))
-            base_classes = tuple(base_classes)
-            if protocol is not None:
-                res = Protocol(class_dict, inherits=base_classes)
-            else:
-                res = Class(name, class_dict, inherits=base_classes)
-            if generic_params:
-                res = Generic(generic_params, res)
-            return res
-        case ast.FunctionDef(name=name, returns=returns, decorator_list=decorator_list,
-                             args=ast.arguments(args=args, vararg=vararg, kwonlyargs=kwonlyargs, kw_defaults=kw_defaults, kwarg=kwarg, defaults=defaults)):
-            params = intersect([Row(index, arg.arg, expr_to_type(arg.annotation)) for index, arg in enumerate(args)])
-            returns = expr_to_type(returns)
-            name_decorators = [decorator.id for decorator in decorator_list if isinstance(decorator, ast.Name)]
-            new = Literal[bool]('new' in name_decorators)
-            property = Literal[bool]('property' in name_decorators)
-            return FunctionType(params, returns, new=new, property=property)
-        case _: raise NotImplementedError(f'{definition!r}, {type(definition)}')
-
-
-def module_to_type(module: ast.Module, name: str) -> Module:
-    class_dict = intersect([Row(index, stmt.name, def_to_type(stmt)) for index, stmt in enumerate(module.body)
-                            if isinstance(stmt, (ast.FunctionDef, ast.ClassDef))])
-    return Module(name, class_dict)
-
-
 def pretty_print_type(t: Module | TypeExpr, indent=0):
     match t:
         case Intersection(items):
             for row in items:
                 pretty_print_type(row, indent)
         case Row(index, name, typeexpr):
-            print(' ' * indent, name, end='', sep='')
+            print(' ' * indent, name, '=', end='', sep='')
             if isinstance(typeexpr, Generic):
                 print(f'[{", ".join(str(t) for t in typeexpr.type_params)}]', sep='', end='')
                 typeexpr = typeexpr.type
             if isinstance(typeexpr, Intersection):
                 print()
-            pretty_print_type(typeexpr, indent + 4)
+            pretty_print_type(typeexpr, indent)
         case FunctionType(params, return_type, Literal(new), Literal(property)):
             pretty_params = ', '.join(f'{row.name}: {row.type}' for row in sorted(params.items, key=lambda x: x.index))
             print(f'({pretty_params}) -> {"new " if new else ""}{return_type}')
         case Class(name, typeexpr):
-            print(f': class {name}', sep='')
-            pretty_print_type(typeexpr, indent)
+            print(f'class {name}', sep='')
+            pretty_print_type(typeexpr, indent + 4)
         case Protocol(typeexpr):
-            print(f': protocol', sep='')
-            pretty_print_type(typeexpr, indent)
+            print(f'protocol', sep='')
+            pretty_print_type(typeexpr, indent + 4)
         case Module(name, typeexpr):
             print(f'module {name}:', sep='')
-            pretty_print_type(typeexpr, indent+4)
+            pretty_print_type(typeexpr, indent + 4)
         case Generic(type_params, typeexpr):
             print(f'[{", ".join(str(t) for t in type_params)}]', sep='', end='')
             pretty_print_type(typeexpr, indent)
+        case Ref(name):
+            print(f'{name}')
         case _:
             raise NotImplementedError(f'{t!r}, {type(t)}')
-
-
-def parse_file(path: str) -> Module:
-    with open(path) as f:
-        tree = ast.parse(f.read())
-    module = module_to_type(tree, Path(path).stem)
-    return module
 
 
 def join(t1: TypeExpr, t2: TypeExpr):
@@ -364,7 +289,6 @@ def meet(t1: TypeExpr, t2: TypeExpr):
                 return t1
             else:
                 return Union(frozenset({t1, t2}))
-
 
 def meet_all(items: typing.Iterable[TypeExpr]) -> TypeExpr:
     res = TOP
@@ -428,9 +352,25 @@ def binop_to_dunder_method(op: str) -> tuple[str, typing.Optional[str]]:
         case _: raise NotImplementedError(f'{op!r}')
 
 
+def unop_to_dunder_method(op: str) -> str:
+    match op:
+        case '-': return '__neg__'
+        case '+': return '__pos__'
+        case '~': return '__invert__'
+        case 'not': return '__bool__'
+        case 'iter': return '__iter__'
+        case 'yield iter': return '__iter__'
+        case 'next': return '__next__'
+        case _: raise NotImplementedError(f'{op!r}')
+
+
 def binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     lop, rop = binop_to_dunder_method(op)
     return call(subscr(left, Literal[str](lop)), right)
+
+
+def unop(left: TypeExpr, op: str) -> TypeExpr:
+    return call(subscr(left, Literal[str](unop_to_dunder_method(op))), BOTTOM)
 
 
 def resolve_static_ref(ref):
@@ -440,18 +380,116 @@ def resolve_static_ref(ref):
     return result
 
 
+def infer_self(row: Row) -> Row:
+    function = row.type
+    if not isinstance(function, FunctionType):
+        return row
+    params = function.params
+    if not params:
+        raise TypeError(f'Cannot bind self to {function}')
+    self_arg, other_args = params.split_by_index(Literal[int](0))
+    assert len(self_arg.items) == 1
+    self_arg = next(iter(self_arg.items))
+    if self_arg.type == Infer():
+        self_arg = Row(0, self_arg.name, TypeVar('Self'))
+    params = intersect([self_arg]) & other_args
+    g = Generic((TypeVar('Self'),), FunctionType(params, function.return_type, function.new))
+    return Row(row.index, row.name, g)
+
+
+def expr_to_type(expr: ast.expr) -> TypeExpr:
+    match expr:
+        case None:
+            return Infer()
+        case ast.Constant(None):
+            return Ref('None')
+        case ast.Name(id=id):
+            return Ref(id)
+        case ast.Subscript(value=value, slice=ast.Tuple(elts=elts)):
+            return Instantiation(expr_to_type(value), tuple(expr_to_type(x) for x in elts))
+        case ast.Subscript(value=value, slice=ast.Name(id=id)):
+            return Instantiation(expr_to_type(value), (TypeVar(id),))
+        case _:
+            raise NotImplementedError(f'{expr!r}')
+
+# convert a Python ast to a type expression
+def stmt_to_rows(definition: ast.stmt, index: int) -> typing.Iterator[Row]:
+    match definition:
+        case ast.Pass():
+            return
+        case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation, value=value):
+            yield Row(index, name, expr_to_type(annotation))
+        case ast.Import(names=aliases):
+            for alias in aliases:
+                name = alias.name
+                asname = alias.asname
+                if asname is None:
+                    continue
+                yield Row(index, asname, Ref(name, static=True))
+        case ast.ClassDef(name=name, body=body, bases=base_expressions, decorator_list=decorator_list):
+            class_dict = intersect([infer_self(row) for index, stmt in enumerate(body)
+                                    for row in stmt_to_rows(stmt, index)])
+            base_classes = []
+            protocol = None
+            generic_params: tuple[TypeVar] = ()
+            for base in base_expressions:
+                match base:
+                    case ast.Name(id='Protocol'):
+                        protocol = True
+                    case ast.Subscript(value=ast.Name(id='Protocol' | 'Generic'), slice=ast.Name(id=id)):
+                        protocol = id == 'Protocol'
+                        generic_params = (TypeVar(id),)
+                    case ast.Subscript(value=ast.Name(id='Protocol' | 'Generic'), slice=ast.Tuple(elts=elts)):
+                        protocol = id == 'Protocol'
+                        generic_params = tuple([expr_to_type(id) for id in elts])
+                    case ast.Name(id=id):
+                        base_classes.append(Ref(id))
+            base_classes = tuple(base_classes)
+            if protocol is not None:
+                res = Protocol(class_dict, inherits=base_classes)
+            else:
+                res = Class(name, class_dict, inherits=base_classes)
+            if generic_params:
+                res = Generic(generic_params, res)
+            yield Row(index, name, res)
+        case ast.FunctionDef(name=name, returns=returns, decorator_list=decorator_list,
+                             args=ast.arguments(args=args, vararg=vararg, kwonlyargs=kwonlyargs, kw_defaults=kw_defaults, kwarg=kwarg, defaults=defaults)):
+            params = intersect([Row(index, arg.arg, expr_to_type(arg.annotation)) for index, arg in enumerate(args)])
+            returns = expr_to_type(returns)
+            name_decorators = [decorator.id for decorator in decorator_list if isinstance(decorator, ast.Name)]
+            new = Literal[bool]('new' in name_decorators)
+            property = Literal[bool]('property' in name_decorators)
+            yield Row(index, name, FunctionType(params, returns, new=new, property=property))
+        case _: raise NotImplementedError(f'{definition!r}, {type(definition)}')
+
+
+def module_to_type(module: ast.Module, name: str) -> Module:
+    class_dict = intersect([row for index, stmt in enumerate(module.body)
+                            for row in stmt_to_rows(stmt, index)])
+    return Module(name, class_dict)
+
+
+def parse_file(path: str) -> Module:
+    with open(path) as f:
+        tree = ast.parse(f.read())
+    module = module_to_type(tree, Path(path).stem)
+    return module
+
+
 MODULES = Module('typeshed',
                  intersect([Row(index, file.split('.')[0], parse_file(f'typeshed_mini/{file}'))
                             for index, file in enumerate(os.listdir('typeshed_mini'))]))
 
 
 def main():
-    mod = subscr(MODULES, Literal[str]('builtins'))
-    pretty_print_type(mod)
-    S = subscr(mod, Literal[str]('sum'))
-    print(S)
-    X = apply(S, Action.CALL, Literal[int](1))
-    print(X)
+    pretty_print_type(MODULES)
+
+# mod = subscr(MODULES, Literal[str]('builtins'))
+# pretty_print_type(mod)
+# S = subscr(mod, Literal[str]('sum'))
+# print(S)
+# X = apply(S, Action.CALL, Literal[int](1))
+# print(X)
 
 
 if __name__ == '__main__':

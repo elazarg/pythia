@@ -15,7 +15,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
     """
     Abstract domain for type analysis with lattice operations.
     """
-    def __init__(self, functions, imports: dict[str, str]):
+    def __init__(self, this_module: ts.Module, functions, imports: dict[str, str]):
         # global_state = {
         #     **{name: resolve_module(path) for name, path in imports.items()},
         #     **BUILTINS_MODULE.fields,
@@ -31,7 +31,8 @@ class TypeLattice(Lattice[ts.TypeExpr]):
         #                      for f in functions})
         #
         # self.globals = ts.Class('globals()', frozendict(global_state))
-        self.globals = ts.intersect([])
+        self.globals = this_module
+        self.builtins = ts.resolve_static_ref(ts.Ref('builtins', static=True))
 
     def name(self) -> str:
         return "Type"
@@ -64,6 +65,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
                 for attr in ref.name.split('.'):
                     result = result.fields[attr]
             ref = result
+        assert isinstance(ref, (ts.TypeExpr, ts.Module, ts.Class))
         return ref
 
     def is_match(self, args: list[ts.TypeExpr], params):
@@ -87,20 +89,20 @@ class TypeLattice(Lattice[ts.TypeExpr]):
         return result
 
     def get_unary_attribute(self, value: ts.TypeExpr, op: UnOp) -> ts.TypeExpr:
+        return ts.unary(value, op)
+
+    def unop_to_str(self, op: UnOp) -> str:
         match op:
-            case UnOp.NOT: dunder = '__bool__'
-            case UnOp.POS: dunder = '__pos__'
-            case UnOp.INVERT: dunder = '__invert__'
-            case UnOp.NEG: dunder = '__neg__'
-            case UnOp.ITER | UnOp.YIELD_ITER: dunder = '__iter__'
-            case UnOp.NEXT: dunder = '__next__'
-            case x:
-                raise NotImplementedError(f'Unary operation {x} not implemented')
-        return self._attribute(value, tac.Var(dunder))
+            case UnOp.NEG: return '-'
+            case UnOp.NOT: return 'not'
+            case UnOp.INVERT: return '~'
+            case UnOp.POS: return '+'
+            case UnOp.ITER: return 'iter'
+            case UnOp.YIELD_ITER: return 'yield iter'
+            case _:
+                raise NotImplementedError(f"UnOp.{op.name}")
 
     def unary(self, value: ts.TypeExpr, op: UnOp) -> ts.TypeExpr:
-        if op == UnOp.NOT:
-            return self.resolve(ts.Ref('builtins.bool'))
         f = self.get_unary_attribute(value, op)
         return self.call(f, [value])
 
@@ -121,7 +123,13 @@ class TypeLattice(Lattice[ts.TypeExpr]):
         return self.resolve(ts.Ref(f'builtins.{type(value).__name__}', static=True))
 
     def _attribute(self, var: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
-        return ts.subscr(self.resolve(var), ts.Literal(attr.name))
+        mod = self.resolve(var)
+        try:
+            return ts.subscr(mod, ts.Literal(attr.name))
+        except TypeError:
+            if mod == self.globals:
+                return ts.subscr(self.builtins, ts.Literal(attr.name))
+            raise
 
     def attribute(self, var: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
         assert isinstance(attr, tac.Var)

@@ -412,6 +412,7 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
                 )
             case tac.Unary():
                 value = eval(expr.var)
+                assert value is not None
                 expr.allocation = self.lattice.allocation_type_unary(value, expr.op)
                 return self.lattice.unary(value=value, op=expr.op)
             case tac.Binary():

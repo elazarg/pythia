@@ -62,7 +62,7 @@ def analyze(_cfg: Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]) -
                 wl.add(succ)
 
 
-def run(f, functions, imports, simplify=True) -> Cfg:
+def run(f, functions, imports, module_type, simplify=True) -> Cfg:
     cfg = make_tac_cfg(f, simplify=simplify)
 
     # gu.pretty_print_cfg(cfg)
@@ -72,7 +72,7 @@ def run(f, functions, imports, simplify=True) -> Cfg:
     #     rewrite_remove_useless_movs_pairs(block, label)
     #     rewrite_aliases(block, label)
     #     rewrite_remove_useless_movs(block, label)
-    type_analysis = VarAnalysis[tac.Var, ts.TypeExpr](TypeLattice(functions, imports))
+    type_analysis = VarAnalysis[tac.Var, ts.TypeExpr](TypeLattice(module_type, functions, imports))
     liveness_analysis = VarAnalysis[tac.Var, Liveness](LivenessLattice(), backward=True)
     constant_analysis = VarAnalysis[tac.Var, Constant](ConstLattice())
     pointer_analysis = PointerAnalysis(type_analysis, liveness_analysis)
@@ -134,9 +134,11 @@ def print_analysis(cfg: Cfg) -> None:
 
 def analyze_function(filename: str, function_name: str) -> None:
     functions, imports = disassemble.read_file(filename)
+    module_type = ts.parse_file(filename)
     cfg = run(functions[function_name],
               functions=functions,
               imports=imports,
+              module_type=module_type,
               simplify=False)
     print_analysis(cfg)
 
