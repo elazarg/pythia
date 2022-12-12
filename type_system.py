@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import enum
+import os
 import typing
 from dataclasses import dataclass
 from pathlib import Path
@@ -97,7 +99,7 @@ class Class:
     inherits: tuple[TypeExpr, ...] = ()
 
     def __repr__(self):
-        return f'class {self.name}({self.class_dict}) < {self.inherits}'
+        return f'{self.name}'
 
 
 @dataclass(frozen=True)
@@ -308,6 +310,8 @@ def parse_file(path: str) -> Module:
 
 
 def join(t1: TypeExpr, t2: TypeExpr):
+    if t1 == t2:
+        return t1
     match t1, t2:
         case Intersection(items1), Intersection(items2):
             return Intersection(items1 | items2)
@@ -322,7 +326,7 @@ def join(t1: TypeExpr, t2: TypeExpr):
                 return Union(frozenset({t1, t2}))
         case FunctionType(params1, return_type1, new1), FunctionType(params2, return_type2, new2):
             return FunctionType(join(params1,  params2), meet(return_type1, return_type2), meet(new1, new2))
-        case _: raise NotImplementedError(f'{t1!r}, {type(t1)}')
+        case _: raise NotImplementedError(f'{t1!r}, {t2!r}')
 
 
 def meet(t1: TypeExpr, t2: TypeExpr):
@@ -369,29 +373,84 @@ def meet_all(items: typing.Iterable[TypeExpr]) -> TypeExpr:
     return res
 
 
-def apply(t: TypeExpr, action: str, arg: TypeExpr) -> TypeExpr:
+class Action(enum.Enum):
+    INDEX = enum.auto()
+    CALL = enum.auto()
+
+
+def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
     match t, action, arg:
         case Intersection(items), action, arg:
             return meet_all(apply(item, action, arg) for item in items)
-        case t, ('getattr' | 'getitem'), index:
+        case t, Action.INDEX, index:
             good, bad = t.class_dict.split_by_index(index)
             if not good.items:
                 raise TypeError(f'No attribute {index} in {t}')
-            return Intersection(frozenset({x.type for x in good.items}))
-        case FunctionType(return_type=return_type), 'call', arg:
+            return meet_all(x.type for x in good.items)
+        case FunctionType(return_type=return_type), Action.CALL, arg:
             return return_type
-        case Class(), 'call', arg:
-            return apply(apply(t.class_dict, 'getattr', Literal[str]('__call__')), action, arg)
+        case Class(), Action.CALL, arg:
+            init = apply(t.class_dict, Action.INDEX, Literal[str]('__call__'))
+            return apply(init, action, arg)
         case _:
             raise NotImplementedError(f'{t!r}, {action!r}, {arg!r}')
 
 
+def subscr(t: TypeExpr, index: TypeExpr) -> TypeExpr:
+    return apply(t, Action.INDEX, index)
+
+
+def call(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
+    return apply(t, Action.CALL, arg)
+
+
+def binop_to_dunder_method(op: str) -> tuple[str, typing.Optional[str]]:
+    match op:
+        case '+': return '__add__', '__radd__'
+        case '-': return '__sub__', '__rsub__'
+        case '*': return '__mul__', '__rmul__'
+        case '/': return '__truediv__', '__rtruediv__'
+        case '//': return '__floordiv__', '__rfloordiv__'
+        case '%': return '__mod__', '__rmod__'
+        case '**': return '__pow__', '__rpow__'
+        case '<<': return '__lshift__', '__rlshift__'
+        case '>>': return '__rshift__', '__rrshift__'
+        case '&': return '__and__', '__rand__'
+        case '|': return '__or__', '__ror__'
+        case '^': return '__xor__', '__rxor__'
+        case '@': return '__matmul__', '__rmatmul__'
+        case '==': return '__eq__', None
+        case '!=': return '__ne__', None
+        case '<': return '__lt__', None
+        case '<=': return '__le__', None
+        case '>': return '__gt__', None
+        case '>=': return '__ge__', None
+        case _: raise NotImplementedError(f'{op!r}')
+
+
+def binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
+    lop, rop = binop_to_dunder_method(op)
+    return call(subscr(left, Literal[str](lop)), right)
+
+
+def resolve_static_ref(ref):
+    result = MODULES
+    for attr in ref.name.split('.'):
+        result = subscr(result, Literal[str](attr))
+    return result
+
+
+MODULES = Module('typeshed',
+                 intersect([Row(index, file.split('.')[0], parse_file(f'typeshed_mini/{file}'))
+                            for index, file in enumerate(os.listdir('typeshed_mini'))]))
+
+
 def main():
-    mod = parse_file('typeshed_mini/builtins.pyi')
+    mod = subscr(MODULES, Literal[str]('builtins'))
     pretty_print_type(mod)
-    S = apply(mod, 'getattr', Literal[str]('sum'))
+    S = subscr(mod, Literal[str]('sum'))
     print(S)
-    X = apply(S, 'call', Literal[int](1))
+    X = apply(S, Action.CALL, Literal[int](1))
     print(X)
 
 

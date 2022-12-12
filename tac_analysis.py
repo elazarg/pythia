@@ -15,7 +15,7 @@ from tac_analysis_domain import IterationStrategy, VarAnalysis, BackwardIteratio
     Analysis
 from tac_analysis_liveness import LivenessLattice, Liveness
 from tac_analysis_pointer import PointerAnalysis, pretty_print_pointers, find_reachable
-from tac_analysis_types import TypeLattice, TypeExpr
+from tac_analysis_types import TypeLattice, ts
 
 T = TypeVar('T')
 Cfg: TypeAlias = gu.Cfg[tac.Tac]
@@ -72,7 +72,7 @@ def run(f, functions, imports, simplify=True) -> Cfg:
     #     rewrite_remove_useless_movs_pairs(block, label)
     #     rewrite_aliases(block, label)
     #     rewrite_remove_useless_movs(block, label)
-    type_analysis = VarAnalysis[tac.Var, TypeExpr](TypeLattice(functions, imports))
+    type_analysis = VarAnalysis[tac.Var, ts.TypeExpr](TypeLattice(functions, imports))
     liveness_analysis = VarAnalysis[tac.Var, Liveness](LivenessLattice(), backward=True)
     constant_analysis = VarAnalysis[tac.Var, Constant](ConstLattice())
     pointer_analysis = PointerAnalysis(type_analysis, liveness_analysis)
@@ -137,15 +137,15 @@ def analyze_function(filename: str, function_name: str) -> None:
     cfg = run(functions[function_name],
               functions=functions,
               imports=imports,
-              simplify=True)
+              simplify=False)
     print_analysis(cfg)
 
 
 def main() -> None:
     # analyze_function('examples/feature_selection.py', 'do_work')
     # analyze_function('examples/feature_selection.py', 'run')
-    analyze_function('examples/toy.py', 'listing')
-    # analyze_function('examples/toy.py', 'minimal')
+    # analyze_function('examples/toy.py', 'listing')
+    analyze_function('examples/toy.py', 'minimal')
     # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/toy.py', 'toy3')
 

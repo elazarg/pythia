@@ -2,113 +2,91 @@
 
 from __future__ import annotations as _
 
-import ast
 from collections import defaultdict
-from typing import Optional, Iterable, TypeAlias
-
-from frozendict import frozendict
+from typing import Optional, Iterable
 
 import tac
 from tac import Predefined, UnOp
 from tac_analysis_domain import Lattice
-from type_system import Ref, TypeExpr, BOTTOM, TOP
 import type_system as ts
 
 
-class TypeLattice(Lattice[TypeExpr]):
+class TypeLattice(Lattice[ts.TypeExpr]):
     """
     Abstract domain for type analysis with lattice operations.
     """
     def __init__(self, functions, imports: dict[str, str]):
-        global_state = {
-            **{name: resolve_module(path) for name, path in imports.items()},
-            **BUILTINS_MODULE.fields,
-        }
-
-        global_state.update({f: make_function_type(
-                                    return_type=parse_type_annotation(
-                                        ast.parse(functions[f].__annotations__.get('return', 'object'), mode='eval').body,
-                                        global_state,
-                                    ),
-                                    new=False,
-                                )
-                             for f in functions})
-
-        self.globals = ObjectType('globals()', frozendict(global_state))
+        # global_state = {
+        #     **{name: resolve_module(path) for name, path in imports.items()},
+        #     **BUILTINS_MODULE.fields,
+        # }
+        #
+        # global_state.update({f: make_function_type(
+        #                             return_type=parse_type_annotation(
+        #                                 ast.parse(functions[f].__annotations__.get('return', 'object'), mode='eval').body,
+        #                                 global_state,
+        #                             ),
+        #                             new=False,
+        #                         )
+        #                      for f in functions})
+        #
+        # self.globals = ts.Class('globals()', frozendict(global_state))
+        self.globals = ts.intersect([])
 
     def name(self) -> str:
         return "Type"
 
-    def join(self, left: TypeExpr, right: TypeExpr) -> TypeExpr:
-        if self.is_bottom(left) or self.is_top(right):
-            return right
-        if self.is_bottom(right) or self.is_top(left):
-            return left
-        if left == right:
-            return left
-        return self.top()
+    def join(self, left: ts.TypeExpr, right: ts.TypeExpr) -> ts.TypeExpr:
+        return ts.join(left, right)
 
-    def meet(self, left: TypeExpr, right: TypeExpr) -> TypeExpr:
-        if self.is_top(left) or self.is_bottom(right):
-            return left
-        if self.is_top(right) or self.is_bottom(left):
-            return right
-        if left == right:
-            return left
-        return self.bottom()
+    def meet(self, left: ts.TypeExpr, right: ts.TypeExpr) -> ts.TypeExpr:
+        return ts.meet(left, right)
 
-    def top(self) -> TypeExpr:
-        return TOP
+    def top(self) -> ts.TypeExpr:
+        return ts.TOP
 
-    def is_top(self, elem: TypeExpr) -> bool:
-        return elem == TOP
+    def is_top(self, elem: ts.TypeExpr) -> bool:
+        return elem == ts.TOP
 
-    def is_bottom(self, elem: TypeExpr) -> bool:
-        return elem == BOTTOM
+    def is_bottom(self, elem: ts.TypeExpr) -> bool:
+        return elem == ts.BOTTOM
 
     @classmethod
-    def bottom(cls) -> TypeExpr:
-        return BOTTOM
+    def bottom(cls) -> ts.TypeExpr:
+        return ts.BOTTOM
 
-    def resolve(self, ref: TypeExpr) -> TypeExpr:
-        if isinstance(ref, Ref):
+    def resolve(self, ref: ts.TypeExpr) -> ts.TypeExpr:
+        if isinstance(ref, ts.Ref):
             if ref.static:
-                result = resolve_module(ref.name)
+                result = ts.resolve_static_ref(ref)
             else:
                 result = self.globals
                 for attr in ref.name.split('.'):
                     result = result.fields[attr]
-            assert result.name == 'type'
-            return result.type_params['T']
+            ref = result
         return ref
 
-    def is_match(self, args: list[TypeExpr], params: ParamsType):
-        if len(args) < len(params.params):
-            return False
-        if len(args) > len(params.params) and not params.varargs:
-            return False
-        return all(self.is_subtype(arg, param)
-                   for arg, param in zip(args, params.params))
+    def is_match(self, args: list[ts.TypeExpr], params):
+        return True
 
-    def join_all(self, types: Iterable[TypeExpr]) -> TypeExpr:
+    def join_all(self, types: Iterable[ts.TypeExpr]) -> ts.TypeExpr:
         result = TypeLattice.bottom()
         for t in types:
             result = self.join(result, t)
         return result
 
-    def call(self, function: TypeExpr, args: list[TypeExpr]) -> TypeExpr:
-        return ts.apply(self.resolve(function), 'call', ts.intersect([ts.Row(index, None, self.resolve(arg))
-                                                                      for index, arg in enumerate(args)]))
+    def call(self, function: ts.TypeExpr, args: list[ts.TypeExpr]) -> ts.TypeExpr:
+        return ts.call(self.resolve(function), ts.intersect([ts.Row(index, None, self.resolve(arg))
+                                                             for index, arg in enumerate(args)]))
 
-    def binary(self, left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
-        overloaded_function = BINARY.get(op)
-        result = self.call(overloaded_function, [left, right])
+    def binary(self, left: ts.TypeExpr, right: ts.TypeExpr, op: str) -> ts.TypeExpr:
+        result = ts.binop(left, right, op)
         # Shorthand for: "we assume that there is an implementation"
         if self.is_bottom(result):
             return self.top()
         return result
 
-    def get_unary_attribute(self, value: TypeExpr, op: UnOp) -> TypeExpr:
+    def get_unary_attribute(self, value: ts.TypeExpr, op: UnOp) -> ts.TypeExpr:
         match op:
             case UnOp.NOT: dunder = '__bool__'
             case UnOp.POS: dunder = '__pos__'
@@ -120,57 +98,58 @@ class TypeLattice(Lattice[TypeExpr]):
                 raise NotImplementedError(f'Unary operation {x} not implemented')
         return self._attribute(value, tac.Var(dunder))
 
-    def unary(self, value: TypeExpr, op: UnOp) -> TypeExpr:
+    def unary(self, value: ts.TypeExpr, op: UnOp) -> ts.TypeExpr:
         if op == UnOp.NOT:
-            return self.resolve(Ref('builtins.bool'))
+            return self.resolve(ts.Ref('builtins.bool'))
         f = self.get_unary_attribute(value, op)
         return self.call(f, [value])
 
-    def predefined(self, name: Predefined) -> Optional[TypeExpr]:
+    def predefined(self, name: Predefined) -> Optional[ts.TypeExpr]:
         match name:
-            case Predefined.LIST: return LIST_CONSTRUCTOR
-            case Predefined.TUPLE: return TUPLE_CONSTRUCTOR
+            case Predefined.LIST: return self.top()
+            case Predefined.TUPLE: return self.top()
             case Predefined.GLOBALS: return self.globals
-            case Predefined.NONLOCALS: return NONLOCALS_OBJECT
-            case Predefined.LOCALS: return LOCALS_OBJECT
-            case Predefined.SLICE: return SLICE_CONSTRUCTOR
-            case Predefined.CONST_KEY_MAP: return DICT_CONSTRUCTOR
+            case Predefined.NONLOCALS: return self.top()
+            case Predefined.LOCALS: return self.top()
+            case Predefined.SLICE: return self.top()
+            case Predefined.CONST_KEY_MAP: return self.top()
         return None
 
-    def const(self, value: object) -> TypeExpr:
+    def const(self, value: object) -> ts.TypeExpr:
         if value is None:
-            return self.resolve(Ref('builtins.NoneType'))
-        return self.resolve(Ref(type(value).__name__))
+            return self.resolve(ts.Ref('builtins.NoneType'))
+        return self.resolve(ts.Ref(f'builtins.{type(value).__name__}', static=True))
 
-    def _attribute(self, var: TypeExpr, attr: tac.Var) -> TypeExpr:
-        return ts.apply(self.resolve(var), 'getattr', ts.Literal(attr.name))
+    def _attribute(self, var: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
+        return ts.subscr(self.resolve(var), ts.Literal(attr.name))
 
-    def attribute(self, var: TypeExpr, attr: tac.Var) -> TypeExpr:
+    def attribute(self, var: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
         assert isinstance(attr, tac.Var)
         return self._attribute(var, attr)
 
-    def subscr(self, array: TypeExpr, index: TypeExpr) -> TypeExpr:
-        return ts.apply(self.resolve(array), 'getitem', self.resolve(index))
+    def subscr(self, array: ts.TypeExpr, index: ts.TypeExpr) -> ts.TypeExpr:
+        return ts.subscr(self.resolve(array), self.resolve(index))
 
-    def annotation(self, code: str) -> TypeExpr:
-        return self.resolve(Ref(code, static=False))
+    def annotation(self, code: str) -> ts.TypeExpr:
+        return self.resolve(ts.Ref(code, static=False))
         return ObjectType(type(code).__name__, {})
 
-    def imported(self, modname: tac.Var) -> TypeExpr:
+    def imported(self, modname: tac.Var) -> ts.TypeExpr:
         if isinstance(modname, tac.Var):
-            return resolve_module(modname.name)
+            return ts.resolve_static_ref(ts.Ref(modname.name, static=True))
         elif isinstance(modname, tac.Attribute):
             return self.attribute(modname.var, modname.field)
 
-    def is_subtype(self, left: TypeExpr, right: TypeExpr) -> bool:
+    def is_subtype(self, left: ts.TypeExpr, right: ts.TypeExpr) -> bool:
         left = self.resolve(left)
         right = self.resolve(right)
         return self.join(left, right) == right
 
-    def is_supertype(self, left: TypeExpr, right: TypeExpr) -> bool:
+    def is_supertype(self, left: ts.TypeExpr, right: ts.TypeExpr) -> bool:
         return self.join(left, right) == left
 
-    def allocation_type_function(self, overloaded_function: TypeExpr) -> tac.AllocationType:
+    def allocation_type_function(self, overloaded_function: ts.TypeExpr) -> tac.AllocationType:
+        return tac.AllocationType.NONE
         if isinstance(overloaded_function, OverloadedFunctionType):
             if all(function.new for function in overloaded_function.types):
                 return tac.AllocationType.STACK
@@ -178,14 +157,16 @@ class TypeLattice(Lattice[TypeExpr]):
                 return tac.AllocationType.NONE
         return tac.AllocationType.UNKNOWN
 
-    def allocation_type_binary(self, left: TypeExpr, right: TypeExpr, op: str) -> tac.AllocationType:
+    def allocation_type_binary(self, left: ts.TypeExpr, right: ts.TypeExpr, op: str) -> tac.AllocationType:
+        return tac.AllocationType.NONE
         overloaded_function = BINARY.get(op)
         narrowed = self.narrow_overload(overloaded_function, [left, right])
         if self.allocation_type_function(narrowed):
             return tac.AllocationType.STACK
         return tac.AllocationType.NONE
 
-    def allocation_type_unary(self, value: TypeExpr, op: tac.UnOp) -> tac.AllocationType:
+    def allocation_type_unary(self, value: ts.TypeExpr, op: tac.UnOp) -> tac.AllocationType:
+        return tac.AllocationType.NONE
         if op is UnOp.NOT:
             return tac.AllocationType.NONE
         f = self.get_unary_attribute(value, op)
@@ -193,7 +174,8 @@ class TypeLattice(Lattice[TypeExpr]):
             return tac.AllocationType.STACK
         return tac.AllocationType.NONE
 
-    def allocation_type_attribute(self, var: TypeExpr, attr: tac.Var) -> tac.AllocationType:
+    def allocation_type_attribute(self, var: ts.TypeExpr, attr: tac.Var) -> tac.AllocationType:
+        return tac.AllocationType.NONE
         p = self._attribute(var, attr)
         if isinstance(p, Property) and p.new:
             return tac.AllocationType.STACK
