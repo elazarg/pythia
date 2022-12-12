@@ -113,11 +113,12 @@ class Module:
 
 @dataclass(frozen=True)
 class Protocol:
+    name: str
     class_dict: TypedDict
     inherits: tuple[TypeExpr, ...] = ()
 
     def __repr__(self):
-        return f'protocol({self.inherits}): {self.class_dict}'
+        return f'{self.name}'
 
 
 @dataclass(frozen=True)
@@ -174,6 +175,11 @@ def simplify_generic(t):
                 new_context = {k: v for k, v in zip(generic.type_params, new_type_params)}
                 new_context = context | new_context
                 return simplify_generic(generic.type, new_context)
+            case Instantiation(Ref(static=True) as ref, type_params):
+                g = resolve_static_ref(ref)
+                assert isinstance(g, Generic)
+                t = Instantiation(g, type_params)
+                return simplify_generic(t, context)
             case Instantiation(Intersection() as items, type_params):
                 return Intersection(frozenset(simplify_generic(Instantiation(item, type_params), context) for item in items))
             case Ref():
@@ -188,7 +194,14 @@ def simplify_generic(t):
                 new_params = simplify_generic(params, context)
                 new_return_type = simplify_generic(return_type, context)
                 return FunctionType(new_params, new_return_type, new)
-            case _: raise NotImplementedError(f'{t!r}, {type(t)}')
+            case Protocol(name, class_dict, inherits):
+                return Protocol(name, simplify_generic(class_dict, context),
+                                tuple(simplify_generic(x, context) for x in inherits))
+            case Class(name, class_dict, inherits):
+                return Class(name, simplify_generic(class_dict, context),
+                             tuple(simplify_generic(x, context) for x in inherits))
+            case _:
+                raise NotImplementedError(f'{t!r}, {type(t)}')
     return simplify_generic(t, {})
 
 
@@ -216,12 +229,12 @@ def pretty_print_type(t: Module | TypeExpr, indent=0):
         case FunctionType(params, return_type, Literal(new), Literal(property)):
             pretty_params = ', '.join(f'{row.name}: {row.type}' for row in sorted(params.items, key=lambda x: x.index))
             print(f'({pretty_params}) -> {"new " if new else ""}{return_type}')
-        case Class(name, typeexpr):
+        case Class(name, class_dict=class_dict):
             print(f'class {name}', sep='')
-            pretty_print_type(typeexpr, indent + 4)
-        case Protocol(typeexpr):
+            pretty_print_type(class_dict, indent + 4)
+        case Protocol(name, class_dict=class_dict, inherits=inherits):
             print(f'protocol', sep='')
-            pretty_print_type(typeexpr, indent + 4)
+            pretty_print_type(class_dict, indent + 4)
         case Module(name, typeexpr):
             print(f'module {name}:', sep='')
             pretty_print_type(typeexpr, indent + 4)
@@ -244,6 +257,8 @@ def join(t1: TypeExpr, t2: TypeExpr):
             return Intersection(items | {other})
         case other, Intersection(items):
             return Intersection(items | {other})
+        case (Ref(static=True) as ref, other) | (other, Ref(static=True) as ref):
+            return join(resolve_static_ref(ref), other)
         case Literal(value1), Literal(value2):
             if value1 == value2:
                 return Literal(value1)
@@ -251,6 +266,10 @@ def join(t1: TypeExpr, t2: TypeExpr):
                 return Union(frozenset({t1, t2}))
         case FunctionType(params1, return_type1, new1), FunctionType(params2, return_type2, new2):
             return FunctionType(join(params1,  params2), meet(return_type1, return_type2), meet(new1, new2))
+        case Class(), Class():
+            return Ref('builtins.object', static=True)
+        case Class(), _:
+            return TOP
         case _: raise NotImplementedError(f'{t1!r}, {t2!r}')
 
 
@@ -306,16 +325,32 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
     match t, action, arg:
         case Intersection(items), action, arg:
             return meet_all(apply(item, action, arg) for item in items)
-        case t, Action.INDEX, index:
-            good, bad = t.class_dict.split_by_index(index)
+        case Ref(static=True) as ref, action, arg:
+            return apply(resolve_static_ref(ref), action, arg)
+        case Class(class_dict=class_dict) | Module(class_dict=class_dict) | Protocol(class_dict=class_dict), Action.INDEX, index:
+            good, bad = class_dict.split_by_index(index)
             if not good.items:
                 raise TypeError(f'No attribute {index} in {t}')
-            return meet_all(x.type for x in good.items)
+            types = [x.type for x in good.items]
+            if isinstance(t, Module):
+                return meet_all(types)
+            else:
+                assert all(isinstance(x, Generic) for x in types)
+                bound_types = [simplify_generic(x[t]) for x in types]
+                bound_types = [FunctionType(x.params.split_by_index(Literal(0))[1],
+                                            return_type=x.return_type,
+                                            new=x.new,
+                                            property=Literal(False)) for x in bound_types]
+                return meet_all(bound_types)
         case FunctionType(return_type=return_type), Action.CALL, arg:
             return return_type
-        case Class(), Action.CALL, arg:
-            init = apply(t.class_dict, Action.INDEX, Literal[str]('__call__'))
+        case Class(class_dict=class_dict), Action.CALL, arg:
+            init = apply(class_dict, Action.INDEX, Literal[str]('__call__'))
             return apply(init, action, arg)
+        case Instantiation(generic=Generic()) as t, action, arg:
+            return apply(simplify_generic(t), action, arg)
+        case Instantiation(generic=Ref(static=True)) as t, action, arg:
+            return apply(simplify_generic(t), action, arg)
         case _:
             raise NotImplementedError(f'{t!r}, {action!r}, {arg!r}')
 
@@ -369,12 +404,16 @@ def binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     return call(subscr(left, Literal[str](lop)), right)
 
 
-def unop(left: TypeExpr, op: str) -> TypeExpr:
-    return call(subscr(left, Literal[str](unop_to_dunder_method(op))), BOTTOM)
+def unary(left: TypeExpr, op: str) -> TypeExpr:
+    return subscr(left, Literal[str](unop_to_dunder_method(op)))
 
 
 def resolve_static_ref(ref):
-    result = MODULES
+    return resolve_relative_ref(ref, MODULES)
+
+
+def resolve_relative_ref(ref, module):
+    result = module
     for attr in ref.name.split('.'):
         result = subscr(result, Literal[str](attr))
     return result
@@ -397,75 +436,85 @@ def infer_self(row: Row) -> Row:
     return Row(row.index, row.name, g)
 
 
-def expr_to_type(expr: ast.expr) -> TypeExpr:
-    match expr:
-        case None:
-            return Infer()
-        case ast.Constant(None):
-            return Ref('None')
-        case ast.Name(id=id):
-            return Ref(id)
-        case ast.Subscript(value=value, slice=ast.Tuple(elts=elts)):
-            return Instantiation(expr_to_type(value), tuple(expr_to_type(x) for x in elts))
-        case ast.Subscript(value=value, slice=ast.Name(id=id)):
-            return Instantiation(expr_to_type(value), (TypeVar(id),))
-        case _:
-            raise NotImplementedError(f'{expr!r}')
-
-# convert a Python ast to a type expression
-def stmt_to_rows(definition: ast.stmt, index: int) -> typing.Iterator[Row]:
-    match definition:
-        case ast.Pass():
-            return
-        case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation, value=value):
-            yield Row(index, name, expr_to_type(annotation))
-        case ast.Import(names=aliases):
-            for alias in aliases:
-                name = alias.name
-                asname = alias.asname
-                if asname is None:
-                    continue
-                yield Row(index, asname, Ref(name, static=True))
-        case ast.ClassDef(name=name, body=body, bases=base_expressions, decorator_list=decorator_list):
-            class_dict = intersect([infer_self(row) for index, stmt in enumerate(body)
-                                    for row in stmt_to_rows(stmt, index)])
-            base_classes = []
-            protocol = None
-            generic_params: tuple[TypeVar] = ()
-            for base in base_expressions:
-                match base:
-                    case ast.Name(id='Protocol'):
-                        protocol = True
-                    case ast.Subscript(value=ast.Name(id='Protocol' | 'Generic'), slice=ast.Name(id=id)):
-                        protocol = id == 'Protocol'
-                        generic_params = (TypeVar(id),)
-                    case ast.Subscript(value=ast.Name(id='Protocol' | 'Generic'), slice=ast.Tuple(elts=elts)):
-                        protocol = id == 'Protocol'
-                        generic_params = tuple([expr_to_type(id) for id in elts])
-                    case ast.Name(id=id):
-                        base_classes.append(Ref(id))
-            base_classes = tuple(base_classes)
-            if protocol is not None:
-                res = Protocol(class_dict, inherits=base_classes)
-            else:
-                res = Class(name, class_dict, inherits=base_classes)
-            if generic_params:
-                res = Generic(generic_params, res)
-            yield Row(index, name, res)
-        case ast.FunctionDef(name=name, returns=returns, decorator_list=decorator_list,
-                             args=ast.arguments(args=args, vararg=vararg, kwonlyargs=kwonlyargs, kw_defaults=kw_defaults, kwarg=kwarg, defaults=defaults)):
-            params = intersect([Row(index, arg.arg, expr_to_type(arg.annotation)) for index, arg in enumerate(args)])
-            returns = expr_to_type(returns)
-            name_decorators = [decorator.id for decorator in decorator_list if isinstance(decorator, ast.Name)]
-            new = Literal[bool]('new' in name_decorators)
-            property = Literal[bool]('property' in name_decorators)
-            yield Row(index, name, FunctionType(params, returns, new=new, property=property))
-        case _: raise NotImplementedError(f'{definition!r}, {type(definition)}')
-
-
 def module_to_type(module: ast.Module, name: str) -> Module:
+    def expr_to_type(expr: ast.expr, generic_names: set) -> TypeExpr:
+        match expr:
+            case None:
+                return Infer()
+            case ast.Constant(None):
+                return Ref('builtins.None')
+            case ast.Name(id=id):
+                if id in generic_names:
+                    return TypeVar(id)
+                if id in global_names:
+                    return Ref(f'{name}.{id}')
+                else:
+                    return Ref(f'builtins.{id}')
+            case ast.Subscript(value=value, slice=ast.Tuple(elts=elts)):
+                return Instantiation(expr_to_type(value, generic_names), tuple(expr_to_type(x, generic_names) for x in elts))
+            case ast.Subscript(value=value, slice=ref):
+                return Instantiation(expr_to_type(value, generic_names), (expr_to_type(ref, generic_names),))
+            case _:
+                raise NotImplementedError(f'{expr!r}')
+
+    # convert a Python ast to a type expression
+    def stmt_to_rows(definition: ast.stmt, index: int, generic_names: set) -> typing.Iterator[Row]:
+        match definition:
+            case ast.Pass():
+                return
+            case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation, value=value):
+                yield Row(index, name, expr_to_type(annotation, generic_names))
+            case ast.Import(names=aliases):
+                for alias in aliases:
+                    name = alias.name
+                    asname = alias.asname
+                    if asname is None:
+                        continue
+                    yield Row(index, asname, Ref(name, static=True))
+            case ast.ClassDef(name=name, body=body, bases=base_expressions, decorator_list=decorator_list):
+                base_classes = []
+                protocol = None
+                generic_params: tuple[TypeVar] = ()
+                for base in base_expressions:
+                    match base:
+                        case ast.Name(id='Protocol'):
+                            protocol = True
+                        case ast.Subscript(value=ast.Name(id='Protocol' | 'Generic'), slice=ast.Name(id=id)):
+                            protocol = id == 'Protocol'
+                            generic_params = (TypeVar(id),)
+                            generic_names = generic_names | {id}
+                        case ast.Subscript(value=ast.Name(id='Protocol' | 'Generic' as id), slice=ast.Tuple(elts=elts)):
+                            protocol = id == 'Protocol'
+                            generic_params = tuple([expr_to_type(id, generic_names) for id in elts])
+                            generic_names = generic_names | {id.id for id in elts}
+                        case ast.Name(id=id):
+                            base_classes.append(Ref(id))
+                base_classes = tuple(base_classes)
+                class_dict = intersect([infer_self(row) for index, stmt in enumerate(body)
+                                        for row in stmt_to_rows(stmt, index, generic_names)])
+                if protocol is not None:
+                    res = Protocol(name, class_dict, inherits=base_classes)
+                else:
+                    res = Class(name, class_dict, inherits=base_classes)
+                if generic_params:
+                    res = Generic(generic_params, res)
+                yield Row(index, name, res)
+            case ast.FunctionDef(name=name, returns=returns, decorator_list=decorator_list,
+                                 args=ast.arguments(args=args, vararg=vararg, kwonlyargs=kwonlyargs,
+                                                    kw_defaults=kw_defaults, kwarg=kwarg, defaults=defaults)):
+                params = intersect(
+                    [Row(index, arg.arg, expr_to_type(arg.annotation, generic_names)) for index, arg in enumerate(args)])
+                returns = expr_to_type(returns, generic_names)
+                name_decorators = [decorator.id for decorator in decorator_list if isinstance(decorator, ast.Name)]
+                new = Literal[bool]('new' in name_decorators)
+                property = Literal[bool]('property' in name_decorators)
+                yield Row(index, name, FunctionType(params, returns, new=new, property=property))
+            case _:
+                raise NotImplementedError(f'{definition!r}, {type(definition)}')
+
+    global_names = {node.name for node in module.body if isinstance(node, (ast.ClassDef, ast.FunctionType))}
     class_dict = intersect([row for index, stmt in enumerate(module.body)
-                            for row in stmt_to_rows(stmt, index)])
+                            for row in stmt_to_rows(stmt, index, set())])
     return Module(name, class_dict)
 
 

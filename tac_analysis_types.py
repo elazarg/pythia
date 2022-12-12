@@ -65,7 +65,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
                 for attr in ref.name.split('.'):
                     result = result.fields[attr]
             ref = result
-        assert isinstance(ref, (ts.TypeExpr, ts.Module, ts.Class))
+        assert isinstance(ref, (ts.TypeExpr, ts.Module, ts.Class, ts.Protocol)), ref
         return ref
 
     def is_match(self, args: list[ts.TypeExpr], params):
@@ -89,7 +89,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
         return result
 
     def get_unary_attribute(self, value: ts.TypeExpr, op: UnOp) -> ts.TypeExpr:
-        return ts.unary(value, op)
+        return ts.unary(value, self.unop_to_str(op))
 
     def unop_to_str(self, op: UnOp) -> str:
         match op:
@@ -98,13 +98,14 @@ class TypeLattice(Lattice[ts.TypeExpr]):
             case UnOp.INVERT: return '~'
             case UnOp.POS: return '+'
             case UnOp.ITER: return 'iter'
+            case UnOp.NEXT: return 'next'
             case UnOp.YIELD_ITER: return 'yield iter'
             case _:
                 raise NotImplementedError(f"UnOp.{op.name}")
 
     def unary(self, value: ts.TypeExpr, op: UnOp) -> ts.TypeExpr:
         f = self.get_unary_attribute(value, op)
-        return self.call(f, [value])
+        return self.call(f, [])
 
     def predefined(self, name: Predefined) -> Optional[ts.TypeExpr]:
         match name:

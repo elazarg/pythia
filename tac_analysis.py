@@ -139,7 +139,7 @@ def analyze_function(filename: str, function_name: str) -> None:
               functions=functions,
               imports=imports,
               module_type=module_type,
-              simplify=False)
+              simplify=True)
     print_analysis(cfg)
 
 
