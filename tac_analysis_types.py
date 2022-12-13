@@ -111,8 +111,8 @@ class TypeLattice(Lattice[ts.TypeExpr]):
 
     def predefined(self, name: Predefined) -> Optional[ts.TypeExpr]:
         match name:
-            case Predefined.LIST: return self.top()
-            case Predefined.TUPLE: return self.top()
+            case Predefined.LIST: return ts.make_constructor(ts.Ref('builtins.list'))
+            case Predefined.TUPLE: return ts.make_constructor(ts.Ref('builtins.tuple'))
             case Predefined.GLOBALS: return self.globals
             case Predefined.NONLOCALS: return self.top()
             case Predefined.LOCALS: return self.top()

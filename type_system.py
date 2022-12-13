@@ -24,11 +24,6 @@ class Literal(TypeExpr, typing.Generic[K]):
 
 
 @dataclass(frozen=True)
-class Infer(TypeExpr):
-    pass
-
-
-@dataclass(frozen=True)
 class Ref(TypeExpr):
     name: str
 
@@ -125,6 +120,10 @@ class Protocol:
         return f'{self.name}'
 
 
+class Magic(TypeExpr, enum.Enum):
+    ARGS = enum.auto()
+
+
 @dataclass(frozen=True)
 class FunctionType(TypeExpr):
     params: TypedDict
@@ -177,8 +176,6 @@ def constant(value: object) -> TypeExpr:
 def simplify_generic(t):
     def simplify_generic(t, context: dict[TypeVar, TypeExpr]):
         match t:
-            case Infer():
-                return Infer()
             case Generic(type_params, typeexpr):
                 new_context = {k: v for k, v in context.items() if k not in type_params}
                 return Generic(type_params, simplify_generic(typeexpr, new_context))
@@ -189,7 +186,7 @@ def simplify_generic(t):
                 return simplify_generic(generic.type, new_context)
             case Instantiation(Ref() as ref, type_params):
                 g = resolve_static_ref(ref)
-                assert isinstance(g, Generic)
+                assert isinstance(g, Generic), f'{g!r} is not a generic in {t!r}'
                 t = Instantiation(g, type_params)
                 return simplify_generic(t, context)
             case Instantiation(Intersection() as items, type_params):
@@ -212,6 +209,8 @@ def simplify_generic(t):
             case Class(name, class_dict, inherits):
                 return Class(name, simplify_generic(class_dict, context),
                              tuple(simplify_generic(x, context) for x in inherits))
+            case Literal():
+                return t
             case _:
                 raise NotImplementedError(f'{t!r}, {type(t)}')
     return simplify_generic(t, {})
@@ -262,6 +261,12 @@ def pretty_print_type(t: Module | TypeExpr, indent=0):
 def join(t1: TypeExpr, t2: TypeExpr):
     if t1 == t2:
         return t1
+    if t1 == BOTTOM:
+        return t2
+    if t2 == BOTTOM:
+        return t1
+    if t1 == TOP or t2 == TOP:
+        return TOP
     match t1, t2:
         case Intersection(items1), Intersection(items2):
             return Intersection(items1 | items2).squeeze()
@@ -288,11 +293,9 @@ def meet(t1: TypeExpr, t2: TypeExpr):
         return t2
     if t2 == TOP:
         return t1
+    if t1 == BOTTOM or t2 == BOTTOM:
+        return BOTTOM
     match (t1, t2):
-        case (Infer(), _):
-            return t2
-        case (_, Infer()):
-            return t1
         case (Literal(value1), Literal(value2)):
             if value1 == value2:
                 return Literal(value1)
@@ -307,7 +310,7 @@ def meet(t1: TypeExpr, t2: TypeExpr):
         case (Intersection(items), Row() as r) | (Row() as r, Intersection(items)):
             return Intersection(items | {r})
         case (Intersection(items), t) | (t, Intersection(items)):
-            return TOP
+            return Intersection(items | {t})
         case (FunctionType(params1, return_type1, new1, property1), FunctionType(params2, return_type2, new2, property2)):
             return FunctionType(meet(params1, params2),
                                 join(return_type1, return_type2),
@@ -333,8 +336,21 @@ class Action(enum.Enum):
 
 def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
     match t, action, arg:
+        case Row() as t, Action.INDEX, Literal() as index:
+            if t.index == index.value or t.name == index.value:
+                return t.type
+            return TOP
+        case Row() as t, Action.INDEX, Intersection(items):
+            mid = [apply(t, action, item) for item in items]
+            return meet_all(mid)
         case Intersection(items), action, arg:
-            return meet_all(apply(item, action, arg) for item in items)
+            mid = [apply(item, action, arg) for item in items]
+            res = meet_all(mid)
+            return res
+        # case t, action, Intersection(items):
+        #     mid = [apply(t, action, item) for item in items]
+        #     res = intersect(mid)
+        #     return res
         case Ref() as ref, action, arg:
             return apply(resolve_static_ref(ref), action, arg)
         case Class(class_dict=class_dict) | Module(class_dict=class_dict) | Protocol(class_dict=class_dict), Action.INDEX, Literal(index):
@@ -352,6 +368,10 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
                                             new=x.new,
                                             property=Literal(False)) for x in bound_types]
                 return meet_all(bound_types)
+        case FunctionType(return_type=return_type), Action.CALL, Intersection(items=items):
+            if return_type is Magic.ARGS:
+                return intersect(Row(row.index, None, row.type) for row in items)
+            return return_type
         case FunctionType(return_type=return_type), Action.CALL, arg:
             return return_type
         case Class(class_dict=class_dict), Action.CALL, arg:
@@ -362,7 +382,8 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
         case Literal(value), action, arg:
             return TOP
         case _:
-            raise NotImplementedError(f'{t!r}, {action!r}, {arg!r}')
+            return TOP
+            # raise NotImplementedError(f'{t!r}, {action!r}, {arg!r}')
 
 
 def subscr(t: TypeExpr, index: TypeExpr | Module | Class | Protocol) -> TypeExpr:
@@ -371,6 +392,19 @@ def subscr(t: TypeExpr, index: TypeExpr | Module | Class | Protocol) -> TypeExpr
 
 def call(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
     return apply(t, Action.CALL, arg)
+
+
+TUPLE_CONSTRUCTOR = FunctionType(params=TOP,
+                                 return_type=Magic.ARGS,
+                                 new=Literal(False), property=Literal(False))
+
+
+def make_constructor(t: TypeExpr) -> TypeExpr:
+    return intersect([
+        TUPLE_CONSTRUCTOR,
+        FunctionType(params=TOP, return_type=t,
+                     new=Literal(False), property=Literal(False))
+        ])
 
 
 def binop_to_dunder_method(op: str) -> tuple[str, typing.Optional[str]]:
@@ -439,7 +473,7 @@ def infer_self(row: Row) -> Row:
     self_arg, other_args = params.split_by_index(Literal[int](0))
     assert len(self_arg.items) == 1
     self_arg = next(iter(self_arg.items))
-    if self_arg.type == Infer():
+    if self_arg.type == TypeVar('Infer'):
         self_arg = Row(0, self_arg.name, TypeVar('Self'))
     params = intersect([self_arg]) & other_args
     g = Generic((TypeVar('Self'),), FunctionType(params, function.return_type, function.new))
@@ -450,9 +484,11 @@ def module_to_type(module: ast.Module, name: str) -> Module:
     def expr_to_type(expr: ast.expr, generic_names: set) -> TypeExpr:
         match expr:
             case None:
-                return Infer()
-            case ast.Constant(None):
-                return Ref('builtins.None')
+                return TypeVar('Infer')
+            case ast.Name(id='Args'):
+                return Magic.ARGS
+            case ast.Constant(value):
+                return constant(value)
             case ast.Name(id=id):
                 if id in generic_names:
                     return TypeVar(id)
@@ -501,8 +537,8 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                             generic_names = generic_names | {id}
                         case ast.Subscript(value=ast.Name(id='Protocol' | 'Generic' as id), slice=ast.Tuple(elts=elts)):
                             protocol = id == 'Protocol'
-                            generic_params = tuple([expr_to_type(id, generic_names) for id in elts])
                             generic_names = generic_names | {id.id for id in elts}
+                            generic_params = tuple([expr_to_type(id, generic_names) for id in elts])
                         case ast.Name(id=id):
                             base_classes.append(Ref(id))
                 base_classes = tuple(base_classes)
@@ -552,16 +588,26 @@ MODULES = Module('typeshed',
 def main():
     pretty_print_type(MODULES)
 
-# mod = subscr(MODULES, Literal[str]('builtins'))
-# pretty_print_type(mod)
-# S = subscr(mod, Literal[str]('sum'))
-# print(S)
-# X = apply(S, Action.CALL, Literal[int](1))
-# print(X)
+def test_intersect():
+    a = Intersection([Row(0, None, Ref('builtins.int')),
+                      Row(1, None, Ref('builtins.str'))])
+    b = Literal[int](1)
+    c = Ref('builtins.int')
+    print(a)
+    print(b)
+    print(subscr(a, b))
+    print(subscr(a, c))
+    print(subscr(a, intersect([b, c])))
+    # mod = subscr(MODULES, Literal[str]('builtins'))
+    # pretty_print_type(mod)
+    # S = subscr(mod, Literal[str]('sum'))
+    # print(S)
+    # X = apply(S, Action.CALL, Literal[int](1))
+    # print(X)
 
 
 if __name__ == '__main__':
-    main()
+    test_intersect()
 
 
 # SimpleType: TypeAlias = Ref | TypeVar | OverloadedFunctionType | MapType | Generic | Instantiation | FunctionType

@@ -6,6 +6,10 @@ def three() -> int:
     res = x + 1
     return res
 
+def test_tuple(a: int, b: float) -> int:
+    x = (a, b)
+    y = x[1]
+    return y
 
 def listing():
     res = [1]
