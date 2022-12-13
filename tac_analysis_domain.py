@@ -105,54 +105,6 @@ class Lattice(Generic[T]):
     def name(self) -> str:
         raise NotImplementedError
 
-    def back_call(self, assigned, size: int) -> tuple[T, list[T]]:
-        return (self.top(), [])
-
-    def back_binary(self, value: T) -> tuple[T, T]:
-        return (self.top(), self.top())
-
-    def back_unary(self, value: T) -> T:
-        return self.top()
-
-    def back_predefined(self, value: T) -> None:
-        return None
-
-    def back_const(self, value: T) -> None:
-        return None
-
-    def back_attribute(self, value: T) -> T:
-        return self.top()
-
-    def back_subscr(self, value: T) -> tuple[T, T]:
-        return (self.top(), self.top())
-
-    def back_imported(self, value: T) -> None:
-        return
-
-    def back_annotation(self, value: T) -> T:
-        return self.top()
-
-    def back_var(self, value: T) -> T:
-        return value
-
-    def back_yield(self, value: T) -> T:
-        return self.top()
-
-    def back_assign_var(self, value: T) -> T:
-        return value
-
-    def back_assign_tuple(self, values: tuple[T]) -> T:
-        return self.top()
-
-    def back_assign_subscr(self, var: T, index: T) -> T:
-        return self.top()
-
-    def back_assign_attribute(self, var: T, attr: tac.Var) -> T:
-        return self.top()
-
-    def back_return(self) -> T:
-        return self.top()
-
     def default(self) -> T:
         return self.top()
 
@@ -301,18 +253,6 @@ class Map(Generic[T]):
             new_map[k] = resolution(new_map[k], other[k])
         return new_map
 
-    def project_stack_vars(self) -> Map[T]:
-        return Map[T](self.default,
-                      {k: v for k, v in self.items()
-                       if k.is_stackvar})
-
-    def __sub__(self, stack_vars: Map[bool]) -> Map[T]:
-        res = self.copy()
-        for k in self.keys():
-            if k.is_stackvar and not stack_vars[k]:
-                del res[k]
-        return res
-
 
 MapDomain: TypeAlias = Map[T] | Bottom
 
@@ -329,34 +269,34 @@ class Analysis(Protocol[T]):
     backward: bool
 
     def name(self) -> str:
-        ...
+        raise NotImplementedError
 
     def is_less_than(self, left: T, right: T) -> bool:
-        ...
+        raise NotImplementedError
 
     def is_equivalent(self, left, right) -> bool:
-        ...
+        raise NotImplementedError
 
     def copy(self, values: T) -> T:
-        ...
+        raise NotImplementedError
 
     def is_bottom(self, values) -> bool:
-        ...
+        raise NotImplementedError
 
     def initial(self, annotations: dict[K, str]) -> T:
-        ...
+        raise NotImplementedError
 
     def top(self) -> T:
-        ...
+        raise NotImplementedError
 
     def bottom(self) -> T:
-        ...
+        raise NotImplementedError
 
     def join(self, left: T, right: T) -> T:
-        ...
+        raise NotImplementedError
 
     def transfer(self, values: T, ins: tac.Tac, location: str) -> T:
-        ...
+        raise NotImplementedError
 
 
 class VarAnalysis(Analysis[MapDomain[T]]):
@@ -408,8 +348,7 @@ class VarAnalysis(Analysis[MapDomain[T]]):
             case (Map(), Map()):
                 res = self.top()
                 for k in left.keys() | right.keys():
-                    if k in left.keys() and k in right.keys():
-                        res[k] = self.lattice.join(left[k], right[k])
+                    res[k] = self.lattice.join(left[k], right[k])
                 return normalize(res)
 
     def transformer_expr(self, values: Map[T], expr: tac.Expr) -> T:
@@ -492,77 +431,6 @@ class VarAnalysis(Analysis[MapDomain[T]]):
             case tac.Del():
                 return self.make_map()
         return self.make_map()
-
-    def back_transformer(self, assigned: T, expr: tac.Expr | tac.Predefined) -> Map[T]:
-        match expr:
-            case tac.Attribute():
-                value = self.lattice.back_attribute(assigned)
-                return self.make_map({expr.var: value} if isinstance(expr.var, tac.Var) else {})
-            case tac.Var():
-                return self.make_map({expr: self.lattice.back_var(assigned)})
-            case tac.Call():
-                (f, args) = self.lattice.back_call(assigned, len(expr.args))
-                d = {expr.args[i]: args[i] for i in range(len(expr.args))
-                     if isinstance(expr.args[i], tac.Var)}
-                if isinstance(expr.function, tac.Var):
-                    d[expr.function] = f
-                return self.make_map(d)
-            case tac.For():
-                return self.make_map()
-            case tac.Binary():
-                left, right = self.lattice.back_binary(assigned)
-                return self.make_map({
-                    expr.left: left,
-                    expr.right: right
-                })
-            case tac.Unary():
-                return self.make_map({
-                    expr.var: self.lattice.back_unary(assigned)
-                })
-            case tac.Predefined():
-                return self.make_map()
-            case tac.Const():
-                return self.make_map()
-            case tac.Subscript():
-                array, index = self.lattice.back_subscr(assigned)
-                return self.make_map({expr.var: array, expr.index: index})
-            case tac.Yield():
-                value = self.lattice.back_yield(assigned)
-                return self.make_map({expr.value: value})
-            case tac.Import():
-                return self.make_map()
-            case tac.MakeFunction():
-                return self.make_map()
-            case tac.MakeClass():
-                return self.make_map()
-            case _:
-                assert False, f'unexpected expr {expr}'
-
-    def back_transformer_signature(self, values: Map[T], signature: tac.Signature) -> T:
-        match signature:
-            case tuple():
-                value = tuple(values[v] for v in signature)
-                return self.lattice.back_assign_tuple(value)
-            case tac.Var():
-                return self.lattice.back_assign_var(values[signature])
-            case tac.Attribute():
-                return self.lattice.back_assign_attribute(self.transformer_expr(values, signature.var), signature.field)
-            case tac.Subscript():
-                return self.lattice.back_assign_subscr(self.transformer_expr(values, signature.var), self.transformer_expr(values, signature.var))
-            case _:
-                assert False, f'unexpected signature {signature}'
-
-    def back_transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
-        if isinstance(values, Bottom):
-            return BOTTOM
-        if isinstance(ins, tac.For):
-            ins = ins.as_call()
-        if isinstance(ins, tac.Assign):
-            assigned = self.back_transformer_signature(values, ins.lhs)
-            return self.back_transformer(assigned, ins.expr)
-        if isinstance(ins, tac.Return):
-            return self.make_map({ins.value: self.lattice.back_return()})
-        return values
 
     def transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
         if isinstance(values, Bottom):

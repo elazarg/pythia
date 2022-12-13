@@ -83,6 +83,11 @@ class Intersection(TypeExpr, typing.Generic[R]):
         bad = intersect([item for item in self.items if not item.match(index)])
         return good, bad
 
+    def squeeze(self: Intersection[Row]) -> Intersection[T] | T:
+        if len(self.items) == 1:
+            return next(iter(self.items))
+        return self
+
 
 TypedDict: typing.TypeAlias = Intersection[Row]
 
@@ -259,11 +264,9 @@ def join(t1: TypeExpr, t2: TypeExpr):
         return t1
     match t1, t2:
         case Intersection(items1), Intersection(items2):
-            return Intersection(items1 | items2)
-        case Intersection(items), other:
-            return Intersection(items | {other})
-        case other, Intersection(items):
-            return Intersection(items | {other})
+            return Intersection(items1 | items2).squeeze()
+        case (Intersection(items), other) | (other, Intersection(items)):
+            return Intersection(items | {other}).squeeze()
         case (Ref() as ref, other) | (other, Ref() as ref):
             return join(resolve_static_ref(ref), other)
         case Literal(value1), Literal(value2):

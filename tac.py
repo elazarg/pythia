@@ -297,9 +297,10 @@ def free_vars_expr(expr: Expr) -> set[Var]:
     match expr:
         case Const(): return set()
         case Var(): return {expr}
-        case Attribute(): return {expr.var}
+        case Attribute(): return {expr.var} if isinstance(expr.var, Var) else set()
         case Subscript(): return free_vars_expr(expr.var) | free_vars_expr(expr.index)
         case Binary(): return free_vars_expr(expr.left) | free_vars_expr(expr.right)
+        case Unary(): return free_vars_expr(expr.var)
         case Call():
             return free_vars_expr(expr.function) \
                    | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args)) \
@@ -314,7 +315,7 @@ def free_vars_expr(expr: Expr) -> set[Var]:
 def free_vars_lval(signature: Signature) -> set[Var]:
     match signature:
         case Var(): return set()
-        case Attribute(): return {signature.var}
+        case Attribute(): return {signature.var} if isinstance(signature.var, Var) else set()
         case Subscript(): return free_vars_expr(signature.var) | free_vars_expr(signature.index)
         case tuple(): return set(it.chain.from_iterable(free_vars_lval(arg) for arg in signature))
         case None: return set()

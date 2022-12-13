@@ -14,7 +14,7 @@ from tac_analysis_constant import ConstLattice, Constant
 
 from tac_analysis_domain import IterationStrategy, VarAnalysis, BackwardIterationStrategy, ForwardIterationStrategy, \
     Analysis
-from tac_analysis_liveness import LivenessLattice, Liveness
+from tac_analysis_liveness import LivenessLattice, Liveness, LivenessAnalysis
 from tac_analysis_pointer import PointerAnalysis, pretty_print_pointers, find_reachable
 from tac_analysis_types import TypeLattice, ts
 
@@ -51,7 +51,7 @@ def analyze(_cfg: Cfg, analysis: Analysis[T], annotations) -> None:
             if analysis.name() is not LivenessLattice.name():
                 liveness = block.post.get(LivenessLattice.name())
                 if liveness:
-                    invariant = invariant - liveness.project_stack_vars()
+                    invariant = LivenessAnalysis.remove_dead_variables(liveness, invariant)
                 del liveness
 
         block.post[name] = invariant
@@ -74,7 +74,7 @@ def run(f, functions, imports, module_type, simplify=True) -> Cfg:
     #     rewrite_remove_useless_movs_pairs(block, label)
     #     rewrite_aliases(block, label)
     #     rewrite_remove_useless_movs(block, label)
-    liveness_analysis = VarAnalysis[Liveness](LivenessLattice(), backward=True)
+    liveness_analysis = LivenessAnalysis()
     constant_analysis = VarAnalysis[Constant](ConstLattice())
     type_analysis = VarAnalysis[ts.TypeExpr](TypeLattice(f.__name__, module_type, functions, imports))
     pointer_analysis = PointerAnalysis(type_analysis, liveness_analysis)
@@ -84,7 +84,7 @@ def run(f, functions, imports, module_type, simplify=True) -> Cfg:
     analyze(cfg, type_analysis, annotations)
     analyze(cfg, pointer_analysis, annotations)
 
-    mark_heap(cfg, liveness_analysis, pointer_analysis)
+    # mark_heap(cfg, liveness_analysis, pointer_analysis)
 
     return cfg
 
@@ -148,7 +148,7 @@ def analyze_function(filename: str, function_name: str) -> None:
 def main() -> None:
     # analyze_function('examples/feature_selection.py', 'do_work')
     # analyze_function('examples/feature_selection.py', 'run')
-    analyze_function('examples/toy.py', 'three')
+    # analyze_function('examples/toy.py', 'listing')
     analyze_function('examples/toy.py', 'minimal')
     # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/toy.py', 'toy3')
