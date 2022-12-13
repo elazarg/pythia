@@ -93,7 +93,7 @@ class Lattice(Generic[T]):
     def imported(self, modname: str) -> T:
         return self.top()
 
-    def annotation(self, string: str) -> T:
+    def annotation(self, name: tac.Var, t: T) -> T:
         return self.top()
 
     def assign_tuple(self, values: T) -> list[T]:
@@ -390,7 +390,7 @@ class VarAnalysis(Analysis[MapDomain[T]]):
     def initial(self, annotations: dict[K, str]) -> MapDomain[T]:
         result = self.make_map()
         result.update({
-            name: self.lattice.annotation(t)
+            name: self.lattice.annotation(name, t)
             for name, t in annotations.items()
         })
         return result

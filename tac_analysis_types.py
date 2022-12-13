@@ -15,7 +15,12 @@ class TypeLattice(Lattice[ts.TypeExpr]):
     """
     Abstract domain for type analysis with lattice operations.
     """
-    def __init__(self, this_module: ts.Module, functions, imports: dict[str, str]):
+    def __init__(self, this_function: str, this_module: ts.Module, functions, imports: dict[str, str]):
+        this_signature = ts.subscr(this_module, ts.Literal(this_function))
+        assert isinstance(this_signature, ts.FunctionType)
+        self.annotations = {tac.Var(row.name, is_stackvar=False): row.type
+                            for row in this_signature.params.items}
+        self.annotations[tac.Var('return', is_stackvar=False)] = this_signature.return_type
         # global_state = {
         #     **{name: resolve_module(path) for name, path in imports.items()},
         #     **BUILTINS_MODULE.fields,
@@ -33,6 +38,9 @@ class TypeLattice(Lattice[ts.TypeExpr]):
         # self.globals = ts.Class('globals()', frozendict(global_state))
         self.globals = this_module
         self.builtins = ts.resolve_static_ref(ts.Ref('builtins'))
+
+    def annotation(self, name: tac.Var, t: str) -> ts.TypeExpr:
+        return self.annotations[name]
 
     def name(self) -> str:
         return "Type"
@@ -113,9 +121,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
         return None
 
     def const(self, value: object) -> ts.TypeExpr:
-        if value is None:
-            return ts.Ref('builtins.NoneType')
-        return ts.Ref(f'builtins.{type(value).__name__}')
+        return ts.constant(value)
 
     def _attribute(self, var: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
         mod = self.resolve(var)
@@ -133,10 +139,6 @@ class TypeLattice(Lattice[ts.TypeExpr]):
 
     def subscr(self, array: ts.TypeExpr, index: ts.TypeExpr) -> ts.TypeExpr:
         return ts.subscr(self.resolve(array), self.resolve(index))
-
-    def annotation(self, code: str) -> ts.TypeExpr:
-        return self.resolve(ts.Ref(code, static=False))
-        return ObjectType(type(code).__name__, {})
 
     def imported(self, modname: tac.Var) -> ts.TypeExpr:
         if isinstance(modname, tac.Var):

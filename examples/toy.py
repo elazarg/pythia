@@ -2,7 +2,8 @@ import numpy as np
 
 
 def three() -> int:
-    return 3
+    x = 2
+    return x + 1
 
 
 def listing():

@@ -161,6 +161,14 @@ class Instantiation(TypeExpr, typing.Generic[G]):
         return f'{self.generic}[{", ".join(repr(x) for x in self.type_params)}]'
 
 
+def constant(value: object) -> TypeExpr:
+    if value is None:
+        t = Ref('builtins.NoneType')
+    else:
+        t = Ref(f'builtins.{type(value).__name__}')
+    return intersect([t, Literal(value)])
+
+
 def simplify_generic(t):
     def simplify_generic(t, context: dict[TypeVar, TypeExpr]):
         match t:
@@ -352,7 +360,7 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
             raise NotImplementedError(f'{t!r}, {action!r}, {arg!r}')
 
 
-def subscr(t: TypeExpr, index: TypeExpr) -> TypeExpr:
+def subscr(t: TypeExpr, index: TypeExpr | Module | Class | Protocol) -> TypeExpr:
     return apply(t, Action.INDEX, index)
 
 

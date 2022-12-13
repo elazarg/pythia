@@ -29,7 +29,7 @@ def make_tac_cfg(f, simplify=True):
     return cfg
 
 
-def analyze(_cfg: Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]) -> None:
+def analyze(_cfg: Cfg, analysis: Analysis[T], annotations) -> None:
     name = analysis.name()
     for label in _cfg.labels:
         _cfg[label].pre[name] = analysis.bottom()
@@ -76,7 +76,7 @@ def run(f, functions, imports, module_type, simplify=True) -> Cfg:
     #     rewrite_remove_useless_movs(block, label)
     liveness_analysis = VarAnalysis[Liveness](LivenessLattice(), backward=True)
     constant_analysis = VarAnalysis[Constant](ConstLattice())
-    type_analysis = VarAnalysis[ts.TypeExpr](TypeLattice(module_type, functions, imports))
+    type_analysis = VarAnalysis[ts.TypeExpr](TypeLattice(f.__name__, module_type, functions, imports))
     pointer_analysis = PointerAnalysis(type_analysis, liveness_analysis)
 
     analyze(cfg, liveness_analysis, annotations)
@@ -148,7 +148,7 @@ def analyze_function(filename: str, function_name: str) -> None:
 def main() -> None:
     # analyze_function('examples/feature_selection.py', 'do_work')
     # analyze_function('examples/feature_selection.py', 'run')
-    # analyze_function('examples/toy.py', 'listing')
+    analyze_function('examples/toy.py', 'three')
     analyze_function('examples/toy.py', 'minimal')
     # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/toy.py', 'toy3')
