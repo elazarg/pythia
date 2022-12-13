@@ -356,6 +356,8 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
             return apply(init, action, arg)
         case Instantiation(generic=Generic() | Ref()) as t, action, arg:
             return apply(simplify_generic(t), action, arg)
+        case Literal(value), action, arg:
+            return TOP
         case _:
             raise NotImplementedError(f'{t!r}, {action!r}, {arg!r}')
 

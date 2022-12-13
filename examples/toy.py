@@ -3,7 +3,8 @@ import numpy as np
 
 def three() -> int:
     x = 2
-    return x + 1
+    res = x + 1
+    return res
 
 
 def listing():
