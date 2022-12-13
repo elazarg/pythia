@@ -22,10 +22,12 @@ def minimal():
     return res
 
 
+class A:
+    score: float
+    vector: np.ndarray
+
+
 def not_so_minimal():
-    # class A:
-    #     score: float
-    #     vector: np.ndarray
     a = A()
     a.vector = np.zeros((5, 7))
     a.score = 0.0

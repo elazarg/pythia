@@ -334,10 +334,10 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
             return meet_all(apply(item, action, arg) for item in items)
         case Ref() as ref, action, arg:
             return apply(resolve_static_ref(ref), action, arg)
-        case Class(class_dict=class_dict) | Module(class_dict=class_dict) | Protocol(class_dict=class_dict), Action.INDEX, index:
-            good, bad = class_dict.split_by_index(index)
+        case Class(class_dict=class_dict) | Module(class_dict=class_dict) | Protocol(class_dict=class_dict), Action.INDEX, Literal(index):
+            good, bad = class_dict.split_by_index(arg)
             if not good.items:
-                raise TypeError(f'No attribute {index} in {t}')
+                raise TypeError(f'No attribute {index!r} in {t}')
             types = [x.type for x in good.items]
             if isinstance(t, Module):
                 return meet_all(types)
@@ -453,6 +453,8 @@ def module_to_type(module: ast.Module, name: str) -> Module:
             case ast.Name(id=id):
                 if id in generic_names:
                     return TypeVar(id)
+                if id in global_aliases:
+                    return Ref(global_aliases[id])
                 if id in global_names:
                     return Ref(f'{name}.{id}')
                 else:
@@ -461,6 +463,10 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                 return Instantiation(expr_to_type(value, generic_names), tuple(expr_to_type(x, generic_names) for x in elts))
             case ast.Subscript(value=value, slice=ref):
                 return Instantiation(expr_to_type(value, generic_names), (expr_to_type(ref, generic_names),))
+            case ast.Attribute(value=value, attr=attr):
+                ref = expr_to_type(value, generic_names)
+                assert isinstance(ref, Ref), f'Expected Ref, got {ref!r} for {value!r}'
+                return Ref(f'{ref.name}.{attr}')
             case _:
                 raise NotImplementedError(f'{expr!r}')
 
@@ -520,6 +526,9 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                 raise NotImplementedError(f'{definition!r}, {type(definition)}')
 
     global_names = {node.name for node in module.body if isinstance(node, (ast.ClassDef, ast.FunctionType))}
+    global_aliases = {name.asname: name.name
+                      for node in module.body if isinstance(node, ast.Import)
+                      for name in node.names if name.asname is not None}
     class_dict = intersect([row for index, stmt in enumerate(module.body)
                             for row in stmt_to_rows(stmt, index, set())])
     return Module(name, class_dict)

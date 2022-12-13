@@ -1,5 +1,5 @@
 """
-Liveness analsysis
+Liveness analysis
 These are important in order to make the TAC at least *look* different from
 stack-oriented code, and it removes many variables.
 The analysis is based heavily on the information in the tac module - some of
