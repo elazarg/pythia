@@ -31,7 +31,6 @@ class Infer(TypeExpr):
 @dataclass(frozen=True)
 class Ref(TypeExpr):
     name: str
-    static: bool = True
 
     def __repr__(self):
         return self.name
@@ -132,7 +131,7 @@ class FunctionType(TypeExpr):
         if self.params is None:
             return f'->{self.return_type}'
         else:
-            return f'({self.params} -> {"new " if self.new else ""}{self.return_type})'
+            return f'({self.params} -> {"new " if self.new.value else ""}{self.return_type})'
 
     def is_property(self) -> bool:
         return self.params is None
@@ -175,7 +174,7 @@ def simplify_generic(t):
                 new_context = {k: v for k, v in zip(generic.type_params, new_type_params)}
                 new_context = context | new_context
                 return simplify_generic(generic.type, new_context)
-            case Instantiation(Ref(static=True) as ref, type_params):
+            case Instantiation(Ref() as ref, type_params):
                 g = resolve_static_ref(ref)
                 assert isinstance(g, Generic)
                 t = Instantiation(g, type_params)
@@ -257,7 +256,7 @@ def join(t1: TypeExpr, t2: TypeExpr):
             return Intersection(items | {other})
         case other, Intersection(items):
             return Intersection(items | {other})
-        case (Ref(static=True) as ref, other) | (other, Ref(static=True) as ref):
+        case (Ref() as ref, other) | (other, Ref() as ref):
             return join(resolve_static_ref(ref), other)
         case Literal(value1), Literal(value2):
             if value1 == value2:
@@ -267,7 +266,7 @@ def join(t1: TypeExpr, t2: TypeExpr):
         case FunctionType(params1, return_type1, new1), FunctionType(params2, return_type2, new2):
             return FunctionType(join(params1,  params2), meet(return_type1, return_type2), meet(new1, new2))
         case Class(), Class():
-            return Ref('builtins.object', static=True)
+            return Ref('builtins.object')
         case Class(), _:
             return TOP
         case _: raise NotImplementedError(f'{t1!r}, {t2!r}')
@@ -325,7 +324,7 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
     match t, action, arg:
         case Intersection(items), action, arg:
             return meet_all(apply(item, action, arg) for item in items)
-        case Ref(static=True) as ref, action, arg:
+        case Ref() as ref, action, arg:
             return apply(resolve_static_ref(ref), action, arg)
         case Class(class_dict=class_dict) | Module(class_dict=class_dict) | Protocol(class_dict=class_dict), Action.INDEX, index:
             good, bad = class_dict.split_by_index(index)
@@ -347,9 +346,7 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
         case Class(class_dict=class_dict), Action.CALL, arg:
             init = apply(class_dict, Action.INDEX, Literal[str]('__call__'))
             return apply(init, action, arg)
-        case Instantiation(generic=Generic()) as t, action, arg:
-            return apply(simplify_generic(t), action, arg)
-        case Instantiation(generic=Ref(static=True)) as t, action, arg:
+        case Instantiation(generic=Generic() | Ref()) as t, action, arg:
             return apply(simplify_generic(t), action, arg)
         case _:
             raise NotImplementedError(f'{t!r}, {action!r}, {arg!r}')
@@ -470,7 +467,7 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                     asname = alias.asname
                     if asname is None:
                         continue
-                    yield Row(index, asname, Ref(name, static=True))
+                    yield Row(index, asname, Ref(name))
             case ast.ClassDef(name=name, body=body, bases=base_expressions, decorator_list=decorator_list):
                 base_classes = []
                 protocol = None

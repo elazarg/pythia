@@ -220,7 +220,7 @@ BOTTOM = Bottom()
 TOP = Top()
 
 
-class Map(Generic[K, T]):
+class Map(Generic[T]):
     # Essentially a defaultdict, but a defaultdict makes values appear out of nowhere
     _map: dict[tac.Var, T]
     default: T
@@ -293,11 +293,31 @@ class Map(Generic[K, T]):
             new_map[k] = resolution(new_map[k], other[k])
         return new_map
 
+    def meet(self, other, resolution: Callable[[T, T], T] = None) -> Map:
+        if resolution is None:
+            resolution = self.default.meet
+        new_map = self.copy()
+        for k in self.keys() & other.keys():
+            new_map[k] = resolution(new_map[k], other[k])
+        return new_map
 
-MapDomain: TypeAlias = Map[K, T] | Bottom
+    def project_stack_vars(self) -> Map[T]:
+        return Map[T](self.default,
+                      {k: v for k, v in self.items()
+                       if k.is_stackvar})
+
+    def __sub__(self, stack_vars: Map[bool]) -> Map[T]:
+        res = self.copy()
+        for k in self.keys():
+            if k.is_stackvar and not stack_vars[k]:
+                del res[k]
+        return res
 
 
-def normalize(values: MapDomain[K, T]) -> MapDomain[K, T]:
+MapDomain: TypeAlias = Map[T] | Bottom
+
+
+def normalize(values: MapDomain[T]) -> MapDomain[T]:
     if isinstance(values, Bottom):
         return BOTTOM
     if any(isinstance(v, Bottom) for v in values.values()):
@@ -339,7 +359,7 @@ class Analysis(Protocol[T]):
         ...
 
 
-class VarAnalysis(Analysis[MapDomain[K, T]]):
+class VarAnalysis(Analysis[MapDomain[T]]):
     lattice: Lattice[T]
     backward: bool
 
@@ -357,17 +377,17 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
     def is_equivalent(self, left, right) -> bool:
         return self.is_less_than(left, right) and self.is_less_than(right, left)
 
-    def copy(self, values: MapDomain[K, T]) -> MapDomain[K, T]:
+    def copy(self, values: MapDomain[T]) -> MapDomain[T]:
         return values.copy()
 
-    def is_bottom(self, values: MapDomain[K, T]) -> bool:
+    def is_bottom(self, values: MapDomain[T]) -> bool:
         return isinstance(values, Bottom)
 
-    def make_map(self, d: dict[K, T] = None) -> MapDomain[K, T]:
+    def make_map(self, d: dict[K, T] = None) -> MapDomain[T]:
         d = d or {}
         return Map(default=self.lattice.default(), d=d)
 
-    def initial(self, annotations: dict[K, str]) -> MapDomain[K, T]:
+    def initial(self, annotations: dict[K, str]) -> MapDomain[T]:
         result = self.make_map()
         result.update({
             name: self.lattice.annotation(t)
@@ -375,13 +395,13 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
         })
         return result
 
-    def top(self) -> MapDomain[K, T]:
+    def top(self) -> MapDomain[T]:
         return self.make_map()
 
-    def bottom(self) -> MapDomain[K, T]:
+    def bottom(self) -> MapDomain[T]:
         return BOTTOM
 
-    def join(self, left: MapDomain[K, T], right: MapDomain[K, T]) -> MapDomain[K, T]:
+    def join(self, left: MapDomain[T], right: MapDomain[T]) -> MapDomain[T]:
         match left, right:
             case (Bottom(), _): return right
             case (_, Bottom()): return left
@@ -456,7 +476,7 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
             case _:
                 assert False, f'unexpected signature {signature}'
 
-    def forward_transfer(self, values: MapDomain[K, T], ins: tac.Tac, location: str) -> MapDomain[K, T]:
+    def forward_transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
         if isinstance(ins, tac.For):
@@ -532,7 +552,7 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
             case _:
                 assert False, f'unexpected signature {signature}'
 
-    def back_transfer(self, values: MapDomain[K, T], ins: tac.Tac, location: str) -> MapDomain[K, T]:
+    def back_transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
         if isinstance(ins, tac.For):
@@ -544,7 +564,7 @@ class VarAnalysis(Analysis[MapDomain[K, T]]):
             return self.make_map({ins.value: self.lattice.back_return()})
         return values
 
-    def transfer(self, values: MapDomain[K, T], ins: tac.Tac, location: str) -> MapDomain[K, T]:
+    def transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()

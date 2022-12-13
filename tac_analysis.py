@@ -8,6 +8,7 @@ from typing import TypeVar, TypeAlias
 import disassemble
 import graph_utils as gu
 import tac
+import tac_analysis_domain
 import tac_analysis_types
 from tac_analysis_constant import ConstLattice, Constant
 
@@ -46,11 +47,12 @@ def analyze(_cfg: Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]) -
         for index, ins in enumerate(cfg[label]):
             invariant = analysis.transfer(invariant, ins, f'{label}.{index}')
 
-        # if analysis.name() is not "Alive":
-        #     liveness = typing.cast(typing.Optional[LivenessDomain], block.post.get(LivenessDomain.name()))
-        #     if liveness:
-        #         invariant.keep_only_live_vars(liveness.vars)
-        #     del liveness
+        if isinstance(invariant, tac_analysis_domain.Map):
+            if analysis.name() is not LivenessLattice.name():
+                liveness = block.post.get(LivenessLattice.name())
+                if liveness:
+                    invariant = invariant - liveness.project_stack_vars()
+                del liveness
 
         block.post[name] = invariant
 
@@ -72,9 +74,9 @@ def run(f, functions, imports, module_type, simplify=True) -> Cfg:
     #     rewrite_remove_useless_movs_pairs(block, label)
     #     rewrite_aliases(block, label)
     #     rewrite_remove_useless_movs(block, label)
-    type_analysis = VarAnalysis[tac.Var, ts.TypeExpr](TypeLattice(module_type, functions, imports))
-    liveness_analysis = VarAnalysis[tac.Var, Liveness](LivenessLattice(), backward=True)
-    constant_analysis = VarAnalysis[tac.Var, Constant](ConstLattice())
+    liveness_analysis = VarAnalysis[Liveness](LivenessLattice(), backward=True)
+    constant_analysis = VarAnalysis[Constant](ConstLattice())
+    type_analysis = VarAnalysis[ts.TypeExpr](TypeLattice(module_type, functions, imports))
     pointer_analysis = PointerAnalysis(type_analysis, liveness_analysis)
 
     analyze(cfg, liveness_analysis, annotations)
@@ -88,7 +90,7 @@ def run(f, functions, imports, module_type, simplify=True) -> Cfg:
 
 
 def mark_heap(cfg: Cfg,
-               liveness_analysis: VarAnalysis[tac.Var, Liveness],
+               liveness_analysis: VarAnalysis[Liveness],
                pointer_analysis: PointerAnalysis) -> None:
     for i, block in cfg.items():
         if not block:
@@ -139,7 +141,7 @@ def analyze_function(filename: str, function_name: str) -> None:
               functions=functions,
               imports=imports,
               module_type=module_type,
-              simplify=True)
+              simplify=False)
     print_analysis(cfg)
 
 

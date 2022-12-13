@@ -32,7 +32,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
         #
         # self.globals = ts.Class('globals()', frozendict(global_state))
         self.globals = this_module
-        self.builtins = ts.resolve_static_ref(ts.Ref('builtins', static=True))
+        self.builtins = ts.resolve_static_ref(ts.Ref('builtins'))
 
     def name(self) -> str:
         return "Type"
@@ -58,13 +58,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
 
     def resolve(self, ref: ts.TypeExpr) -> ts.TypeExpr:
         if isinstance(ref, ts.Ref):
-            if ref.static:
-                result = ts.resolve_static_ref(ref)
-            else:
-                result = self.globals
-                for attr in ref.name.split('.'):
-                    result = result.fields[attr]
-            ref = result
+            ref = ts.resolve_static_ref(ref)
         assert isinstance(ref, (ts.TypeExpr, ts.Module, ts.Class, ts.Protocol)), ref
         return ref
 
@@ -120,8 +114,8 @@ class TypeLattice(Lattice[ts.TypeExpr]):
 
     def const(self, value: object) -> ts.TypeExpr:
         if value is None:
-            return self.resolve(ts.Ref('builtins.NoneType'))
-        return self.resolve(ts.Ref(f'builtins.{type(value).__name__}', static=True))
+            return ts.Ref('builtins.NoneType')
+        return ts.Ref(f'builtins.{type(value).__name__}')
 
     def _attribute(self, var: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
         mod = self.resolve(var)
@@ -129,6 +123,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
             return ts.subscr(mod, ts.Literal(attr.name))
         except TypeError:
             if mod == self.globals:
+                print(var, attr, mod)
                 return ts.subscr(self.builtins, ts.Literal(attr.name))
             raise
 
@@ -145,7 +140,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
 
     def imported(self, modname: tac.Var) -> ts.TypeExpr:
         if isinstance(modname, tac.Var):
-            return ts.resolve_static_ref(ts.Ref(modname.name, static=True))
+            return ts.resolve_static_ref(ts.Ref(modname.name))
         elif isinstance(modname, tac.Attribute):
             return self.attribute(modname.var, modname.field)
 
