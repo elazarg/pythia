@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def three() -> int:
+def pair() -> tuple[int, int]:
     x = 2
     res = x + 1
     return res
@@ -21,7 +21,8 @@ def minimal():
     res = np.zeros((5, 7))
 
     for i in range(1000):
-        temp = np.random.rand(three(), 5)
+        x, y = pair()
+        temp = np.random.rand(x, y)
         res += temp
     return res
 

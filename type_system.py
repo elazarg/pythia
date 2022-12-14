@@ -34,9 +34,10 @@ class Ref(TypeExpr):
 @dataclass(frozen=True)
 class TypeVar(TypeExpr):
     name: str
+    is_args: bool = False
 
     def __repr__(self):
-        return self.name
+        return f'{self.name}'
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,7 @@ class Row(TypeExpr):
     type: TypeExpr
 
     def __repr__(self):
-        return f'{self.name}: {self.type}'
+        return f'({self.index}){self.name}: {self.type}'
 
     def match(self, index_or_name: Literal[int] | Literal[str]):
         return index_or_name.value == self.index or index_or_name.value == self.name
@@ -90,6 +91,9 @@ TypedDict: typing.TypeAlias = Intersection[Row]
 class Union(TypeExpr):
     items: frozenset[TypeExpr]
 
+    def __repr__(self) -> str:
+        return f'{{{" | ".join(f"{decl}" for decl in self.items)}}}'
+
 
 @dataclass(frozen=True)
 class Class:
@@ -120,10 +124,6 @@ class Protocol:
         return f'{self.name}'
 
 
-class Magic(TypeExpr, enum.Enum):
-    ARGS = enum.auto()
-
-
 @dataclass(frozen=True)
 class FunctionType(TypeExpr):
     params: TypedDict
@@ -146,7 +146,7 @@ G = typing.TypeVar('G', Class, Protocol, FunctionType, Ref)
 
 @dataclass(frozen=True)
 class Generic(TypeExpr, typing.Generic[G]):
-    type_params: tuple[TypeVar]
+    type_params: tuple[TypeVar, ...]
     type: G
 
     def __repr__(self) -> str:
@@ -159,10 +159,10 @@ class Generic(TypeExpr, typing.Generic[G]):
 @dataclass(frozen=True)
 class Instantiation(TypeExpr, typing.Generic[G]):
     generic: Generic[G]
-    type_params: tuple[TypeExpr]
+    type_args: tuple[TypeExpr]
 
     def __repr__(self):
-        return f'{self.generic}[{", ".join(repr(x) for x in self.type_params)}]'
+        return f'{self.generic}[{", ".join(repr(x) for x in self.type_args)}]'
 
 
 def constant(value: object) -> TypeExpr:
@@ -179,18 +179,20 @@ def simplify_generic(t):
             case Generic(type_params, typeexpr):
                 new_context = {k: v for k, v in context.items() if k not in type_params}
                 return Generic(type_params, simplify_generic(typeexpr, new_context))
-            case Instantiation(Generic() as generic, type_params):
-                new_type_params = tuple(simplify_generic(t, context) for t in type_params)
+            case Instantiation(Generic() as generic, type_args):
+                new_type_params = tuple(simplify_generic(t, context) for t in type_args)
                 new_context = {k: v for k, v in zip(generic.type_params, new_type_params)}
                 new_context = context | new_context
                 return simplify_generic(generic.type, new_context)
-            case Instantiation(Ref() as ref, type_params):
+            case Instantiation(Ref() as ref, type_args):
                 g = resolve_static_ref(ref)
                 assert isinstance(g, Generic), f'{g!r} is not a generic in {t!r}'
-                t = Instantiation(g, type_params)
+                t = Instantiation(g, type_args)
                 return simplify_generic(t, context)
-            case Instantiation(Intersection() as items, type_params):
-                return Intersection(frozenset(simplify_generic(Instantiation(item, type_params), context) for item in items))
+            case Instantiation(Intersection() as items, type_args):
+                return Intersection(frozenset(simplify_generic(Instantiation(item, type_args), context) for item in items))
+            case Instantiation(generic, type_args):
+                return Instantiation(simplify_generic(generic, context), type_args)
             case Ref():
                 return t
             case TypeVar():
@@ -334,13 +336,41 @@ class Action(enum.Enum):
     CALL = enum.auto()
 
 
+def unify(type_params: tuple[TypeVar, ...], params: Intersection[Row], args: Intersection[Row]) -> tuple[TypeExpr]:
+    bound_types: dict[TypeVar, TypeExpr] = {x: BOTTOM for x in type_params if not x.is_args}
+    assert isinstance(args, Intersection)
+    unbound_args = set(args.items)
+    for item in args.items:
+        assert isinstance(item, Row)
+        for param in params.items:
+            if isinstance(param.type, TypeVar) and param.type.is_args:
+                continue
+            if param.index == item.index and item.name is None:
+                if param.type in type_params:
+                    assert isinstance(param.type, TypeVar)
+                    bound_types[param.type] = join(bound_types[param.type], item.type)
+                unbound_args.remove(item)
+    for param in params.items:
+        if isinstance(param.type, TypeVar) and param.type.is_args:
+            minimal_index = min(item.index for item in unbound_args)
+            bound_types[param.type] = intersect(
+                Row(r.index - minimal_index, None, r.type)
+                for r in unbound_args)
+            break
+    return tuple(bound_types[x] for x in type_params)
+
+
 def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
     match t, action, arg:
         case Row() as t, Action.INDEX, Literal() as index:
             if t.index == index.value or t.name == index.value:
                 return t.type
             return TOP
-        case Row() as t, Action.INDEX, Intersection(items):
+        case Row() as t, Action.INDEX, Ref(name=name):
+            if name == 'builtins.int' and t.index is not None:
+                return t.type
+            return TOP
+        case t, Action.INDEX, Intersection(items):
             mid = [apply(t, action, item) for item in items]
             return meet_all(mid)
         case Intersection(items), action, arg:
@@ -369,7 +399,7 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
                                             property=Literal(False)) for x in bound_types]
                 return meet_all(bound_types)
         case FunctionType(return_type=return_type), Action.CALL, Intersection(items=items):
-            if return_type is Magic.ARGS:
+            if isinstance(return_type, TypeVar) and return_type.is_args:
                 return intersect(Row(row.index, None, row.type) for row in items)
             return return_type
         case FunctionType(return_type=return_type), Action.CALL, arg:
@@ -381,9 +411,13 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
             return apply(simplify_generic(t), action, arg)
         case Literal(value), action, arg:
             return TOP
+        case Generic(type_params=type_params, type=FunctionType() as f), Action.CALL, arg:
+            bound_types = unify(type_params, f.params, arg)
+            return_type = Instantiation(generic=Generic(type_params=type_params, type=f.return_type),
+                                        type_args=bound_types)
+            return simplify_generic(return_type)
         case _:
-            return TOP
-            # raise NotImplementedError(f'{t!r}, {action!r}, {arg!r}')
+            raise NotImplementedError(f'{t!r}, {action!r}, {arg!r}')
 
 
 def subscr(t: TypeExpr, index: TypeExpr | Module | Class | Protocol) -> TypeExpr:
@@ -394,17 +428,13 @@ def call(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
     return apply(t, Action.CALL, arg)
 
 
-TUPLE_CONSTRUCTOR = FunctionType(params=TOP,
-                                 return_type=Magic.ARGS,
-                                 new=Literal(False), property=Literal(False))
-
-
 def make_constructor(t: TypeExpr) -> TypeExpr:
-    return intersect([
-        TUPLE_CONSTRUCTOR,
-        FunctionType(params=TOP, return_type=t,
-                     new=Literal(False), property=Literal(False))
-        ])
+    args = TypeVar('Args', is_args=True)
+    return_type = intersect([args, Instantiation(t, (args,))])
+    return Generic((args,), FunctionType(params=intersect([Row(None, None, args)]),
+                                         return_type=return_type,
+                                         new=Literal(False),
+                                         property=Literal(False)))
 
 
 def binop_to_dunder_method(op: str) -> tuple[str, typing.Optional[str]]:
@@ -464,7 +494,10 @@ def resolve_relative_ref(ref, module):
 
 
 def infer_self(row: Row) -> Row:
-    function = row.type
+    generic = row.type
+    if not isinstance(generic, Generic):
+        return row
+    function = generic.type
     if not isinstance(function, FunctionType):
         return row
     params = function.params
@@ -473,24 +506,27 @@ def infer_self(row: Row) -> Row:
     self_arg, other_args = params.split_by_index(Literal[int](0))
     assert len(self_arg.items) == 1
     self_arg = next(iter(self_arg.items))
+    type_params = generic.type_params
     if self_arg.type == TypeVar('Infer'):
         self_arg = Row(0, self_arg.name, TypeVar('Self'))
+        type_params = type_params[1:]
     params = intersect([self_arg]) & other_args
-    g = Generic((TypeVar('Self'),), FunctionType(params, function.return_type, function.new))
+    g = Generic((TypeVar('Self'),) + type_params, FunctionType(params, function.return_type, function.new))
     return Row(row.index, row.name, g)
 
 
 def module_to_type(module: ast.Module, name: str) -> Module:
-    def expr_to_type(expr: ast.expr, generic_names: set) -> TypeExpr:
+    def free_vars(node: ast.expr):
+        return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+
+    def expr_to_type(expr: ast.expr) -> TypeExpr:
         match expr:
             case None:
                 return TypeVar('Infer')
-            case ast.Name(id='Args'):
-                return Magic.ARGS
             case ast.Constant(value):
                 return constant(value)
             case ast.Name(id=id):
-                if id in generic_names:
+                if id in generic_vars:
                     return TypeVar(id)
                 if id in global_aliases:
                     return Ref(global_aliases[id])
@@ -499,23 +535,33 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                 else:
                     return Ref(f'builtins.{id}')
             case ast.Subscript(value=value, slice=ast.Tuple(elts=elts)):
-                return Instantiation(expr_to_type(value, generic_names), tuple(expr_to_type(x, generic_names) for x in elts))
+                return Instantiation(expr_to_type(value), tuple(expr_to_type(x) for x in elts))
             case ast.Subscript(value=value, slice=ref):
-                return Instantiation(expr_to_type(value, generic_names), (expr_to_type(ref, generic_names),))
+                return Instantiation(expr_to_type(value), (expr_to_type(ref),))
             case ast.Attribute(value=value, attr=attr):
-                ref = expr_to_type(value, generic_names)
+                ref = expr_to_type(value)
                 assert isinstance(ref, Ref), f'Expected Ref, got {ref!r} for {value!r}'
                 return Ref(f'{ref.name}.{attr}')
             case _:
                 raise NotImplementedError(f'{expr!r}')
 
+    def parse_generic_arguments(slice: ast.Tuple | ast.Name | ast.JoinedStr) -> tuple[TypeVar, ...]:
+        match slice:
+            case ast.Tuple(elts=elts):
+                return tuple(y for x in elts for y in parse_generic_arguments(x))
+            case ast.Name(id=id):
+                return (TypeVar(id),)
+            case ast.Starred(value=ast.Name(id=id)):
+                return (TypeVar(id, is_args=True),)
+            case _:
+                raise NotImplementedError(f'{slice!r}')
     # convert a Python ast to a type expression
-    def stmt_to_rows(definition: ast.stmt, index: int, generic_names: set) -> typing.Iterator[Row]:
+    def stmt_to_rows(definition: ast.stmt, index: int) -> typing.Iterator[Row]:
         match definition:
             case ast.Pass():
                 return
             case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation, value=value):
-                yield Row(index, name, expr_to_type(annotation, generic_names))
+                yield Row(index, name, expr_to_type(annotation))
             case ast.Import(names=aliases):
                 for alias in aliases:
                     name = alias.name
@@ -531,19 +577,14 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                     match base:
                         case ast.Name(id='Protocol'):
                             protocol = True
-                        case ast.Subscript(value=ast.Name(id='Protocol' | 'Generic'), slice=ast.Name(id=id)):
+                        case ast.Subscript(value=ast.Name(id=('Protocol' | 'Generic') as id), slice=params):
                             protocol = id == 'Protocol'
-                            generic_params = (TypeVar(id),)
-                            generic_names = generic_names | {id}
-                        case ast.Subscript(value=ast.Name(id='Protocol' | 'Generic' as id), slice=ast.Tuple(elts=elts)):
-                            protocol = id == 'Protocol'
-                            generic_names = generic_names | {id.id for id in elts}
-                            generic_params = tuple([expr_to_type(id, generic_names) for id in elts])
+                            generic_params = parse_generic_arguments(params)
                         case ast.Name(id=id):
                             base_classes.append(Ref(id))
                 base_classes = tuple(base_classes)
                 class_dict = intersect([infer_self(row) for index, stmt in enumerate(body)
-                                        for row in stmt_to_rows(stmt, index, generic_names)])
+                                        for row in stmt_to_rows(stmt, index)])
                 if protocol is not None:
                     res = Protocol(name, class_dict, inherits=base_classes)
                 else:
@@ -554,22 +595,37 @@ def module_to_type(module: ast.Module, name: str) -> Module:
             case ast.FunctionDef(name=name, returns=returns, decorator_list=decorator_list,
                                  args=ast.arguments(args=args, vararg=vararg, kwonlyargs=kwonlyargs,
                                                     kw_defaults=kw_defaults, kwarg=kwarg, defaults=defaults)):
+                freevars = {x for node in args for x in free_vars(node)}
                 params = intersect(
-                    [Row(index, arg.arg, expr_to_type(arg.annotation, generic_names)) for index, arg in enumerate(args)])
-                returns = expr_to_type(returns, generic_names)
+                    [Row(index, arg.arg, expr_to_type(arg.annotation))
+                     for index, arg in enumerate(args)]
+                )
+                returns = expr_to_type(returns)
                 name_decorators = [decorator.id for decorator in decorator_list if isinstance(decorator, ast.Name)]
                 new = Literal[bool]('new' in name_decorators)
                 property = Literal[bool]('property' in name_decorators)
-                yield Row(index, name, FunctionType(params, returns, new=new, property=property))
+                f = FunctionType(params, returns, new=new, property=property)
+
+                new_generic_names = tuple(TypeVar(x) for x in freevars if x in generic_vars)
+                if new_generic_names:
+                    f = Generic(new_generic_names, f)
+
+                yield Row(index, name, f)
             case _:
                 raise NotImplementedError(f'{definition!r}, {type(definition)}')
 
     global_names = {node.name for node in module.body if isinstance(node, (ast.ClassDef, ast.FunctionType))}
+    generic_vars = {node.targets[0].id for node in module.body
+                    if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
+                    and isinstance(node.value.func, ast.Name) and node.value.func.id in ['TypeVar', 'TypeVarTuple']
+                    and isinstance(node.targets[0], ast.Name)}
+
     global_aliases = {name.asname: name.name
                       for node in module.body if isinstance(node, ast.Import)
                       for name in node.names if name.asname is not None}
     class_dict = intersect([row for index, stmt in enumerate(module.body)
-                            for row in stmt_to_rows(stmt, index, set())])
+                            if not isinstance(stmt, ast.Assign)
+                            for row in stmt_to_rows(stmt, index)])
     return Module(name, class_dict)
 
 
@@ -587,6 +643,7 @@ MODULES = Module('typeshed',
 
 def main():
     pretty_print_type(MODULES)
+
 
 def test_intersect():
     a = Intersection([Row(0, None, Ref('builtins.int')),
@@ -607,6 +664,7 @@ def test_intersect():
 
 
 if __name__ == '__main__':
+    main()
     test_intersect()
 
 
