@@ -401,11 +401,10 @@ class VarAnalysis(Analysis[MapDomain[T]]):
 
     def transformer_signature(self, value: T, signature: tac.Signature) -> Map[T]:
         match signature:
-            case tuple():
-                value_tuple = self.lattice.assign_tuple(value)
-                if not isinstance(value_tuple, tuple):
-                    return self.make_map({signature[i]: self.lattice.top() for i in range(len(signature))})
-                return self.make_map({signature[i]: value_tuple[i] for i in range(len(value_tuple))})
+            case tuple() as signature:
+                assert all(isinstance(v, tac.Var) for v in signature)
+                return self.make_map({var: self.lattice.subscr(value, self.lattice.const(i))
+                                      for i, var in enumerate(signature)})
             case tac.Var():
                 return self.make_map({signature: self.lattice.assign_var(value)})
             case tac.Attribute():

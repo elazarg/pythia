@@ -67,7 +67,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
     def resolve(self, ref: ts.TypeExpr) -> ts.TypeExpr:
         if isinstance(ref, ts.Ref):
             ref = ts.resolve_static_ref(ref)
-        assert isinstance(ref, (ts.TypeExpr, ts.Module, ts.Class, ts.Protocol)), ref
+        assert isinstance(ref, (ts.TypeExpr, ts.Module, ts.Class)), ref
         return ref
 
     def is_match(self, args: list[ts.TypeExpr], params):

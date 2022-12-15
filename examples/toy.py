@@ -1,10 +1,13 @@
 import numpy as np
 
 
-def pair() -> tuple[int, int]:
+def pair() -> tuple[int, float]:
     x = 2
     res = x + 1
     return res
+
+def destruct():
+    a, b = pair()
 
 def test_tuple(a: int, b: float) -> int:
     x = (a, b)
