@@ -7,7 +7,9 @@ FLOAT = ts.Ref('builtins.float')
 T = ts.TypeVar('T')
 T1 = ts.TypeVar('T1')
 T2 = ts.TypeVar('T2')
+N = ts.TypeVar('N')
 Args = ts.TypeVar('Args', is_args=True)
+
 
 def make_function(return_type: ts.TypeExpr, params: ts.Intersection[ts.Row]) -> ts.FunctionType:
     return ts.FunctionType(params, return_type,
@@ -69,8 +71,25 @@ def test_function_call_generic_project():
     f = ts.Generic((T,), make_function(T, make_rows(T, T)))
     arg = make_rows(INT, FLOAT)
     assert ts.call(f, arg) == ts.join(INT, FLOAT)
+#
+# def test_function_call_variadic():
+#     f = ts.Generic((Args,), make_function(Args, make_rows(Args)))
+#     arg = make_rows(INT, FLOAT)
+#     assert ts.call(f, arg) == arg
+#
+#     f = ts.Generic((Args, N), make_function(ts.Instantiation(Args, (N,)), make_rows(N, Args)))
+#     arg = make_rows(ts.Literal(0), INT, FLOAT)
+#     assert ts.call(f, arg) == INT
+#     arg = make_rows(ts.Literal(1), INT, FLOAT)
+#     assert ts.call(f, arg) == FLOAT
 
 def test_tuple():
-    t = ts.resolve_static_ref(ts.Ref('builtins.tuple'))
+    f = ts.Generic((T,), make_function(T, make_rows(T, T)))
+    arg = make_rows(INT, FLOAT)
+    assert ts.call(f, arg) == ts.join(INT, FLOAT)
+
+    t = ts.Ref('builtins.tuple')
     t1 = ts.simplify_generic(ts.Instantiation(t, (INT, FLOAT)))
-    # assert t1 == None
+    gt = ts.subscr(t1, ts.Literal('__getitem__'))
+    x = ts.call(gt, make_rows(ts.Literal(0)))
+    assert x == INT
