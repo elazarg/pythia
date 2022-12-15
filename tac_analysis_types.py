@@ -129,7 +129,6 @@ class TypeLattice(Lattice[ts.TypeExpr]):
             return ts.subscr(mod, ts.Literal(attr.name))
         except TypeError:
             if mod == self.globals:
-                print(var, attr, mod)
                 return ts.subscr(self.builtins, ts.Literal(attr.name))
             raise
 
@@ -154,12 +153,13 @@ class TypeLattice(Lattice[ts.TypeExpr]):
     def is_supertype(self, left: ts.TypeExpr, right: ts.TypeExpr) -> bool:
         return self.join(left, right) == left
 
-    def allocation_type_function(self, overloaded_function: ts.TypeExpr) -> tac.AllocationType:
-        return tac.AllocationType.NONE
-        if isinstance(overloaded_function, OverloadedFunctionType):
-            if all(function.new for function in overloaded_function.types):
+    def allocation_type_function(self, function: ts.TypeExpr) -> tac.AllocationType:
+        if isinstance(function, ts.Generic):
+            function = function.type
+        if isinstance(function, ts.FunctionType):
+            if function.new.value:
                 return tac.AllocationType.STACK
-            if not any(function.new for function in overloaded_function.types):
+            else:
                 return tac.AllocationType.NONE
         return tac.AllocationType.UNKNOWN
 

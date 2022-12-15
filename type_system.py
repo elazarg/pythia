@@ -217,6 +217,8 @@ def simplify_generic(t):
                             return Instantiation(new_generic, type_args)
                         return simplify_generic(Instantiation(new_generic, new_type_args), context)
                     case Ref() as ref, type_args:
+                        # avoid infinite recursion when instantiating a generic class with its own parameter
+                        return t
                         g = resolve_static_ref(ref)
                         assert isinstance(g, Generic), f'{g!r} is not a generic in {t!r}'
                         t = Instantiation(g, type_args)
@@ -391,10 +393,14 @@ def unify(type_params: tuple[TypeVar, ...], params: Intersection[Row], args: Int
                 unbound_args.remove(item)
     for param in params.items:
         if isinstance(param.type, TypeVar) and param.type.is_args:
-            minimal_index = min(item.index for item in unbound_args)
-            bound_types[param.type] = intersect(
-                Row(r.index - minimal_index, None, r.type)
-                for r in unbound_args)
+            if not unbound_args:
+                argtype = TOP
+            else:
+                minimal_index = min(item.index for item in unbound_args)
+                argtype = intersect(
+                    Row(r.index - minimal_index, None, r.type)
+                    for r in unbound_args)
+            bound_types[param.type] = argtype
             break
     return tuple(bound_types[x] for x in type_params)
 
@@ -447,9 +453,21 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
             getter = apply(t, Action.INDEX, Literal[str]('__getitem__'))
             res = apply(getter, Action.CALL, intersect([Row(0, None, arg)]))
             return res
-        case Instantiation(generic=Generic() | Ref()) as t, action, arg:
-            t = simplify_generic(t)
-            return apply(t, action, arg)
+        case Instantiation(generic=Generic()) as t, action, arg:
+            new_t = simplify_generic(t)
+            if new_t != t:
+                return apply(new_t, action, arg)
+            assert False, f'Cannot apply {action} to {t} with {arg}'
+        case Instantiation(generic=Ref() as generic, type_args=args) as t, action, arg:
+            new_generic = resolve_static_ref(generic)
+            if new_generic != generic:
+                return apply(Instantiation(new_generic, args), action, arg)
+            assert False, f'Cannot apply {action} to {t} with {arg}'
+        case TypeVar() as t, action, arg:
+            new_t = simplify_generic(t)
+            if new_t != t:
+                return apply(new_t, action, arg)
+            assert False, f'Cannot apply {action} to {t} with {arg}'
         case Literal(value), action, arg:
             return TOP
         case _:
@@ -689,27 +707,8 @@ def main():
     pretty_print_type(MODULES)
 
 
-def test_intersect():
-    a = Intersection([Row(0, None, Ref('builtins.int')),
-                      Row(1, None, Ref('builtins.str'))])
-    b = Literal[int](1)
-    c = Ref('builtins.int')
-    print(a)
-    print(b)
-    print(subscr(a, b))
-    print(subscr(a, c))
-    print(subscr(a, intersect([b, c])))
-    # mod = subscr(MODULES, Literal[str]('builtins'))
-    # pretty_print_type(mod)
-    # S = subscr(mod, Literal[str]('sum'))
-    # print(S)
-    # X = apply(S, Action.CALL, Literal[int](1))
-    # print(X)
-
-
 if __name__ == '__main__':
     main()
-    test_intersect()
 
 
 # SimpleType: TypeAlias = Ref | TypeVar | OverloadedFunctionType | MapType | Generic | Instantiation | FunctionType
@@ -801,41 +800,7 @@ if __name__ == '__main__':
 # }))
 #
 # TIME_MODULE = ObjectType('/time')
-#
-# NUMPY_MODULE = ObjectType('/numpy', frozendict({
-#     'ndarray': TYPE[NDARRAY],
-#     'array': ARRAY_GEN,
-#     'dot': make_function_type(FLOAT, new=False),
-#     'zeros': ARRAY_GEN,
-#     'ones': ARRAY_GEN,
-#     'concatenate': ARRAY_GEN,
-#     'empty': ARRAY_GEN,
-#     'empty_like': ARRAY_GEN,
-#     'full': ARRAY_GEN,
-#     'full_like': ARRAY_GEN,
-#     'arange': ARRAY_GEN,
-#     'linspace': ARRAY_GEN,
-#     'logspace': ARRAY_GEN,
-#     'geomspace': ARRAY_GEN,
-#     'meshgrid': ARRAY_GEN,
-#     'max': make_function_type(FLOAT, new=False),
-#     'min': make_function_type(FLOAT, new=False),
-#     'sum': make_function_type(FLOAT, new=False),
-#     'setdiff1d': ARRAY_GEN,
-#     'unique': ARRAY_GEN,
-#     'append': ARRAY_GEN,
-#     'random': ObjectType('/numpy.random', frozendict({
-#         'rand': ARRAY_GEN,
-#     })),
-#     'argmax': make_function_type(INT, new=False),
-#     'c_': ObjectType('slice_trick', frozendict({
-#         '__getitem__': make_function_type(NDARRAY),
-#     })),
-#     'r_': ObjectType('slice_trick', frozendict({
-#         '__getitem__': make_function_type(NDARRAY),
-#     })),
-# }))
-#
+
 # SKLEARN_MODULE = ObjectType('/sklearn', frozendict({
 #     'metrics': ObjectType('/metrics', frozendict({
 #         'log_loss': make_function_type(FLOAT, new=False),
