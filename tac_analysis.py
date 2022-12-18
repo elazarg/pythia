@@ -8,15 +8,15 @@ from typing import TypeVar, TypeAlias
 import disassemble
 import graph_utils as gu
 import tac
+import tac_analysis_domain
 import tac_analysis_types
 from tac_analysis_constant import ConstLattice, Constant
 
 from tac_analysis_domain import IterationStrategy, VarAnalysis, BackwardIterationStrategy, ForwardIterationStrategy, \
     Analysis
-from tac_analysis_liveness import LivenessLattice, Liveness
+from tac_analysis_liveness import LivenessLattice, Liveness, LivenessAnalysis
 from tac_analysis_pointer import PointerAnalysis, pretty_print_pointers, find_reachable
-from tac_analysis_types import TypeLattice, TypeElement
-
+from tac_analysis_types import TypeLattice, ts
 
 T = TypeVar('T')
 Cfg: TypeAlias = gu.Cfg[tac.Tac]
@@ -29,7 +29,7 @@ def make_tac_cfg(f, simplify=True):
     return cfg
 
 
-def analyze(_cfg: Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]) -> None:
+def analyze(_cfg: Cfg, analysis: Analysis[T], annotations) -> None:
     name = analysis.name()
     for label in _cfg.labels:
         _cfg[label].pre[name] = analysis.bottom()
@@ -47,11 +47,12 @@ def analyze(_cfg: Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]) -
         for index, ins in enumerate(cfg[label]):
             invariant = analysis.transfer(invariant, ins, f'{label}.{index}')
 
-        # if analysis.name() is not "Alive":
-        #     liveness = typing.cast(typing.Optional[LivenessDomain], block.post.get(LivenessDomain.name()))
-        #     if liveness:
-        #         invariant.keep_only_live_vars(liveness.vars)
-        #     del liveness
+        if isinstance(invariant, tac_analysis_domain.Map):
+            if analysis.name() is not LivenessLattice.name():
+                liveness = block.post.get(LivenessLattice.name())
+                if liveness:
+                    invariant = LivenessAnalysis.remove_dead_variables(liveness, invariant)
+                del liveness
 
         block.post[name] = invariant
 
@@ -63,7 +64,7 @@ def analyze(_cfg: Cfg, analysis: Analysis[T], annotations: dict[tac.Var, str]) -
                 wl.add(succ)
 
 
-def run(f, functions, imports, simplify=True) -> Cfg:
+def run(f, functions, imports, module_type, simplify=True) -> Cfg:
     cfg = make_tac_cfg(f, simplify=simplify)
 
     # gu.pretty_print_cfg(cfg)
@@ -73,9 +74,9 @@ def run(f, functions, imports, simplify=True) -> Cfg:
     #     rewrite_remove_useless_movs_pairs(block, label)
     #     rewrite_aliases(block, label)
     #     rewrite_remove_useless_movs(block, label)
-    type_analysis = VarAnalysis[tac.Var, TypeElement](TypeLattice(functions, imports))
-    liveness_analysis = VarAnalysis[tac.Var, Liveness](LivenessLattice(), backward=True)
-    constant_analysis = VarAnalysis[tac.Var, Constant](ConstLattice())
+    liveness_analysis = LivenessAnalysis()
+    constant_analysis = VarAnalysis[Constant](ConstLattice())
+    type_analysis = VarAnalysis[ts.TypeExpr](TypeLattice(f.__name__, module_type, functions, imports))
     pointer_analysis = PointerAnalysis(type_analysis, liveness_analysis)
 
     analyze(cfg, liveness_analysis, annotations)
@@ -83,14 +84,15 @@ def run(f, functions, imports, simplify=True) -> Cfg:
     analyze(cfg, type_analysis, annotations)
     analyze(cfg, pointer_analysis, annotations)
 
-    mark_heap(cfg, liveness_analysis, pointer_analysis)
+    mark_heap(cfg, liveness_analysis, pointer_analysis, annotations)
 
     return cfg
 
 
 def mark_heap(cfg: Cfg,
-               liveness_analysis: VarAnalysis[tac.Var, Liveness],
-               pointer_analysis: PointerAnalysis) -> None:
+              liveness_analysis: VarAnalysis[Liveness],
+              pointer_analysis: PointerAnalysis,
+              annotations: dict[tac.Var, object]) -> None:
     for i, block in cfg.items():
         if not block:
             continue
@@ -99,7 +101,11 @@ def mark_heap(cfg: Cfg,
             ptr = block.post[pointer_analysis.name()]
             alive = block.pre[liveness_analysis.name()]
             for var in alive.keys():
+                if var in annotations:
+                    continue
                 for loc in find_reachable(ptr, var):
+                    if repr(loc).startswith('@param'):
+                        continue
                     label, index = [int(x) for x in str(loc)[1:].split('.')]
                     ins = cfg[label][index]
                     ins.expr.allocation = tac.AllocationType.HEAP
@@ -135,17 +141,21 @@ def print_analysis(cfg: Cfg) -> None:
 
 def analyze_function(filename: str, function_name: str) -> None:
     functions, imports = disassemble.read_file(filename)
+    module_type = ts.parse_file(filename)
     cfg = run(functions[function_name],
               functions=functions,
               imports=imports,
+              module_type=module_type,
               simplify=True)
     print_analysis(cfg)
 
 
 def main() -> None:
-    analyze_function('examples/feature_selection.py', 'do_work')
+    # analyze_function('examples/feature_selection.py', 'do_work')
+    analyze_function('examples/toy.py', 'minimal')
     # analyze_function('examples/feature_selection.py', 'run')
-    # analyze_function('examples/toy.py', 'minimal')
+    # analyze_function('examples/tests.py', 'listing')
+    # analyze_function('examples/toy.py', 'destruct')
     # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/toy.py', 'toy3')
 

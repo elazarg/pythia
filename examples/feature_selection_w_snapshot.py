@@ -1,11 +1,13 @@
 import persist
 import numpy as np
 
+import type_system
+
 
 def cost_function(X, y, theta):
     m = y.size
-    error = np.dot(X, theta.T) - y
-    cost = 1 / (2 * m) * np.dot(error.T, error)
+    error = np.dot(X, type_system.T) - y
+    cost = 1 / (2 * m) * np.dot(type_system.T, error)
     return cost, error
 
 
@@ -14,7 +16,7 @@ def gradient_descent(X, y, theta, alpha, iters):
     m = y.size
     for i in range(iters):
         cost, error = cost_function(X, y, theta)
-        theta = theta - (alpha * (1 / m) * np.dot(X.T, error))
+        theta = theta - (alpha * (1 / m) * np.dot(type_system.T, error))
         cost_array[i] = cost
     return theta, cost_array
 

@@ -1,23 +1,25 @@
 import numpy as np
 
-
-def three() -> int:
-    return 3
-
+def access():
+    x = np.zeros((5, 7))
+    res = x.astype('int')
+    return res
 
 def minimal():
     res = np.zeros((5, 7))
 
     for i in range(1000):
-        temp = np.random.rand(three(), 5)
+        temp = np.random.rand((5, 7))
         res += temp
     return res
 
 
+class A:
+    score: float
+    vector: np.ndarray
+
+
 def not_so_minimal():
-    # class A:
-    #     score: float
-    #     vector: np.ndarray
     a = A()
     a.vector = np.zeros((5, 7))
     a.score = 0.0

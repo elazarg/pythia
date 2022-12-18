@@ -2,3 +2,4 @@ networkx==2.8.8
 numpy==1.23.5
 frozendict==2.3.4
 matplotlib==3.6.2
+pytest==7.2.0

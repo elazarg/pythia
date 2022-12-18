@@ -94,9 +94,6 @@ class ConstLattice(Lattice[Constant]):
     def subscr(self, array: Constant, index: Constant) -> Constant:
         return self.top()
 
-    def annotation(self, code: str) -> Constant:
-        return self.top()
-
     def imported(self, modname: str) -> Constant:
         return tac.Const(tac.Module(modname))
 

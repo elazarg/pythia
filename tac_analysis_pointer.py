@@ -12,7 +12,8 @@ Graph: TypeAlias = dict[Object, dict[tac.Var, frozenset[Object]]]
 
 
 def pretty_print_pointers(pointers: Graph) -> str:
-    return ', '.join((f'{source_obj}:' if source_obj is not LOCALS else '') + f'{field}->{target_obj}'
+    join = lambda target_obj: "{" + ", ".join(str(x) for x in target_obj) + "}"
+    return ', '.join((f'{source_obj}:' if source_obj is not LOCALS else '') + f'{field}->{join(target_obj)}'
                      for source_obj in pointers
                      for field, target_obj in pointers[source_obj].items()
                      if pointers[source_obj][field]
@@ -20,7 +21,7 @@ def pretty_print_pointers(pointers: Graph) -> str:
 
 
 def copy_graph(graph: Graph) -> Graph:
-    return {obj: {field: set(target_obj) for field, target_obj in obj_fields.items()}
+    return {obj: {field: target_obj.copy() for field, target_obj in obj_fields.items()}
             for obj, obj_fields in graph.items()}
 
 
@@ -58,7 +59,7 @@ class PointerAnalysis(Analysis[Graph]):
         for obj, fields in right.items():
             if obj in pointers:
                 for field, values in fields.items():
-                    pointers[obj][field] = pointers[obj].get(field, set()) | values
+                    pointers[obj][field] = pointers[obj].get(field, frozenset()) | values
             else:
                 pointers[obj] = {field: targets.copy() for field, targets in fields.items() if targets}
         return pointers

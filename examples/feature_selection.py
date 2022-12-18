@@ -4,7 +4,7 @@ import numpy as np
 def cost_function(X: np.ndarray, y: np.ndarray, theta: np.ndarray) -> tuple[float, np.ndarray]:
     m = y.size
     error = np.dot(X, theta.T) - y
-    cost = 1 / (2 * m) * np.dot(error.T, error)
+    cost = 1 / (2 * m) * np.dot(type_system.T, error)
     return cost, error
 
 
@@ -32,7 +32,8 @@ def predict(X: np.ndarray, theta: np.ndarray) -> np.ndarray:
 def run(X: np.ndarray, y: np.ndarray) -> tuple[float, np.ndarray]:
     y = np.concatenate(y)
     X = (X - X.mean()) / X.std()
-    X = np.c_[np.ones(X.shape[0]), X]
+    z = np.ones(X.shape[0])
+    X = np.c_[z, X]
     alpha = 0.1
     iterations = 10000
     theta = np.zeros(X.shape[1])
@@ -95,9 +96,9 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
 
     return S
 
-
-def main() -> None:
-    dataset_name = "dataset_20KB"
-    features = np.load(dataset_name + "_features.npy")
-    target = np.load(dataset_name + "_target.npy")
-    do_work(features, target, 10)
+#
+# def main() -> None:
+#     dataset_name = "dataset_20KB"
+#     features = np.load(dataset_name + "_features.npy")
+#     target = np.load(dataset_name + "_target.npy")
+#     do_work(features, target, 10)
