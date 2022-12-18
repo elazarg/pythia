@@ -106,4 +106,5 @@ def test_list_constructor():
     constructor = ts.make_constructor(t)
     args = make_rows(INT)
     lst = ts.call(constructor, args)
-    assert lst == ts.Instantiation(t, (INT,))
+    args_indirect = make_rows(args)
+    assert lst == ts.intersect([args_indirect, ts.Instantiation(t, (args_indirect,))])
