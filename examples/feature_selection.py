@@ -4,7 +4,7 @@ import numpy as np
 def cost_function(X: np.ndarray, y: np.ndarray, theta: np.ndarray) -> tuple[float, np.ndarray]:
     m = y.size
     error = np.dot(X, theta.T) - y
-    cost = 1 / (2 * m) * np.dot(type_system.T, error)
+    cost = 1 / (2 * m) * np.dot(error.T, error)
     return cost, error
 
 
@@ -96,9 +96,9 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
 
     return S
 
-#
-# def main() -> None:
-#     dataset_name = "dataset_20KB"
-#     features = np.load(dataset_name + "_features.npy")
-#     target = np.load(dataset_name + "_target.npy")
-#     do_work(features, target, 10)
+
+def main() -> None:
+    dataset_name = "dataset_20KB"
+    features = np.load(dataset_name + "_features.npy")
+    target = np.load(dataset_name + "_target.npy")
+    do_work(features, target, 10)
