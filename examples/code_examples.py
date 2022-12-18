@@ -1,7 +1,5 @@
 import numpy as np
 
-import type_system
-
 foo = 5
 def example(x):
     foo(a)
@@ -394,14 +392,14 @@ def make_tuple(x):
 # from: https://github.com/drbilo/multivariate-linear-regression
 
 def score(X, y, theta):
-    error = np.dot(X, type_system.T) - y
-    return np.dot(type_system.T, error)
+    error = np.dot(X, theta.T) - y
+    return np.dot(theta.T, error)
 
 
 def cost_function(X, y, theta):
     m = y.size
-    error = np.dot(X, type_system.T) - y
-    cost = 1 / (2 * m) * np.dot(type_system.T, error)
+    error = np.dot(X, theta.T) - y
+    cost = 1 / (2 * m) * np.dot(theta.T, error)
     return cost, error
 
 
@@ -413,7 +411,7 @@ def gradient_descent(X, y, theta, alpha, iters):
     m = y.size
     for i in range(iters):
         cost, error = cost_function(X, y, theta)
-        theta = theta - (alpha * (1 / m) * np.dot(type_system.T, error))
+        theta = theta - (alpha * (1 / m) * np.dot(theta.T, error))
         cost_array[i] = cost
     return theta, cost_array
 
@@ -458,14 +456,14 @@ def feature_selection(X: np.ndarray, y: np.ndarray):
         # yield i
         m: int = y.size
         error = np.dot(X, theta.T) - y
-        cost = 1 / (2 * m) * np.dot(type_system.T, error)
-        theta = theta - (alpha * (1 / m) * np.dot(type_system.T, error))
+        cost = 1 / (2 * m) * np.dot(theta.T, error)
+        theta = theta - (alpha * (1 / m) * np.dot(theta.T, error))
         cost_num[i] = cost
         # yield None
 
     m = y.size
     error = np.dot(X, theta.T) - y
-    final_cost = 1 / (2 * m) * np.dot(type_system.T, error)
+    final_cost = 1 / (2 * m) * np.dot(theta.T, error)
 
     return theta
 
