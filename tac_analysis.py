@@ -101,8 +101,6 @@ def mark_heap(cfg: Cfg,
             alive = block.pre[liveness_analysis.name()]
             for var in alive.keys():
                 for loc in find_reachable(ptr, var):
-                    if str(loc).startswith('@'):
-                        continue
                     label, index = [int(x) for x in str(loc)[1:].split('.')]
                     ins = cfg[label][index]
                     ins.expr.allocation = tac.AllocationType.HEAP
@@ -148,10 +146,11 @@ def analyze_function(filename: str, function_name: str) -> None:
 
 
 def main() -> None:
-    analyze_function('examples/feature_selection.py', 'do_work')
+    # analyze_function('examples/tests.py', 'listing')
+    # analyze_function('examples/feature_selection.py', 'do_work')
     # analyze_function('examples/feature_selection.py', 'run')
     # analyze_function('examples/toy.py', 'destruct')
-    # analyze_function('examples/toy.py', 'minimal')
+    analyze_function('examples/toy.py', 'minimal')
     # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/toy.py', 'toy3')
 

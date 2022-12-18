@@ -93,3 +93,17 @@ def test_tuple():
     gt = ts.subscr(t1, ts.Literal('__getitem__'))
     x = ts.call(gt, make_rows(ts.Literal(0)))
     assert x == INT
+
+def test_list():
+    t = ts.Ref('builtins.list')
+    t1 = ts.simplify_generic(ts.Instantiation(t, (INT,)))
+    gt = ts.subscr(t1, ts.Literal('__getitem__'))
+    x = ts.call(gt, make_rows(ts.Literal(0)))
+    assert x == INT
+
+def test_list_constructor():
+    t = ts.Ref('builtins.list')
+    constructor = ts.make_constructor(t)
+    args = make_rows(INT)
+    lst = ts.call(constructor, args)
+    assert lst == ts.Instantiation(t, (INT,))

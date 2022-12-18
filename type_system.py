@@ -22,6 +22,9 @@ K = typing.TypeVar('K')
 class Literal(TypeExpr, typing.Generic[K]):
     value: K
 
+    def __repr__(self):
+        return f'Literal[{self.value!r}]'
+
 
 @dataclass(frozen=True)
 class Ref(TypeExpr):
@@ -37,7 +40,7 @@ class TypeVar(TypeExpr):
     is_args: bool = False
 
     def __repr__(self):
-        return f'{self.name}'
+        return f'*{self.name}' if self.is_args else self.name
 
 
 @dataclass(frozen=True)
@@ -61,7 +64,18 @@ class Intersection(TypeExpr, typing.Generic[R]):
     items: frozenset[R]
 
     def __repr__(self) -> str:
-        return f'{{{" & ".join(f"{decl}" for decl in self.items)}}}'
+        items = self.items
+        if all(isinstance(item, Row) for item in items):
+            res = ", ".join(f"{item.name}={item.type}" if item.name is not None else f"{item.type}"
+                            for item in sorted(items, key=lambda item: item.index))
+            if len(items) == 1:
+                return f'({res},)'
+            return f'({res})'
+        if any(isinstance(item, Literal) and isinstance(item.value, int) for item in items):
+            items -= {Ref('builtins.int')}
+        if any(isinstance(item, Literal) and isinstance(item.value, str) for item in items):
+            items -= {Ref('builtins.str')}
+        return f'{{{" & ".join(f"{decl}" for decl in items)}}}'
 
     def __and__(self, other: TypeExpr) -> Intersection[R]:
         if not isinstance(other, Intersection):
@@ -445,7 +459,8 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
             assert isinstance(bound_types, tuple)
             return_type = Instantiation(generic=Generic(type_params=type_params, type=f.return_type),
                                         type_args=bound_types)
-            return simplify_generic(return_type)
+            res = simplify_generic(return_type)
+            return res
         case Class(class_dict=class_dict), Action.CALL, arg:
             init = apply(class_dict, Action.INDEX, Literal[str]('__call__'))
             return apply(init, Action.CALL, arg)
@@ -540,12 +555,17 @@ def unop_to_dunder_method(op: str) -> str:
         case _: raise NotImplementedError(f'{op!r}')
 
 
-def binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
+def get_binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     lop, rop = binop_to_dunder_method(op)
-    return call(subscr(left, Literal[str](lop)), right)
+    return subscr(left, Literal[str](lop))
 
 
-def unary(left: TypeExpr, op: str) -> TypeExpr:
+def binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
+    binop_func = get_binop(left, right, op)
+    return call(binop_func, right)
+
+
+def get_unop(left: TypeExpr, op: str) -> TypeExpr:
     return subscr(left, Literal[str](unop_to_dunder_method(op)))
 
 

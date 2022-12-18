@@ -91,7 +91,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
         return result
 
     def get_unary_attribute(self, value: ts.TypeExpr, op: UnOp) -> ts.TypeExpr:
-        return ts.unary(value, self.unop_to_str(op))
+        return ts.get_unop(value, self.unop_to_str(op))
 
     def unop_to_str(self, op: UnOp) -> str:
         match op:
@@ -164,21 +164,12 @@ class TypeLattice(Lattice[ts.TypeExpr]):
         return tac.AllocationType.UNKNOWN
 
     def allocation_type_binary(self, left: ts.TypeExpr, right: ts.TypeExpr, op: str) -> tac.AllocationType:
-        return tac.AllocationType.NONE
-        overloaded_function = BINARY.get(op)
-        narrowed = self.narrow_overload(overloaded_function, [left, right])
-        if self.allocation_type_function(narrowed):
-            return tac.AllocationType.STACK
-        return tac.AllocationType.NONE
+        f = ts.get_binop(left, right, op)
+        return self.allocation_type_function(f)
 
     def allocation_type_unary(self, value: ts.TypeExpr, op: tac.UnOp) -> tac.AllocationType:
-        return tac.AllocationType.NONE
-        if op is UnOp.NOT:
-            return tac.AllocationType.NONE
         f = self.get_unary_attribute(value, op)
-        if f.types[0].new:
-            return tac.AllocationType.STACK
-        return tac.AllocationType.NONE
+        return self.allocation_type_function(f)
 
     def allocation_type_attribute(self, var: ts.TypeExpr, attr: tac.Var) -> tac.AllocationType:
         return tac.AllocationType.NONE
