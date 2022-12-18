@@ -84,14 +84,15 @@ def run(f, functions, imports, module_type, simplify=True) -> Cfg:
     analyze(cfg, type_analysis, annotations)
     analyze(cfg, pointer_analysis, annotations)
 
-    mark_heap(cfg, liveness_analysis, pointer_analysis)
+    mark_heap(cfg, liveness_analysis, pointer_analysis, annotations)
 
     return cfg
 
 
 def mark_heap(cfg: Cfg,
-               liveness_analysis: VarAnalysis[Liveness],
-               pointer_analysis: PointerAnalysis) -> None:
+              liveness_analysis: VarAnalysis[Liveness],
+              pointer_analysis: PointerAnalysis,
+              annotations: dict[tac.Var, object]) -> None:
     for i, block in cfg.items():
         if not block:
             continue
@@ -100,7 +101,11 @@ def mark_heap(cfg: Cfg,
             ptr = block.post[pointer_analysis.name()]
             alive = block.pre[liveness_analysis.name()]
             for var in alive.keys():
+                if var in annotations:
+                    continue
                 for loc in find_reachable(ptr, var):
+                    if repr(loc).startswith('@param'):
+                        continue
                     label, index = [int(x) for x in str(loc)[1:].split('.')]
                     ins = cfg[label][index]
                     ins.expr.allocation = tac.AllocationType.HEAP
@@ -147,10 +152,10 @@ def analyze_function(filename: str, function_name: str) -> None:
 
 def main() -> None:
     # analyze_function('examples/tests.py', 'listing')
-    # analyze_function('examples/feature_selection.py', 'do_work')
+    analyze_function('examples/feature_selection.py', 'do_work')
     # analyze_function('examples/feature_selection.py', 'run')
     # analyze_function('examples/toy.py', 'destruct')
-    analyze_function('examples/toy.py', 'minimal')
+    # analyze_function('examples/toy.py', 'minimal')
     # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/toy.py', 'toy3')
 
