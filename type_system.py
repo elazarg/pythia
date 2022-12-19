@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import builtins
 import enum
 import os
 import typing
@@ -329,7 +328,7 @@ def join(t1: TypeExpr, t2: TypeExpr):
             else:
                 return Union(frozenset({t1, t2}))
         case FunctionType(params1, return_type1, new1), FunctionType(params2, return_type2, new2):
-            return FunctionType(join(params1,  params2), meet(return_type1, return_type2), meet(new1, new2))
+            return FunctionType(meet(params1,  params2), join(return_type1, return_type2), join(new1, new2))
         case Class(), Class():
             return Ref('builtins.object')
         case Class(), _:
@@ -370,9 +369,9 @@ def meet(t1: TypeExpr, t2: TypeExpr):
         case (Intersection(items), t) | (t, Intersection(items)):
             return Intersection(items | {t})
         case (FunctionType(params1, return_type1, new1, property1), FunctionType(params2, return_type2, new2, property2)):
-            return FunctionType(meet(params1, params2),
-                                join(return_type1, return_type2),
-                                join(new1, new2),
+            return FunctionType(join(params1, params2),
+                                meet(return_type1, return_type2),
+                                meet(new1, new2),
                                 join(property1, property2))
         case (t1, t2):
             if t1 == t2:
@@ -473,6 +472,8 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
             getter = apply(t, Action.INDEX, Literal[str]('__getitem__'))
             res = apply(getter, Action.CALL, intersect([Row(0, None, arg)]))
             return res
+        case Module() as t, Action.INDEX, arg:
+            return apply(t.class_dict, Action.INDEX, arg)
         case Instantiation(generic=Generic()) as t, action, arg:
             new_t = simplify_generic(t)
             if new_t != t:
@@ -491,10 +492,12 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
         case Literal(value), action, arg:
             return TOP
         case _:
-            raise NotImplementedError(f'{t!r}, {action!r}, {arg!r}')
+            raise NotImplementedError(f'{type(t)=}, {action=}, {type(arg)=}')
 
 
 def bind_self(t: Class, x: Generic[FunctionType]) -> Generic[FunctionType] | FunctionType:
+    if not isinstance(x, Generic) and not isinstance(x, FunctionType):
+        return x
     assert isinstance(x, Generic), f'{t!r}, {x!r}'
     f = x.type
     assert isinstance(f, FunctionType)
@@ -520,7 +523,7 @@ def make_constructor(t: TypeExpr) -> TypeExpr:
     return_type = intersect([args, Instantiation(t, (args,))])
     return Generic((args,), FunctionType(params=intersect([Row(None, None, args)]),
                                          return_type=return_type,
-                                         new=Literal(False),
+                                         new=Literal(True),
                                          property=Literal(False)))
 
 
@@ -601,7 +604,7 @@ def infer_self(row: Row) -> Row:
     if self_arg.type == Ref('typing.Any'):
         self_arg = Row(0, self_arg.name, TypeVar('Self'))
     params = intersect([self_arg]) & other_args
-    g = Generic((TypeVar('Self'),) + generic.type_params, FunctionType(params, function.return_type, function.new))
+    g = Generic((TypeVar('Self'),) + generic.type_params, FunctionType(params, function.return_type, function.new, function.property))
     return Row(row.index, row.name, g)
 
 
@@ -679,11 +682,24 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                         case ast.Name(id=id):
                             base_classes.append(Ref(id))
                 base_classes = tuple(base_classes)
+
+                metaclass = Class(f'__{name}_metaclass__',
+                                  intersect([
+                                      Row(0, '__call__', FunctionType(intersect([
+                                          Row(0, 'cls', TypeVar('Infer')),
+                                      ]), Ref('type'),
+                                          new=Literal[bool](True),
+                                          property=Literal[bool](False)))
+                                  ]),
+                                  inherits=(Ref('builtins.type'),),
+                                  protocol=False)
+
                 class_dict = intersect([infer_self(row) for index, stmt in enumerate(body)
                                         for row in stmt_to_rows(stmt, index)])
                 res = Class(name, class_dict, inherits=base_classes, protocol=protocol)
                 if generic_params:
                     res = Generic(generic_params, res)
+
                 yield Row(index, name, res)
             case ast.FunctionDef(name=name, returns=returns, decorator_list=decorator_list,
                                  args=ast.arguments(args=args, vararg=vararg, kwonlyargs=kwonlyargs,
@@ -695,9 +711,11 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                 )
                 returns = expr_to_type(returns)
                 name_decorators = [decorator.id for decorator in decorator_list if isinstance(decorator, ast.Name)]
-                new = Literal[bool]('new' in name_decorators)
+                new = Literal[bool](returns not in [Ref('buitlins.int'), Ref('builtins.float'), Ref('builtins.None'), Ref('builtins.bool')])
                 property = Literal[bool]('property' in name_decorators)
                 f = FunctionType(params, returns, new=new, property=property)
+
+
 
                 new_generic_names = tuple(generic_vars[x] for x in freevars if x in generic_vars)
                 if new_generic_names:

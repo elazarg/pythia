@@ -13,7 +13,7 @@ Args = ts.TypeVar('Args', is_args=True)
 
 def make_function(return_type: ts.TypeExpr, params: ts.Intersection[ts.Row]) -> ts.FunctionType:
     return ts.FunctionType(params, return_type,
-                           new=ts.Literal(False),
+                           new=ts.Literal(True),
                            property=ts.Literal(False))
 
 

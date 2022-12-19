@@ -13,9 +13,9 @@ import tac_analysis_types
 from tac_analysis_constant import ConstLattice, Constant
 
 from tac_analysis_domain import IterationStrategy, VarAnalysis, BackwardIterationStrategy, ForwardIterationStrategy, \
-    Analysis
+    Analysis, LOCALS
 from tac_analysis_liveness import LivenessLattice, Liveness, LivenessAnalysis
-from tac_analysis_pointer import PointerAnalysis, pretty_print_pointers, find_reachable
+from tac_analysis_pointer import PointerAnalysis, pretty_print_pointers
 from tac_analysis_types import TypeLattice, ts
 
 T = TypeVar('T')
@@ -99,16 +99,22 @@ def mark_heap(cfg: Cfg,
         if isinstance(block[0], tac.For):
             assert len(block) == 1
             ptr = block.post[pointer_analysis.name()]
-            alive = block.pre[liveness_analysis.name()]
-            for var in alive.keys():
-                if var in annotations:
-                    continue
-                for loc in find_reachable(ptr, var):
-                    if repr(loc).startswith('@param'):
+            alive = set(block.pre[liveness_analysis.name()].keys())
+            worklist = {LOCALS}
+            while worklist:
+                root = worklist.pop()
+                for edge, locs in ptr.get(root, {}).items():
+                    if edge in alive:
                         continue
-                    label, index = [int(x) for x in str(loc)[1:].split('.')]
-                    ins = cfg[label][index]
-                    ins.expr.allocation = tac.AllocationType.HEAP
+                    if edge in annotations:
+                        continue
+                    for loc in locs:
+                        if repr(loc).startswith('@param'):
+                            continue
+                        worklist.add(loc)
+                        label, index = [int(x) for x in str(loc)[1:].split('.')]
+                        ins = cfg[label][index]
+                        ins.expr.allocation = tac.AllocationType.HEAP
             break
 
 
@@ -152,11 +158,11 @@ def analyze_function(filename: str, function_name: str) -> None:
 
 def main() -> None:
     # analyze_function('examples/feature_selection.py', 'do_work')
-    analyze_function('examples/toy.py', 'minimal')
+    # analyze_function('examples/toy.py', 'minimal')
+    analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/feature_selection.py', 'run')
     # analyze_function('examples/tests.py', 'listing')
     # analyze_function('examples/toy.py', 'destruct')
-    # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/toy.py', 'toy3')
 
 

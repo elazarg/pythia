@@ -51,6 +51,11 @@ class TypeLattice(Lattice[ts.TypeExpr]):
 
     def resolve(self, ref: ts.TypeExpr) -> ts.TypeExpr:
         if isinstance(ref, ts.Ref):
+            if '.' in ref.name:
+                print(f"Resolving {ref}")
+                module, name = ref.name.split('.', 1)
+                if module == self.globals.name:
+                    return ts.subscr(self.globals, ts.Literal[str](name))
             ref = ts.resolve_static_ref(ref)
         assert isinstance(ref, (ts.TypeExpr, ts.Module, ts.Class)), ref
         return ref
@@ -110,6 +115,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
 
     def _attribute(self, var: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
         mod = self.resolve(var)
+        assert mod != ts.TOP, f'Cannot resolve {var}'
         try:
             return ts.subscr(mod, ts.Literal(attr.name))
         except TypeError:
@@ -142,7 +148,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
         if isinstance(function, ts.Generic):
             function = function.type
         if isinstance(function, ts.FunctionType):
-            if function.new.value:
+            if function.new != ts.Literal(False):
                 return tac.AllocationType.STACK
             else:
                 return tac.AllocationType.NONE

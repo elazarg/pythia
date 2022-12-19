@@ -127,5 +127,3 @@ class PointerAnalysis(Analysis[Graph]):
         return inner
 
 
-def find_reachable(pointers: Graph, root: tac.Var) -> frozenset[Object]:
-    return pointers[LOCALS][root]

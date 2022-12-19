@@ -30,6 +30,7 @@ class bool:
 
 class float:
     def __gt__(self, other: float) -> bool: ...
+    def __lt__(self, other: float) -> bool: ...
 
 class str: pass
 

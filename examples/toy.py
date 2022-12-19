@@ -1,10 +1,5 @@
 import numpy as np
 
-def access():
-    x = np.zeros((5, 7))
-    res = x.astype('int')
-    return res
-
 def minimal():
     res = np.zeros((5, 7))
 
@@ -19,8 +14,12 @@ class A:
     vector: np.ndarray
 
 
+def make_a() -> A:
+    return A()
+
+
 def not_so_minimal():
-    a = A()
+    a = make_a()
     a.vector = np.zeros((5, 7))
     a.score = 0.0
     for i in range(1000):
