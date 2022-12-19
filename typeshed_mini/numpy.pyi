@@ -35,6 +35,7 @@
 #
 
 class ndarray:
+    @property
     def size(self) -> int:...
     @new
     def __add__(self, other: ndarray) -> ndarray: ...
