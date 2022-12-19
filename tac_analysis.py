@@ -104,7 +104,7 @@ def mark_heap(cfg: Cfg,
             while worklist:
                 root = worklist.pop()
                 for edge, locs in ptr.get(root, {}).items():
-                    if edge in alive:
+                    if str(edge).startswith('$') and edge not in alive:
                         continue
                     if edge in annotations:
                         continue
