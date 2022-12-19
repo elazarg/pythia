@@ -104,7 +104,7 @@ def mark_heap(cfg: Cfg,
             while worklist:
                 root = worklist.pop()
                 for edge, locs in ptr.get(root, {}).items():
-                    if str(edge).startswith('$') and edge not in alive:
+                    if root == LOCALS and edge not in alive:
                         continue
                     if edge in annotations:
                         continue
@@ -157,9 +157,9 @@ def analyze_function(filename: str, function_name: str) -> None:
 
 
 def main() -> None:
-    # analyze_function('examples/feature_selection.py', 'do_work')
+    analyze_function('examples/feature_selection.py', 'do_work')
     # analyze_function('examples/toy.py', 'minimal')
-    analyze_function('examples/toy.py', 'not_so_minimal')
+    # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/feature_selection.py', 'run')
     # analyze_function('examples/tests.py', 'listing')
     # analyze_function('examples/toy.py', 'destruct')
