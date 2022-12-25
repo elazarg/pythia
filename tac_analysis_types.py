@@ -105,7 +105,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
             case Predefined.GLOBALS: return self.globals
             case Predefined.NONLOCALS: return self.top()
             case Predefined.LOCALS: return self.top()
-            case Predefined.SLICE: return self.top()
+            case Predefined.SLICE: return ts.make_slice_constructor()
             case Predefined.CONST_KEY_MAP: return self.top()
         return None
 

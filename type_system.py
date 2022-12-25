@@ -393,11 +393,8 @@ def meet(t1: TypeExpr, t2: TypeExpr):
             return Intersection(items | {r})
         case (Intersection(items), t) | (t, Intersection(items)):
             return Intersection(items | {t})
-        case (FunctionType(params1, return_type1, new1, property1), FunctionType(params2, return_type2, new2, property2)):
-            return FunctionType(join(params1, params2),
-                                meet(return_type1, return_type2),
-                                meet(new1, new2),
-                                join(property1, property2))
+        case (FunctionType() as f1, FunctionType() as f2):
+            return intersect([f1, f2])
         case (t1, t2):
             if t1 == t2:
                 return t1
@@ -509,7 +506,8 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
     match t, action, arg:
         case t, action, Intersection(items):
             mid = [apply(t, action, item) for item in items]
-            return meet_all(mid)
+            res = meet_all(mid)
+            return res
         case Intersection(items), action, arg:
             mid = [apply(item, action, arg) for item in items]
             res = join_all(mid)
@@ -614,10 +612,14 @@ def subscr(t: TypeExpr, index: TypeExpr | Module | Class) -> TypeExpr:
 def call(t: TypeExpr, args: Intersection[Row]) -> TypeExpr:
     res = t
     match t:
+        case Intersection(items):
+            ts = [call(item, args) for item in items]
+            res = meet_all(ts)
+            return res
         case FunctionType(params, return_type, new, property, type_params):
             binding = unify(tuple(type_params), params, args)
             if binding is None:
-                return BOTTOM
+                return TOP
             return simplify_generic(return_type, binding)
     for item in args.items:
         res = apply(res, Action.SELECT, item)
@@ -631,12 +633,21 @@ def call(t: TypeExpr, args: Intersection[Row]) -> TypeExpr:
 def make_constructor(t: TypeExpr) -> TypeExpr:
     args = TypeVar('Args', is_args=True)
     return_type = intersect([args, Instantiation(t, (args,))])
-    # return_type = Instantiation(t, (args,))
     return FunctionType(params=intersect([make_row(None, None, args)]),
                         return_type=return_type,
                         new=Literal(True),
                         property=Literal(False),
                         type_params=(args,))
+
+
+def make_slice_constructor() -> TypeExpr:
+    return_type = Ref('builtins.slice')
+    return FunctionType(params=intersect([make_row(0, 'start', Ref('builtins.int')),
+                                          make_row(1, 'end', Ref('builtins.int'))]),
+                        return_type=return_type,
+                        new=Literal(True),
+                        property=Literal(False),
+                        type_params=())
 
 
 def binop_to_dunder_method(op: str) -> tuple[str, typing.Optional[str]]:

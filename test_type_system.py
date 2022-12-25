@@ -5,6 +5,7 @@ import type_system as ts
 
 INT = ts.Ref('builtins.int')
 FLOAT = ts.Ref('builtins.float')
+ARRAY = ts.Ref('numpy.ndarray')
 
 T = ts.TypeVar('T')
 T1 = ts.TypeVar('T1')
@@ -42,7 +43,7 @@ def test_function_call():
 
     f = make_function(INT, make_rows(INT, FLOAT))
     arg = make_rows(INT, INT)
-    assert ts.call(f, arg) == ts.BOTTOM
+    assert ts.call(f, arg) == ts.TOP
 
     f = make_function(INT, make_rows())
     arg = ts.BOTTOM
@@ -173,6 +174,24 @@ def test_list():
     gt = ts.subscr(t1, ts.Literal('__getitem__'))
     x = ts.call(gt, make_rows(ts.Literal(0)))
     assert x == INT
+
+def test_getitem_list():
+    t = ts.Instantiation(ts.Ref('builtins.list'), (INT,))
+    x = ts.subscr(t, ts.Literal(0))
+    assert x == INT
+
+def test_getitem_numpy():
+    x = ts.subscr(ARRAY, ts.intersect([ts.Literal(0), INT]))
+    assert x == FLOAT
+
+    x = ts.subscr(ARRAY, ARRAY)
+    assert x == ARRAY
+
+    x = ts.subscr(ARRAY, ts.Ref('builtins.slice'))
+    assert x == ARRAY
+
+    x = ts.subscr(ARRAY, ts.Ref('builtins.None'))
+    assert x == ts.TOP
 
 
 def test_list_constructor():

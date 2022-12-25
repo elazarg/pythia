@@ -34,6 +34,7 @@ class float:
 
 class str: pass
 
+class slice: pass
 
 class tuple(Generic[*Args]):
     def __getitem__(self, item: N) -> Args[N]: ...

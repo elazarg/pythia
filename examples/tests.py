@@ -1,3 +1,14 @@
+import numpy as np
+
+def iterate(x: int):
+    for i in range(x): pass
+
+
+def access(x: np.ndarray):
+    y = x[0]
+    z = x[1:]
+    m = x[x]
+
 
 def tup():
     a, b = (1, 'x')
