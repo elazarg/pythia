@@ -26,6 +26,5 @@ def not_so_minimal():
         temp = np.random.rand((5, 7))
         norm = np.sum(temp)
         if a.score < norm:
-            a.vector = temp
-            a.score = norm
+            a.vector, a.score = temp, norm
     return a

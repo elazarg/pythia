@@ -52,7 +52,6 @@ class TypeLattice(Lattice[ts.TypeExpr]):
     def resolve(self, ref: ts.TypeExpr) -> ts.TypeExpr:
         if isinstance(ref, ts.Ref):
             if '.' in ref.name:
-                print(f"Resolving {ref}")
                 module, name = ref.name.split('.', 1)
                 if module == self.globals.name:
                     return ts.subscr(self.globals, ts.Literal[str](name))

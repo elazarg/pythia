@@ -1,4 +1,7 @@
 
+def tup():
+    a, b = (1, 'x')
+
 def listing():
     lst = [1]
     tpl = (1,)

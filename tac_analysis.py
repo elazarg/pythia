@@ -152,16 +152,16 @@ def analyze_function(filename: str, function_name: str) -> None:
               functions=functions,
               imports=imports,
               module_type=module_type,
-              simplify=True)
+              simplify=False)
     print_analysis(cfg)
 
 
 def main() -> None:
-    analyze_function('examples/feature_selection.py', 'do_work')
+    # analyze_function('examples/feature_selection.py', 'do_work')
     # analyze_function('examples/toy.py', 'minimal')
     # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/feature_selection.py', 'run')
-    # analyze_function('examples/tests.py', 'listing')
+    analyze_function('examples/tests.py', 'tup')
     # analyze_function('examples/toy.py', 'destruct')
     # analyze_function('examples/toy.py', 'toy3')
 

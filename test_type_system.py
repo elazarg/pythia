@@ -1,3 +1,5 @@
+from frozendict import frozendict
+
 import type_system as ts
 
 
@@ -11,66 +13,82 @@ N = ts.TypeVar('N')
 Args = ts.TypeVar('Args', is_args=True)
 
 
-def make_function(return_type: ts.TypeExpr, params: ts.Intersection[ts.Row]) -> ts.FunctionType:
+def make_function(return_type: ts.TypeExpr, params: ts.Intersection[ts.Row], type_params=()) -> ts.FunctionType:
     return ts.FunctionType(params, return_type,
                            new=ts.Literal(True),
-                           property=ts.Literal(False))
+                           property=ts.Literal(False),
+                           type_params=frozendict({x: None for x in type_params}))
 
 
 def make_rows(*types) -> ts.Intersection[ts.Row]:
-    return ts.intersect([ts.Row(index, None, t)
+    return ts.intersect([ts.Row(ts.Index(ts.Literal(index), None), t)
                          for index, t in enumerate(types)])
 
 
-def test_function_call_empty():
+def test_join():
+    t1 = ts.Ref('builtins.int')
+    t2 = ts.Ref('builtins.float')
+    assert ts.join(t1, t2) == ts.TOP
+
+
+def test_function_call():
     f = make_function(INT, make_rows())
     arg = make_rows()
     assert ts.call(f, arg) == INT
 
-def test_function_call_arg():
-    f = make_function(INT, make_rows(INT, INT))
-    arg = make_rows(INT)
+    f = make_function(INT, make_rows(INT, FLOAT))
+    arg = make_rows(INT, FLOAT)
     assert ts.call(f, arg) == INT
+
+    f = make_function(INT, make_rows(INT, FLOAT))
+    arg = make_rows(INT, INT)
+    assert ts.call(f, arg) == ts.BOTTOM
+
+    f = make_function(INT, make_rows())
+    arg = ts.BOTTOM
+    assert ts.call(f, arg) == INT
+
 
 def test_unification():
     assert ts.unify(
         type_params=(T,),
         params=make_rows(T),
-        args=make_rows(INT)) == (INT,)
+        args=make_rows(INT)) == {T: INT}
 
     assert ts.unify(
         type_params=(T1, T2),
         params=make_rows(T1, T2),
-        args=make_rows(INT, FLOAT)) == (INT, FLOAT)
+        args=make_rows(INT, FLOAT)) == {T1: INT, T2: FLOAT}
 
     args = make_rows(INT, FLOAT)
     assert ts.unify(
         type_params=(Args,),
         params=make_rows(Args),
-        args=args) == (args,)
+        args=args) == {Args: args}
 
     args = make_rows(FLOAT, INT, FLOAT)
     assert ts.unify(
         type_params=(T, Args),
         params=make_rows(T, Args, T),
-        args=args) == (FLOAT, make_rows(INT))
+        args=args) == {T: FLOAT, Args: make_rows(INT)}
+
 
 def test_function_call_generic_project():
-    f = ts.Generic((T,), make_function(T, make_rows(T)))
+    f = make_function(T, make_rows(T), [T])
     arg = make_rows(INT)
     assert ts.call(f, arg) == INT
 
-    f = ts.Generic((T1, T2), make_function(T1, make_rows(T1, T2)))
+    f = make_function(T1, make_rows(T1, T2), [T1, T2])
     arg = make_rows(INT, FLOAT)
     assert ts.call(f, arg) == INT
 
-    f = ts.Generic((T1, T2), make_function(T2, make_rows(T1, T2)))
+    f = make_function(T2, make_rows(T1, T2), [T1, T2])
     arg = make_rows(INT, FLOAT)
     assert ts.call(f, arg) == FLOAT
 
-    f = ts.Generic((T,), make_function(T, make_rows(T, T)))
+    f = make_function(T, make_rows(T, T), [T])
     arg = make_rows(INT, FLOAT)
-    assert ts.call(f, arg) == ts.join(INT, FLOAT)
+    assert ts.call(f, arg) == ts.TOP
 #
 # def test_function_call_variadic():
 #     f = ts.Generic((Args,), make_function(Args, make_rows(Args)))
@@ -83,29 +101,83 @@ def test_function_call_generic_project():
 #     arg = make_rows(ts.Literal(1), INT, FLOAT)
 #     assert ts.call(f, arg) == FLOAT
 
+
 def test_tuple():
-    f = ts.Generic((T,), make_function(T, make_rows(T, T)))
+    f = make_function(T, make_rows(T, T), [T])
     arg = make_rows(INT, FLOAT)
     assert ts.call(f, arg) == ts.join(INT, FLOAT)
 
-    t = ts.Ref('builtins.tuple')
-    t1 = ts.simplify_generic(ts.Instantiation(t, (INT, FLOAT)))
+    tuple_named = ts.Ref('builtins.tuple')
+    tuple_named = ts.Instantiation(tuple_named, (INT, FLOAT))
+
+    tuple_structure = make_rows(INT, FLOAT)
+
+    first = ts.Literal(0)
+    second = ts.Literal(1)
+    first_intersect = ts.intersect([first, ts.Ref('builtins.int')])
+    second_intersect = ts.intersect([second, ts.Ref('builtins.int')])
+
+    gt = ts.subscr(tuple_named, ts.Literal('__getitem__'))
+    f = ts.FunctionType(params=ts.intersect([ts.Row(ts.Index(ts.Literal(0), ts.Literal('item')), N)]),
+                        return_type=ts.Instantiation(tuple_structure, (N,)),
+                        new=ts.Literal(True),
+                        property=ts.Literal(False),
+                        type_params=(N,))
+    assert gt == f
+    x = ts.call(gt, make_rows(first))
+    assert x == INT
+    x = ts.call(gt, make_rows(first_intersect))
+    assert x == INT
+
+    x = ts.subscr(tuple_named, first)
+    assert x == INT
+    x = ts.subscr(tuple_named, first_intersect)
+    assert x == INT
+
+    x = ts.subscr(tuple_named, second)
+    assert x == FLOAT
+    x = ts.subscr(tuple_named, second_intersect)
+    assert x == FLOAT
+
+    x = ts.call(gt, make_rows(second))
+    assert x == FLOAT
+    x = ts.call(gt, make_rows(second_intersect))
+    assert x == FLOAT
+
+    left = ts.subscr(tuple_structure, first)
+    assert left == INT
+    left = ts.subscr(tuple_structure, first_intersect)
+    assert left == INT
+
+    right = ts.subscr(tuple_structure, second)
+    assert right == FLOAT
+    right = ts.subscr(tuple_structure, second_intersect)
+    assert right == FLOAT
+
+    both = ts.intersect([tuple_structure, tuple_named])
+
+    left = ts.subscr(both, first)
+    assert left == INT
+    left = ts.subscr(both, first_intersect)
+    assert left == INT
+
+    right = ts.subscr(both, second)
+    assert right == FLOAT
+    right = ts.subscr(both, second_intersect)
+    assert right == FLOAT
+
+
+def test_list():
+    t = ts.Ref('builtins.list')
+    t1 = ts.simplify_generic(ts.Instantiation(t, (INT,)), {})
     gt = ts.subscr(t1, ts.Literal('__getitem__'))
     x = ts.call(gt, make_rows(ts.Literal(0)))
     assert x == INT
 
-def test_list():
-    t = ts.Ref('builtins.list')
-    t1 = ts.simplify_generic(ts.Instantiation(t, (INT,)))
-    gt = ts.subscr(t1, ts.Literal('__getitem__'))
-    x = ts.call(gt, make_rows(ts.Literal(0)))
-    assert x == INT
 
 def test_list_constructor():
     t = ts.Ref('builtins.list')
     constructor = ts.make_constructor(t)
     args = make_rows(INT)
     lst = ts.call(constructor, args)
-    # XXX is this the right type?
-    args_indirect = make_rows(args)
-    assert lst == ts.intersect([args_indirect, ts.Instantiation(t, (args_indirect,))])
+    assert lst == ts.intersect([args, ts.Instantiation(t, (args,))])

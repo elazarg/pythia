@@ -478,7 +478,8 @@ def make_tac_cfg(f) -> gu.Cfg[Tac]:
     trace_origin: dict[int, instruction_cfg.Instruction] = {}
 
     def instruction_block_to_tac_block(n, block: gu.Block[instruction_cfg.Instruction]) -> gu.Block[Tac]:
-        return gu.ForwardBlock(list(it.chain.from_iterable(make_tac(ins, depths[ins.offset], trace_origin) for ins in block)))
+        return gu.ForwardBlock(list(it.chain.from_iterable(make_tac(ins, depths[ins.offset], trace_origin)
+                                                           for ins in block)))
 
     def annotator(n: Tac) -> str:
         pos = trace_origin[id(n)].positions
@@ -604,15 +605,20 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             return [Assign(stackvar(out), Import(Var(val)))]
         case ['IMPORT', 'FROM']:
             return [Assign(stackvar(out), Import(Attribute(stackvar(stack_depth), Var(val))))]
+        case ['BUILD', 'SLICE']:
+            if val == 2:
+                args = (stackvar(stack_depth - 1), stackvar(stack_depth))
+            else:
+                args = (stackvar(stack_depth), stackvar(stack_depth - 1), stackvar(stack_depth - 2))
+            return [Assign(stackvar(out), Call(Predefined.SLICE, args))]
         case ['BUILD', op]:
-            if op == 'SLICE':
-                if val == 2:
-                    args = (stackvar(stack_depth - 1), stackvar(stack_depth))
-                else:
-                    args = (stackvar(stack_depth), stackvar(stack_depth - 1), stackvar(stack_depth - 2))
-                return [Assign(stackvar(out), Call(Predefined.SLICE, args))]
             return [Assign(stackvar(out),
                            Call(Predefined.lookup(op), tuple(stackvar(i + 1) for i in range(stack_depth - val, stack_depth))))]
+        case ['SWAP']:
+            a = stackvar(stack_depth - 0)
+            b = stackvar(stack_depth - 1)
+            return [Assign(a, Call(Predefined.TUPLE, (b, a))),
+                    Assign((a, b), a)]
         case ['CALL']:
             nargs = val & 0xFF
             mid = [stackvar(i + 1) for i in range(stack_depth, stack_depth + nargs)]
