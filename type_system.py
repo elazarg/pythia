@@ -49,7 +49,13 @@ class Index:
     name: typing.Optional[Literal[str]]
 
     def __repr__(self):
-        return f'({self.number}){self.name}'
+        if self.number is None:
+            if self.name is None:
+                return 'None'
+            return f'{self.name.value}'
+        if self.name is None:
+            return f'{self.number.value}'
+        return f'({self.number.value}){self.name.value}'
 
     def __sub__(self, other: int) -> Index:
         if self.number is None:
@@ -80,6 +86,13 @@ class Row(TypeExpr):
 
     def __le__(self, other: Row) -> bool:
         return self.index <= other.index
+
+def make_row(number: int, name: str, type: TypeExpr) -> Row:
+    if number is not None:
+        number = Literal(number)
+    if name is not None:
+        name = Literal(name)
+    return Row(Index(number, name), type)
 
 
 R = typing.TypeVar('R', bound=Row)
@@ -238,7 +251,7 @@ def simplify_generic(t, context: dict[TypeVar, TypeExpr]):
                     left_args, star_args = unpacked_args[:len(left_params)], unpacked_args[len(left_params):]
                     star_args, right_args = star_args[:len(star_args)-len(right_params)], star_args[-len(right_params):]
                     new_context = context.copy()
-                    new_context[star_param] = intersect(Row(Index(Literal(i), None), arg) for i, arg in enumerate(star_args))
+                    new_context[star_param] = intersect(make_row(i, None, arg) for i, arg in enumerate(star_args))
                     for k, v in zip(left_params + right_args, left_args + right_args):
                         new_context[k] = v
                     return simplify_generic(generic, new_context)
@@ -424,17 +437,21 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
                 return {}
             return None
         case Ref() as param, arg:
-            if param == arg:
+            if resolve_static_ref(param) == arg:
                 return {}
             return unify_argument(type_params, resolve_static_ref(param), arg)
         case param, Ref() as arg:
             return unify_argument(type_params, param, resolve_static_ref(arg))
+        case Class() as param, Instantiation(Class(), args):
+            res = simplify_generic(arg, {})
+            return res
+        case param, Instantiation(Ref() as param_type, param_args) if not isinstance(param, Ref):
+            return unify_argument(type_params, param, Instantiation(resolve_static_ref(param_type), param_args))
         case Instantiation(param, param_args), Instantiation(arg, arg_args):
             if param != arg:
                 return None
             collect = [unify_argument(type_params, param, arg) for param, arg in zip(param_args, arg_args)]
-            if None in collect:
-                return None
+            collect = [x for x in collect if x is not None]
             result = {k: join_all(item[k] for item in collect) for k in type_params}
             return result
         case Literal() as param, Literal() as arg:
@@ -447,7 +464,12 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
             return None
         case Class(), Literal():
             return None
+        case param, Intersection(items):
+            res = [unify_argument(type_params, param, item) for item in items]
+            res = [x for x in res if x is not None]
+            return {k: join_all(item[k] for item in res) for k in type_params}
         case param, arg:
+            return None
             raise NotImplementedError(f'{param!r}, {arg!r}')
 
 
@@ -569,7 +591,7 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
                 return meet_all(bound_types)
         case Class(), Action.INDEX, arg:
             getter = apply(t, Action.INDEX, Literal[str]('__getitem__'))
-            res = call(getter, intersect([Row(Index(Literal(0), None), arg)]))
+            res = call(getter, intersect([make_row(0, None, arg)]))
             return res
         case _:
             raise NotImplementedError(f'{t=}, {action=}, {arg=}')
@@ -610,7 +632,7 @@ def make_constructor(t: TypeExpr) -> TypeExpr:
     args = TypeVar('Args', is_args=True)
     return_type = intersect([args, Instantiation(t, (args,))])
     # return_type = Instantiation(t, (args,))
-    return FunctionType(params=intersect([Row(Index(None, None), args)]),
+    return FunctionType(params=intersect([make_row(None, None, args)]),
                         return_type=return_type,
                         new=Literal(True),
                         property=Literal(False),
@@ -660,7 +682,7 @@ def get_binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
 
 def binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     binop_func = get_binop(left, right, op)
-    return call(binop_func, right)
+    return call(binop_func, intersect([make_row(0, None, right)]))
 
 
 def get_unop(left: TypeExpr, op: str) -> TypeExpr:
@@ -691,7 +713,7 @@ def infer_self(row: Row) -> Row:
     type_params = function.type_params
     if self_arg.type == Ref('typing.Any'):
         self_type = TypeVar('Self')
-        self_arg = Row(Index(Literal(0), self_arg.index.name), self_type)
+        self_arg = make_row(0, self_arg.index.name, self_type)
         type_params = (self_type, *type_params)
     params = intersect([self_arg]) & other_args
     g = FunctionType(params, function.return_type, function.new, function.property, type_params)
@@ -782,14 +804,14 @@ def module_to_type(module: ast.Module, name: str) -> Module:
             case ast.Pass():
                 return
             case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation, value=value):
-                yield Row(Index(Literal(index), Literal(name)), expr_to_type(annotation))
+                yield make_row(index, name, expr_to_type(annotation))
             case ast.Import(names=aliases):
                 for alias in aliases:
                     name = alias.name
                     asname = alias.asname
                     if asname is None:
                         continue
-                    yield Row(Index(index, asname), Ref(name))
+                    yield make_row(index, asname, Ref(name))
             case ast.ClassDef(name=name, body=body, bases=base_expressions, decorator_list=decorator_list):
                 base_classes = []
                 protocol = False
@@ -807,8 +829,8 @@ def module_to_type(module: ast.Module, name: str) -> Module:
 
                 metaclass = Class(f'__{name}_metaclass__',
                                   intersect([
-                                      Row(Index(Literal(0), Literal('__call__')), FunctionType(intersect([
-                                          Row(Index(Literal(0), Literal('cls')), TypeVar('Infer')),
+                                      make_row(0, '__call__', FunctionType(intersect([
+                                          make_row(0, 'cls', TypeVar('Infer')),
                                       ]), Ref('type'),
                                           new=Literal[bool](True),
                                           property=Literal[bool](False),
@@ -823,23 +845,25 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                 res = Class(name, class_dict, inherits=base_classes, protocol=protocol,
                             type_params=type_params)
 
-                yield Row(Index(Literal(index), Literal(name)), res)
+                yield make_row(index, name, res)
             case ast.FunctionDef(name=name, returns=returns, decorator_list=decorator_list,
                                  args=ast.arguments(args=args, vararg=vararg, kwonlyargs=kwonlyargs,
                                                     kw_defaults=kw_defaults, kwarg=kwarg, defaults=defaults)):
                 freevars = {x for node in args for x in free_vars(node)}
                 params = intersect(
-                    [Row(Index(Literal(index), Literal(arg.arg)), expr_to_type(arg.annotation))
+                    [make_row(index, arg.arg, expr_to_type(arg.annotation))
                      for index, arg in enumerate(args)]
                 )
                 returns = expr_to_type(returns)
                 name_decorators = [decorator.id for decorator in decorator_list if isinstance(decorator, ast.Name)]
-                new = Literal[bool](returns not in [Ref('buitlins.int'), Ref('builtins.float'), Ref('builtins.None'), Ref('builtins.bool')])
+                new = Literal[bool](returns not in [Ref(f'buitlins.{x}') for x in ['int', 'float', 'bool', 'None']])
                 property = Literal[bool]('property' in name_decorators)
                 type_params = tuple(TypeVar(x) for x in freevars if x in generic_vars)
                 f = FunctionType(params, returns, new=new, property=property, type_params=type_params)
 
-                yield Row(Index(Literal(index), Literal(name)), f)
+                yield make_row(index, name, f)
+            case ast.If():
+                return
             case _:
                 raise NotImplementedError(f'{definition!r}, {type(definition)}')
 
@@ -866,7 +890,7 @@ def parse_file(path: str) -> Module:
 
 
 MODULES = Module('typeshed',
-                 intersect([Row(Index(Literal(index), Literal(file.split('.')[0])), parse_file(f'typeshed_mini/{file}'))
+                 intersect([make_row(index, file.split('.')[0], parse_file(f'typeshed_mini/{file}'))
                             for index, file in enumerate(os.listdir('typeshed_mini'))]))
 
 

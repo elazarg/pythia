@@ -1,5 +1,8 @@
 import numpy as np
 
+def iterate(x: int):
+    for i in range(x): pass
+
 def minimal():
     res = np.zeros((5, 7))
 

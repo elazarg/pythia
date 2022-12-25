@@ -51,11 +51,15 @@ def linear_regression(features: np.ndarray, target: np.ndarray, dims) -> np.ndar
         sparse_features = features[:, dims]
         if sparse_features.ndim == 1:
             sparse_features = sparse_features.reshape(sparse_features.shape[0], 1)
-        prediction = run(sparse_features, target)
+        final_cost, prediction = run(sparse_features, target)
     else:
         prediction = np.zeros(features.shape[0]).reshape(features.shape[0], -1)
     grad = np.dot(features.T, target - prediction)
     return grad
+
+
+def get_float(array: np.ndarray, idx: int) -> float:
+    return array[idx]
 
 
 def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
@@ -69,16 +73,9 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
 
         # define vals
         A = np.array(range(len(grad)))
-        point = []
-        for a in np.setdiff1d(A, S):
-            point = np.append(point, a)
-        out = [[point, len(np.setdiff1d(A, S))]]
-        out = np.array(out, dtype='object')
+        points = np.setdiff1d(A, S)
 
         # get feasible points
-        points = np.array([])
-        points = np.append(points, np.array(out[0, 0]))
-        points = points.astype('int')
         # break if points are no longer feasible
         if len(points) == 0:
             break
@@ -86,7 +83,7 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
         # otherwise add maximum point to current solution
         a = points[0]
         for i in points:
-            if grad[i] > grad[a]:
+            if get_float(grad, i) > get_float(grad, a):
                 a = i
 
         if grad[a] >= 0:
@@ -101,4 +98,8 @@ def main() -> None:
     dataset_name = "dataset_20KB"
     features = np.load(dataset_name + "_features.npy")
     target = np.load(dataset_name + "_target.npy")
-    do_work(features, target, 10)
+    S = do_work(features, target, 10)
+    print(S)
+
+if __name__ == '__main__':
+    main()

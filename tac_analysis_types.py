@@ -18,7 +18,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
     def __init__(self, this_function: str, this_module: ts.Module, functions, imports: dict[str, str]):
         this_signature = ts.subscr(this_module, ts.Literal(this_function))
         assert isinstance(this_signature, ts.FunctionType)
-        self.annotations = {tac.Var(row.name, is_stackvar=False): row.type
+        self.annotations = {tac.Var(row.index.name.value, is_stackvar=False): row.type
                             for row in this_signature.params.items}
         self.annotations[tac.Var('return', is_stackvar=False)] = this_signature.return_type
         self.globals = this_module
@@ -69,7 +69,7 @@ class TypeLattice(Lattice[ts.TypeExpr]):
         return result
 
     def call(self, function: ts.TypeExpr, args: list[ts.TypeExpr]) -> ts.TypeExpr:
-        return ts.call(self.resolve(function), ts.intersect([ts.Row(index, None, self.resolve(arg))
+        return ts.call(self.resolve(function), ts.intersect([ts.Row(ts.Index(ts.Literal(index), None), self.resolve(arg))
                                                              for index, arg in enumerate(args)]))
 
     def binary(self, left: ts.TypeExpr, right: ts.TypeExpr, op: str) -> ts.TypeExpr:
@@ -116,7 +116,11 @@ class TypeLattice(Lattice[ts.TypeExpr]):
         mod = self.resolve(var)
         assert mod != ts.TOP, f'Cannot resolve {var}'
         try:
-            return ts.subscr(mod, ts.Literal(attr.name))
+            res = ts.subscr(mod, ts.Literal(attr.name))
+            if self.is_bottom(res):
+                if mod == self.globals:
+                    return ts.subscr(self.builtins, ts.Literal(attr.name))
+            return res
         except TypeError:
             if mod == self.globals:
                 return ts.subscr(self.builtins, ts.Literal(attr.name))
@@ -144,8 +148,6 @@ class TypeLattice(Lattice[ts.TypeExpr]):
         return self.join(left, right) == left
 
     def allocation_type_function(self, function: ts.TypeExpr) -> tac.AllocationType:
-        if isinstance(function, ts.Generic):
-            function = function.type
         if isinstance(function, ts.FunctionType):
             if function.new != ts.Literal(False):
                 return tac.AllocationType.STACK

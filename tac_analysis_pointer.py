@@ -125,5 +125,3 @@ class PointerAnalysis(Analysis[Graph]):
                 case tac.MakeFunction(): return frozenset()
                 case _: raise Exception(f"Unsupported expression {expr}")
         return inner
-
-
