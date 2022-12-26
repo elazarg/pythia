@@ -5,6 +5,7 @@ import type_system as ts
 
 INT = ts.Ref('builtins.int')
 FLOAT = ts.Ref('builtins.float')
+STR = ts.Ref('builtins.str')
 ARRAY = ts.Ref('numpy.ndarray')
 
 T = ts.TypeVar('T')
@@ -29,7 +30,7 @@ def make_rows(*types) -> ts.Intersection[ts.Row]:
 def test_join():
     t1 = ts.Ref('builtins.int')
     t2 = ts.Ref('builtins.float')
-    assert ts.join(t1, t2) == ts.TOP
+    assert ts.join(t1, t2) == ts.Union({t1, t2})
 
 
 def test_function_call():
@@ -89,18 +90,19 @@ def test_function_call_generic_project():
 
     f = make_function(T, make_rows(T, T), [T])
     arg = make_rows(INT, FLOAT)
-    assert ts.call(f, arg) == ts.TOP
-#
-# def test_function_call_variadic():
-#     f = ts.Generic((Args,), make_function(Args, make_rows(Args)))
-#     arg = make_rows(INT, FLOAT)
-#     assert ts.call(f, arg) == arg
-#
-#     f = ts.Generic((Args, N), make_function(ts.Instantiation(Args, (N,)), make_rows(N, Args)))
-#     arg = make_rows(ts.Literal(0), INT, FLOAT)
-#     assert ts.call(f, arg) == INT
-#     arg = make_rows(ts.Literal(1), INT, FLOAT)
-#     assert ts.call(f, arg) == FLOAT
+    assert ts.call(f, arg) == ts.join(INT, FLOAT)
+
+
+def test_function_call_variadic():
+    f = make_function(Args, make_rows(Args), [Args])
+    arg = make_rows(INT, FLOAT)
+    assert ts.call(f, arg) == arg
+
+    f = make_function(ts.Instantiation(Args, (N,)), make_rows(N, Args), [N, Args])
+    arg = make_rows(ts.Literal(0), INT, FLOAT)
+    assert ts.call(f, arg) == INT
+    arg = make_rows(ts.Literal(1), INT, FLOAT)
+    assert ts.call(f, arg) == FLOAT
 
 
 def test_tuple():
@@ -108,8 +110,7 @@ def test_tuple():
     arg = make_rows(INT, FLOAT)
     assert ts.call(f, arg) == ts.join(INT, FLOAT)
 
-    tuple_named = ts.Ref('builtins.tuple')
-    tuple_named = ts.Instantiation(tuple_named, (INT, FLOAT))
+    tuple_named = ts.Instantiation(ts.Ref('builtins.tuple'), (INT, FLOAT))
 
     tuple_structure = make_rows(INT, FLOAT)
 
@@ -167,6 +168,14 @@ def test_tuple():
     right = ts.subscr(both, second_intersect)
     assert right == FLOAT
 
+    tuple_named = ts.Instantiation(ts.Ref('builtins.tuple'),
+                                   (ts.intersect([ts.Literal(1), INT]),
+                                    ts.intersect([ts.Literal('x'), STR])))
+    left = ts.subscr(tuple_named, first_intersect)
+    assert left == ts.intersect([ts.Literal(1), INT])
+    right = ts.subscr(tuple_named, second_intersect)
+    assert right == ts.intersect([ts.Literal('x'), STR])
+
 
 def test_list():
     t = ts.Ref('builtins.list')
@@ -199,4 +208,4 @@ def test_list_constructor():
     constructor = ts.make_constructor(t)
     args = make_rows(INT)
     lst = ts.call(constructor, args)
-    assert lst == ts.intersect([args, ts.Instantiation(t, (args,))])
+    assert lst == ts.intersect([args, ts.Instantiation(t, (INT,))])

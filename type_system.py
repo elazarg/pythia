@@ -256,11 +256,23 @@ def simplify_generic(t, context: dict[TypeVar, TypeExpr]):
                         new_context[k] = v
                     return simplify_generic(generic, new_context)
                 case generic, type_args if all(isinstance(ta, TypeVar) for ta in type_args):
-                    new_type_args = tuple(context.get(ta, ta) for ta in type_args)
-                    new_generic = simplify_generic(generic, context)
+                    new_type_args = []
+                    for ta in type_args:
+                        if ta.is_args:
+                            args = context.get(ta, None)
+                            if args is None:
+                                new_type_args.append(ta)
+                            else:
+                                assert isinstance(args, Intersection)
+                                for arg in sorted(args.items, key=lambda x: x.index):
+                                    assert isinstance(arg, Row)
+                                    new_type_args.append(arg.type)
+                        else:
+                            new_type_args.append(context.get(ta, ta))
+                    new_type_args = tuple(new_type_args)
                     if new_type_args == type_args:
-                        return Instantiation(new_generic, type_args)
-                    return simplify_generic(Instantiation(new_generic, new_type_args), context)
+                        return Instantiation(simplify_generic(generic, context), type_args)
+                    return simplify_generic(Instantiation(generic, new_type_args), context)
                 case Ref() as ref, type_args:
                     # avoid infinite recursion when instantiating a generic class with its own parameter
                     return t
@@ -340,13 +352,13 @@ def join(t1: TypeExpr, t2: TypeExpr):
         return TOP
     match t1, t2:
         case Intersection(items1), Intersection(items2):
-            return Intersection(items1 | items2).squeeze()
+            return union([t1, t2])
         case (Intersection(items), other) | (other, Intersection(items)):
-            return Intersection(items | {other}).squeeze()
+            return Intersection(items & {other}).squeeze()
         case (Ref() as ref, other) | (other, Ref() as ref):
-            this = resolve_static_ref(ref)
-            assert isinstance(this, Class), f'{this!r} is not a class'
-            return join(this, other)
+            # this = resolve_static_ref(ref)
+            # assert isinstance(this, Class), f'{this!r} is not a class'
+            return union([ref, other])
         case Literal(value1), Literal(value2):
             if value1 == value2:
                 return Literal(value1)
@@ -549,12 +561,7 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
             if name == 'builtins.int' and index.number is not None:
                 return t
             return BOTTOM
-        case Instantiation(generic=FunctionType()) as t, action, arg:
-            new_t = simplify_generic(t, {})
-            if new_t != t:
-                return apply(new_t, action, arg)
-            assert False, f'Cannot apply {action} to {t} with {arg}'
-        case Instantiation(generic=Class()) as t, action, arg:
+        case Instantiation(generic=FunctionType()|Class()) | TypeVar() as t, action, arg:
             new_t = simplify_generic(t, {})
             if new_t != t:
                 return apply(new_t, action, arg)
@@ -563,11 +570,6 @@ def apply(t: TypeExpr, action: Action, arg: TypeExpr) -> TypeExpr:
             new_generic = resolve_static_ref(generic)
             if new_generic != generic:
                 return apply(Instantiation(new_generic, args), action, arg)
-            assert False, f'Cannot apply {action} to {t} with {arg}'
-        case TypeVar() as t, action, arg:
-            new_t = simplify_generic(t, {})
-            if new_t != t:
-                return apply(new_t, action, arg)
             assert False, f'Cannot apply {action} to {t} with {arg}'
         case Literal(value), action, arg:
             return TOP
