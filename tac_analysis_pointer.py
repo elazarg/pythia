@@ -2,11 +2,30 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from itertools import chain
-from typing import TypeAlias, Callable
+from typing import TypeAlias, Callable, Final
 
 import tac
-from tac_analysis_domain import Object, LOCALS, Analysis, GLOBALS, VarAnalysis
+from tac_analysis_domain import VarLattice, InstructionLattice
+
+
+@dataclass(frozen=True)
+class Object:
+    location: str
+
+    def __str__(self):
+        return f'@{self.location}'
+
+    def __repr__(self):
+        return f'@{self.location}'
+
+
+LOCALS: Final[Object] = Object('locals()')
+NONLOCALS: Final[Object] = Object('NONLOCALS')
+
+GLOBALS: Final[Object] = Object('globals()')
+
 
 Graph: TypeAlias = dict[Object, dict[tac.Var, frozenset[Object]]]
 
@@ -25,13 +44,13 @@ def copy_graph(graph: Graph) -> Graph:
             for obj, obj_fields in graph.items()}
 
 
-class PointerAnalysis(Analysis[Graph]):
+class PointerLattice(InstructionLattice[Graph]):
     backward: bool = False
 
     def name(self) -> str:
         return "Pointer"
 
-    def __init__(self, type_analysis: VarAnalysis, liveness_analysis: VarAnalysis) -> None:
+    def __init__(self, type_analysis: VarLattice, liveness_analysis: VarLattice) -> None:
         super().__init__()
         self.type_analysis = type_analysis
         self.liveness_analysis = liveness_analysis
@@ -125,3 +144,21 @@ class PointerAnalysis(Analysis[Graph]):
                 case tac.MakeFunction(): return frozenset()
                 case _: raise Exception(f"Unsupported expression {expr}")
         return inner
+
+
+def mark_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, object], get_ins: Callable[[str, str], tac.Assign]) -> None:
+    worklist = {LOCALS}
+    while worklist:
+        root = worklist.pop()
+        for edge, locs in ptr.get(root, {}).items():
+            if root == LOCALS and edge not in alive:
+                continue
+            if edge in annotations:
+                continue
+            for loc in locs:
+                if repr(loc).startswith('@param'):
+                    continue
+                worklist.add(loc)
+                label, index = [int(x) for x in str(loc)[1:].split('.')]
+                ins = get_ins(label, index)
+                ins.expr.allocation = tac.AllocationType.HEAP

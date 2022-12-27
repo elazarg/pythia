@@ -8,7 +8,7 @@ import networkx as nx
 from itertools import chain
 
 if typing.TYPE_CHECKING:
-    from tac_analysis_domain import Analysis
+    from tac_analysis_domain import Lattice
 
 T = TypeVar('T')
 Q = TypeVar('Q')
@@ -17,8 +17,8 @@ Q = TypeVar('Q')
 @dataclass
 class ForwardBlock(Generic[T]):
     _instructions: list[T]
-    pre: dict[str, Analysis]
-    post: dict[str, Analysis]
+    pre: dict[str, Lattice]
+    post: dict[str, Lattice]
 
     def __init__(self, instructions: list[T]):
         self._instructions = instructions
@@ -27,6 +27,9 @@ class ForwardBlock(Generic[T]):
 
     def __iter__(self) -> Iterator[T]:
         return iter(self._instructions)
+
+    def items(self) -> Iterator[T]:
+        return iter(enumerate(self._instructions))
 
     def __len__(self) -> int:
         return len(self._instructions)
@@ -54,6 +57,9 @@ class BackwardBlock(Generic[T]):
     def __iter__(self) -> Iterator[T]:
         return iter(reversed(self.block._instructions))
 
+    def items(self) -> Iterator[T]:
+        return iter(reversed(list(enumerate(self._instructions))))
+
     def __len__(self) -> int:
         return len(self.block)
 
@@ -64,11 +70,11 @@ class BackwardBlock(Generic[T]):
         return self.block[index]
 
     @property
-    def pre(self) -> dict[str, Analysis]:
+    def pre(self) -> dict[str, Lattice]:
         return self.block.post
 
     @property
-    def post(self) -> dict[str, Analysis]:
+    def post(self) -> dict[str, Lattice]:
         return self.block.pre
 
     def __reversed__(self) -> Block[T]:

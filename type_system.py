@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 import ast
 
-from frozendict import frozendict
-
 
 class TypeExpr:
     pass

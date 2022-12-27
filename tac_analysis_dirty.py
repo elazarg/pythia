@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import TypeAlias
 import tac
-from tac_analysis_domain import Object, LOCALS, Analysis
-from tac_analysis_pointer import Graph
+from tac_analysis_domain import Lattice
+from tac_analysis_pointer import Graph, Object, LOCALS
 
 Dirty: TypeAlias = set[Object]
 
@@ -12,7 +12,7 @@ def copy_dirty(dirty: Dirty) -> Dirty:
     return dirty.copy()
 
 
-class DirtyAnalysis(Analysis[Dirty]):
+class DirtyLattice(Lattice[Dirty]):
     backward: bool = False
 
     def name(self) -> str:
@@ -21,13 +21,13 @@ class DirtyAnalysis(Analysis[Dirty]):
     def __init__(self) -> None:
         super().__init__()
 
-    def is_less_than(self, left, right) -> bool:
+    def is_less_than(self, left: Dirty, right: Dirty) -> bool:
         return self.join(left, right) == right
 
-    def is_equivalent(self, left, right):
+    def is_equivalent(self, left: Dirty, right: Dirty) -> bool:
         return left == right
 
-    def copy(self, values) -> Dirty:
+    def copy(self, values: Dirty) -> Dirty:
         return copy_dirty(values)
 
     def initial(self, annotations: dict[tac.Var, str]) -> Dirty:
@@ -44,3 +44,4 @@ class DirtyAnalysis(Analysis[Dirty]):
         match ins:
             case tac.Assign(lhs=tac.Attribute(var=tac.Var() as var) | tac.Subscript(var=tac.Var() as var)):
                 values.update(pointers[LOCALS][var])
+        return values

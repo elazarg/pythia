@@ -8,15 +8,15 @@ from typing import TypeVar, TypeAlias
 import disassemble
 import graph_utils as gu
 import tac
-import tac_analysis_domain
+import tac_analysis_domain as domain
 import tac_analysis_types
 from tac_analysis_constant import ConstLattice, Constant
 
-from tac_analysis_domain import IterationStrategy, VarAnalysis, BackwardIterationStrategy, ForwardIterationStrategy, \
-    Analysis, LOCALS
-from tac_analysis_liveness import LivenessLattice, Liveness, LivenessAnalysis
-from tac_analysis_pointer import PointerAnalysis, pretty_print_pointers
-from tac_analysis_types import TypeLattice, ts
+from tac_analysis_liveness import LivenessVarLattice, LivenessLattice
+from tac_analysis_pointer import PointerLattice, pretty_print_pointers, mark_reachable
+from tac_analysis_types import TypeLattice
+import type_system as ts
+
 
 T = TypeVar('T')
 Cfg: TypeAlias = gu.Cfg[tac.Tac]
@@ -29,13 +29,13 @@ def make_tac_cfg(f, simplify=True):
     return cfg
 
 
-def analyze(_cfg: Cfg, analysis: Analysis[T], annotations) -> None:
+def analyze(_cfg: Cfg, analysis: domain.Lattice[T], annotations) -> None:
     name = analysis.name()
     for label in _cfg.labels:
         _cfg[label].pre[name] = analysis.bottom()
         _cfg[label].post[name] = analysis.bottom()
 
-    cfg: IterationStrategy = BackwardIterationStrategy(_cfg) if analysis.backward else ForwardIterationStrategy(_cfg)
+    cfg: domain.IterationStrategy = domain.BackwardIterationStrategy(_cfg) if analysis.backward else domain.ForwardIterationStrategy(_cfg)
 
     wl = [entry] = {cfg.entry_label}
     cfg[entry].pre[name] = analysis.initial(analysis.top() if analysis.backward else annotations)
@@ -47,11 +47,11 @@ def analyze(_cfg: Cfg, analysis: Analysis[T], annotations) -> None:
         for index, ins in enumerate(cfg[label]):
             invariant = analysis.transfer(invariant, ins, f'{label}.{index}')
 
-        if isinstance(invariant, tac_analysis_domain.Map):
+        if isinstance(invariant, domain.Map):
             if analysis.name() is not LivenessLattice.name():
                 liveness = block.post.get(LivenessLattice.name())
                 if liveness:
-                    invariant = LivenessAnalysis.remove_dead_variables(liveness, invariant)
+                    invariant = LivenessVarLattice.remove_dead_variables(liveness, invariant)
                 del liveness
 
         block.post[name] = invariant
@@ -74,25 +74,16 @@ def run(f, functions, imports, module_type, simplify=True) -> Cfg:
     #     rewrite_remove_useless_movs_pairs(block, label)
     #     rewrite_aliases(block, label)
     #     rewrite_remove_useless_movs(block, label)
-    liveness_analysis = LivenessAnalysis()
-    constant_analysis = VarAnalysis[Constant](ConstLattice())
-    type_analysis = VarAnalysis[ts.TypeExpr](TypeLattice(f.__name__, module_type, functions, imports))
-    pointer_analysis = PointerAnalysis(type_analysis, liveness_analysis)
+    liveness_analysis = LivenessVarLattice()
+    constant_analysis = domain.VarLattice[Constant](ConstLattice())
+    type_analysis = domain.VarLattice[ts.TypeExpr](TypeLattice(f.__name__, module_type, functions, imports))
+    pointer_analysis = PointerLattice(type_analysis, liveness_analysis)
 
     analyze(cfg, liveness_analysis, annotations)
     analyze(cfg, constant_analysis, annotations)
     analyze(cfg, type_analysis, annotations)
     analyze(cfg, pointer_analysis, annotations)
 
-    mark_heap(cfg, liveness_analysis, pointer_analysis, annotations)
-
-    return cfg
-
-
-def mark_heap(cfg: Cfg,
-              liveness_analysis: VarAnalysis[Liveness],
-              pointer_analysis: PointerAnalysis,
-              annotations: dict[tac.Var, object]) -> None:
     for i, block in cfg.items():
         if not block:
             continue
@@ -100,22 +91,9 @@ def mark_heap(cfg: Cfg,
             assert len(block) == 1
             ptr = block.post[pointer_analysis.name()]
             alive = set(block.pre[liveness_analysis.name()].keys())
-            worklist = {LOCALS}
-            while worklist:
-                root = worklist.pop()
-                for edge, locs in ptr.get(root, {}).items():
-                    if root == LOCALS and edge not in alive:
-                        continue
-                    if edge in annotations:
-                        continue
-                    for loc in locs:
-                        if repr(loc).startswith('@param'):
-                            continue
-                        worklist.add(loc)
-                        label, index = [int(x) for x in str(loc)[1:].split('.')]
-                        ins = cfg[label][index]
-                        ins.expr.allocation = tac.AllocationType.HEAP
+            mark_reachable(ptr, alive, annotations, get_ins=lambda label, index: cfg[label][index])
             break
+    return cfg
 
 
 def print_analysis(cfg: Cfg) -> None:
