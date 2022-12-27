@@ -25,15 +25,15 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass
 from itertools import chain
-from typing import Type, TypeVar, ClassVar
+from typing import TypeVar
 
 import typing
 
 import graph_utils
 import tac
 from tac import Tac, Var
-from tac_analysis_domain import IterationStrategy, BackwardIterationStrategy, Top, Bottom, Lattice, TOP, BOTTOM, \
-    VarAnalysis, MapDomain, Analysis, Map, normalize
+from tac_analysis_domain import IterationStrategy, BackwardIterationStrategy, Top, Bottom, TOP, BOTTOM, \
+    VarLattice, MapDomain, Lattice, Map, normalize
 import graph_utils as gu
 
 T = TypeVar('T')
@@ -96,7 +96,7 @@ class LivenessLattice(Lattice[Liveness]):
         return "Liveness"
 
 
-class LivenessAnalysis:
+class LivenessVarLattice:
     lattice: LivenessLattice
     backward: bool = True
 
@@ -219,7 +219,7 @@ def is_extended_identifier(name):
 
 
 def rewrite_remove_useless_movs(block: graph_utils.Block, label: int) -> None:
-    alive: VarAnalysis[Liveness] = block.post[LivenessLattice.name()]
+    alive: VarLattice[Liveness] = block.post[LivenessLattice.name()]
     if alive.is_bottom:
         return
     if len(block) <= 1:
@@ -234,7 +234,7 @@ def rewrite_remove_useless_movs(block: graph_utils.Block, label: int) -> None:
 
 # poor man's use-def
 def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> None:
-    alive: VarAnalysis[Liveness] = block.post[LivenessLattice.name()]
+    alive: VarLattice[Liveness] = block.post[LivenessLattice.name()]
     if alive.is_bottom:
         return
     for i in reversed(range(1, len(block))):

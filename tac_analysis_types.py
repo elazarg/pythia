@@ -7,11 +7,11 @@ from typing import Optional, Iterable
 
 import tac
 from tac import Predefined, UnOp
-from tac_analysis_domain import Lattice
+from tac_analysis_domain import ActionLattice
 import type_system as ts
 
 
-class TypeLattice(Lattice[ts.TypeExpr]):
+class TypeLattice(ActionLattice[ts.TypeExpr]):
     """
     Abstract domain for type analysis with lattice operations.
     """

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypeVar, Protocol, Generic, TypeAlias, Final, Iterator, Type, Callable, Iterable
+from typing import TypeVar, Protocol, Generic, TypeAlias, Callable, Iterable
 import graph_utils as gu
 
 import tac
@@ -43,28 +43,41 @@ class BackwardIterationStrategy(Generic[T]):
 IterationStrategy: TypeAlias = ForwardIterationStrategy | BackwardIterationStrategy
 
 
-class Lattice(Generic[T]):
-    def copy(self: T) -> T:
-        ...
+class Lattice(Protocol[T]):
+    backward: bool
+
+    def name(self) -> str:
+        raise NotImplementedError
 
     def top(self) -> T:
-        ...
+        raise NotImplementedError
 
     def bottom(self) -> T:
-        ...
-
-    def join(self, left: T, right: T) -> T:
-        ...
-
-    def meet(self, left: T, right: T) -> T:
-        ...
-
-    def is_bottom(self, elem: T) -> bool:
-        ...
+        raise NotImplementedError
 
     def is_top(self, elem: T) -> bool:
-        ...
+        raise NotImplementedError
 
+    def is_bottom(self, elem: T) -> bool:
+        raise NotImplementedError
+
+    def join(self, left: T, right: T) -> T:
+        raise NotImplementedError
+
+    def is_less_than(self, left: T, right: T) -> bool:
+        raise NotImplementedError
+
+    def is_equivalent(self, left, right) -> bool:
+        raise NotImplementedError
+
+    def copy(self, values: T) -> T:
+        raise NotImplementedError
+
+    def initial(self, annotations: dict[K, str]) -> T:
+        raise NotImplementedError
+
+
+class ActionLattice(Lattice[T]):
     def const(self, value: object) -> T:
         return self.top()
 
@@ -101,9 +114,6 @@ class Lattice(Generic[T]):
 
     def assign_var(self, value: T) -> T:
         return value
-
-    def name(self) -> str:
-        raise NotImplementedError
 
     def default(self) -> T:
         return self.top()
@@ -265,45 +275,16 @@ def normalize(values: MapDomain[T]) -> MapDomain[T]:
     return values
 
 
-class Analysis(Protocol[T]):
+class InstructionLattice(Lattice[T]):
+    def transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
+        raise NotImplementedError
+
+
+class VarLattice(InstructionLattice[MapDomain[T]]):
+    lattice: ActionLattice[T]
     backward: bool
 
-    def name(self) -> str:
-        raise NotImplementedError
-
-    def is_less_than(self, left: T, right: T) -> bool:
-        raise NotImplementedError
-
-    def is_equivalent(self, left, right) -> bool:
-        raise NotImplementedError
-
-    def copy(self, values: T) -> T:
-        raise NotImplementedError
-
-    def is_bottom(self, values) -> bool:
-        raise NotImplementedError
-
-    def initial(self, annotations: dict[K, str]) -> T:
-        raise NotImplementedError
-
-    def top(self) -> T:
-        raise NotImplementedError
-
-    def bottom(self) -> T:
-        raise NotImplementedError
-
-    def join(self, left: T, right: T) -> T:
-        raise NotImplementedError
-
-    def transfer(self, values: T, ins: tac.Tac, location: str) -> T:
-        raise NotImplementedError
-
-
-class VarAnalysis(Analysis[MapDomain[T]]):
-    lattice: Lattice[T]
-    backward: bool
-
-    def __init__(self, lattice: Lattice[T], backward: bool = False):
+    def __init__(self, lattice: ActionLattice[T], backward: bool = False):
         super().__init__()
         self.lattice = lattice
         self.backward = backward
@@ -435,36 +416,9 @@ class VarAnalysis(Analysis[MapDomain[T]]):
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()
-        if self.backward:
-            to_update = self.back_transfer(values, ins, location)
-        else:
-            to_update = self.forward_transfer(values, ins, location)
+        to_update = self.forward_transfer(values, ins, location)
         for var in tac.gens(ins):
             if var in values:
                 del values[var]
         values.update(to_update)
         return normalize(values)
-
-
-@dataclass(frozen=True)
-class Object:
-    location: str
-
-    def __str__(self):
-        return f'@{self.location}'
-
-    def __repr__(self):
-        return f'@{self.location}'
-
-    def pretty(self, field: tac.Var) -> str:
-        if self == LOCALS:
-            if field.is_stackvar:
-                return '$' + field.name
-            return field.name
-        return f'{self}.{field.name}'
-
-
-LOCALS: Final[Object] = Object('locals()')
-NONLOCALS: Final[Object] = Object('NONLOCALS')
-
-GLOBALS: Final[Object] = Object('globals()')
