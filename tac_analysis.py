@@ -57,18 +57,9 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations) -> I
             pre_result[location] = post
             invariant = analysis.transfer(invariant, ins, location)
 
-            # if isinstance(invariant, domain.Map):
-            #     if analysis.name() is not LivenessLattice.name():
-            #         liveness = block.post.get(LivenessLattice.name())
-            #         if liveness:
-            #             invariant = LivenessVarLattice.remove_dead_variables(liveness, invariant)
-            #         del liveness
-
             post = post_result[location] = invariant
 
         for succ in cfg.successors(label):
-            if succ == 0:
-                pass
             next_index = (succ, cfg[succ].first_index())
             next_pre = pre_result.get(next_index, analysis.bottom())
             if not analysis.is_less_than(post, next_pre):
@@ -88,12 +79,12 @@ def run(f, functions, imports, module_type, simplify=True) -> tuple[Cfg, dict[st
     #     rewrite_aliases(block, label)
     #     rewrite_remove_useless_movs(block, label)
     liveness_invariants = analyze(cfg, LivenessVarLattice(), annotations)
-    constant_invariants = analyze(cfg, domain.VarLattice[Constant](ConstLattice()), annotations)
+    constant_invariants = analyze(cfg, domain.VarLattice[Constant](ConstLattice(), liveness_invariants.post), annotations)
 
-    type_analysis = domain.VarLattice[ts.TypeExpr](TypeLattice(f.__name__, module_type, functions, imports))
+    type_analysis = domain.VarLattice[ts.TypeExpr](TypeLattice(f.__name__, module_type, functions, imports), liveness_invariants.post)
     type_invariants = analyze(cfg, type_analysis, annotations)
 
-    pointer_analysis = PointerLattice(type_invariants.pre, type_analysis, liveness_invariants.pre)
+    pointer_analysis = PointerLattice(type_invariants.pre, type_analysis, liveness_invariants.post)
     pointer_invariants = analyze(cfg, pointer_analysis, annotations)
 
     for label, block in cfg.items():
@@ -162,8 +153,8 @@ def main() -> None:
     # analyze_function('examples/tests.py', 'tup')
     # analyze_function('examples/tests.py', 'destruct')
     # analyze_function('examples/feature_selection.py', 'do_work')
-    # analyze_function('examples/toy.py', 'minimal')
-    analyze_function('examples/toy.py', 'not_so_minimal')
+    analyze_function('examples/toy.py', 'minimal')
+    # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/feature_selection.py', 'run')
     # analyze_function('examples/toy.py', 'toy3')
 
