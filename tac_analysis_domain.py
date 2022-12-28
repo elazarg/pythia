@@ -24,6 +24,9 @@ class ForwardIterationStrategy(Generic[T]):
     def __getitem__(self, label) -> gu.Block:
         return self.cfg[label]
 
+    def order(self, pair):
+        return pair
+
 
 @dataclass
 class BackwardIterationStrategy(Generic[T]):
@@ -38,6 +41,9 @@ class BackwardIterationStrategy(Generic[T]):
 
     def __getitem__(self, label) -> gu.Block:
         return gu.BackwardBlock(self.cfg[label])
+
+    def order(self, pair):
+        return pair[1], pair[0]
 
 
 IterationStrategy: TypeAlias = ForwardIterationStrategy | BackwardIterationStrategy
@@ -75,65 +81,6 @@ class Lattice(Protocol[T]):
 
     def initial(self, annotations: dict[K, str]) -> T:
         raise NotImplementedError
-
-
-class ActionLattice(Lattice[T]):
-    def const(self, value: object) -> T:
-        return self.top()
-
-    def var(self, value: T) -> T:
-        return value
-
-    def attribute(self, var: T, attr: tac.Var) -> T:
-        assert isinstance(attr, tac.Var)
-        return self.top()
-
-    def subscr(self, array: T, index: T) -> T:
-        return self.top()
-
-    def call(self, function: T, args: list[T]) -> T:
-        return self.top()
-
-    def binary(self, left: T, right: T, op: str) -> T:
-        return self.top()
-
-    def unary(self, value: T, op: tac.UnOp) -> T:
-        return tac.AllocationType.NONE
-
-    def predefined(self, name: tac.Predefined) -> T:
-        return self.top()
-
-    def imported(self, modname: str) -> T:
-        return self.top()
-
-    def annotation(self, name: tac.Var, t: T) -> T:
-        return self.top()
-
-    def assign_tuple(self, values: T) -> list[T]:
-        return self.top()
-
-    def assign_var(self, value: T) -> T:
-        return value
-
-    def default(self) -> T:
-        return self.top()
-
-    def back_inplace_binary(self, lhs: T, rhs: T, op: str) -> tuple[T, T]:
-        raise NotImplementedError
-
-    # TODO: Fix defaults, make it a proper lattice
-
-    def allocation_type_function(self, function: T) -> tac.AllocationType:
-        return tac.AllocationType.NONE
-
-    def allocation_type_binary(self, left: T, right: T, op: str) -> tac.AllocationType:
-        return tac.AllocationType.NONE
-
-    def allocation_type_unary(self, value: T, op: tac.UnOp) -> tac.AllocationType:
-        return tac.AllocationType.NONE
-
-    def allocation_type_attribute(self, val, name) -> tac.AllocationType:
-        return tac.AllocationType.NONE
 
 
 @dataclass(frozen=True)
@@ -276,26 +223,67 @@ def normalize(values: MapDomain[T]) -> MapDomain[T]:
 
 
 class InstructionLattice(Lattice[T]):
-    def transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
+    def transfer(self, values: T, ins: tac.Tac, location: tuple[int, int]) -> T:
         raise NotImplementedError
+
+
+class ActionLattice(Lattice[T]):
+    def const(self, value: object) -> T:
+        return self.top()
+
+    def var(self, value: T) -> T:
+        return value
+
+    def attribute(self, var: T, attr: tac.Var) -> T:
+        assert isinstance(attr, tac.Var)
+        return self.top()
+
+    def subscr(self, array: T, index: T) -> T:
+        return self.top()
+
+    def call(self, function: T, args: list[T]) -> T:
+        return self.top()
+
+    def binary(self, left: T, right: T, op: str) -> T:
+        return self.top()
+
+    def unary(self, value: T, op: tac.UnOp) -> T:
+        return self.top()
+
+    def predefined(self, name: tac.Predefined) -> T:
+        return self.top()
+
+    def imported(self, modname: str) -> T:
+        return self.top()
+
+    def annotation(self, name: tac.Var, t: T) -> T:
+        return self.top()
+
+    def assign_tuple(self, values: T) -> list[T]:
+        return self.top()
+
+    def assign_var(self, value: T) -> T:
+        return value
+
+    def default(self) -> T:
+        return self.top()
 
 
 class VarLattice(InstructionLattice[MapDomain[T]]):
     lattice: ActionLattice[T]
-    backward: bool
+    backward: bool = False
 
-    def __init__(self, lattice: ActionLattice[T], backward: bool = False):
+    def __init__(self, lattice: ActionLattice[T]):
         super().__init__()
         self.lattice = lattice
-        self.backward = backward
 
     def name(self) -> str:
         return f"{self.lattice.name()}"
 
-    def is_less_than(self, left: T, right: T) -> bool:
+    def is_less_than(self, left: MapDomain[T], right: MapDomain[T]) -> bool:
         return self.join(left, right) == right
 
-    def is_equivalent(self, left, right) -> bool:
+    def is_equivalent(self, left: MapDomain[T], right: MapDomain[T]) -> bool:
         return self.is_less_than(left, right) and self.is_less_than(right, left)
 
     def copy(self, values: MapDomain[T]) -> MapDomain[T]:
@@ -333,19 +321,18 @@ class VarLattice(InstructionLattice[MapDomain[T]]):
                 return normalize(res)
 
     def transformer_expr(self, values: Map[T], expr: tac.Expr) -> T:
-        def eval(expr: tac.Expr | tac.Predefined) -> T:
-            return self.transformer_expr(values, expr)
+        def eval(expr: tac.Var | tac.Predefined) -> T:
+            res = self.transformer_expr(values, expr)
+            return res
 
         match expr:
             case tac.Var():
                 return self.lattice.var(values[expr])
             case tac.Attribute():
                 val = eval(expr.var)
-                expr.allocation = self.lattice.allocation_type_attribute(val, expr.field)
                 return self.lattice.attribute(val, expr.field)
             case tac.Call():
                 func = eval(expr.function)
-                expr.allocation = self.lattice.allocation_type_function(func)
                 return self.lattice.call(
                     function=func,
                     args=[eval(arg) for arg in expr.args]
@@ -353,12 +340,10 @@ class VarLattice(InstructionLattice[MapDomain[T]]):
             case tac.Unary():
                 value = eval(expr.var)
                 assert value is not None
-                expr.allocation = self.lattice.allocation_type_unary(value, expr.op)
                 return self.lattice.unary(value=value, op=expr.op)
             case tac.Binary():
                 left = eval(expr.left)
                 right = eval(expr.right)
-                expr.allocation = self.lattice.allocation_type_binary(left, right, expr.op)
                 return self.lattice.binary(left=left, right=right, op=expr.op)
             case tac.Predefined() as expr:
                 return self.lattice.predefined(expr)
@@ -395,24 +380,24 @@ class VarLattice(InstructionLattice[MapDomain[T]]):
             case _:
                 assert False, f'unexpected signature {signature}'
 
-    def forward_transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
+    def forward_transfer(self, values: MapDomain[T], ins: tac.Tac, location: tuple[int, int]) -> MapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
         if isinstance(ins, tac.For):
             ins = ins.as_call()
+        updated = self.make_map()
         match ins:
             case tac.Assign():
                 assigned = self.transformer_expr(values, ins.expr)
-                return self.transformer_signature(assigned, ins.lhs)
+                updated = self.transformer_signature(assigned, ins.lhs)
             case tac.Return():
-                return self.make_map({
-                    tac.Var('return'): self.transformer_expr(values, ins.value)
+                assigned = self.transformer_expr(values, ins.value)
+                updated = self.make_map({
+                    tac.Var('return'): assigned
                 })
-            case tac.Del():
-                return self.make_map()
-        return self.make_map()
+        return updated
 
-    def transfer(self, values: MapDomain[T], ins: tac.Tac, location: str) -> MapDomain[T]:
+    def transfer(self, values: MapDomain[T], ins: tac.Tac, location: tuple[int, int]) -> MapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()
@@ -421,4 +406,8 @@ class VarLattice(InstructionLattice[MapDomain[T]]):
             if var in values:
                 del values[var]
         values.update(to_update)
+
         return normalize(values)
+
+
+InvariantMap: TypeAlias = dict[tuple[int, int], T]

@@ -7,6 +7,7 @@ from typing import TypeVar, Generic, Callable, Any, Iterator, TypeAlias
 import networkx as nx
 from itertools import chain
 
+
 if typing.TYPE_CHECKING:
     from tac_analysis_domain import Lattice
 
@@ -17,19 +18,21 @@ Q = TypeVar('Q')
 @dataclass
 class ForwardBlock(Generic[T]):
     _instructions: list[T]
-    pre: dict[str, Lattice]
-    post: dict[str, Lattice]
 
     def __init__(self, instructions: list[T]):
         self._instructions = instructions
-        self.pre = {}
-        self.post = {}
 
     def __iter__(self) -> Iterator[T]:
         return iter(self._instructions)
 
-    def items(self) -> Iterator[T]:
+    def items(self) -> Iterator[tuple[int, T]]:
         return iter(enumerate(self._instructions))
+
+    def first_index(self) -> int:
+        return 0
+
+    def last_index(self) -> int:
+        return (len(self) - 1) if len(self) > 0 else 0
 
     def __len__(self) -> int:
         return len(self._instructions)
@@ -57,8 +60,14 @@ class BackwardBlock(Generic[T]):
     def __iter__(self) -> Iterator[T]:
         return iter(reversed(self.block._instructions))
 
-    def items(self) -> Iterator[T]:
-        return iter(reversed(list(enumerate(self._instructions))))
+    def items(self) -> Iterator[tuple[int, T]]:
+        return iter(reversed(list(self.block.items())))
+
+    def first_index(self) -> int:
+        return self.block.last_index()
+
+    def last_index(self) -> int:
+        return self.block.first_index()
 
     def __len__(self) -> int:
         return len(self.block)
@@ -68,14 +77,6 @@ class BackwardBlock(Generic[T]):
 
     def __getitem__(self, index: int) -> T:
         return self.block[index]
-
-    @property
-    def pre(self) -> dict[str, Lattice]:
-        return self.block.post
-
-    @property
-    def post(self) -> dict[str, Lattice]:
-        return self.block.pre
 
     def __reversed__(self) -> Block[T]:
         return self.block
@@ -96,7 +97,7 @@ class Cfg(Generic[T]):
     def annotator(self, annotator: Callable[[T], str]) -> None:
         self._annotator = staticmethod(annotator)
 
-    def __init__(self, graph: nx.DiGraph | dict | list[tuple[int, int, dict]], blocks=None) -> None:
+    def __init__(self, graph: nx.DiGraph | dict | list[tuple[int, int, dict]], blocks=None, add_sink=True) -> None:
         if isinstance(graph, nx.DiGraph):
             self.graph = graph
         else:
@@ -105,12 +106,16 @@ class Cfg(Generic[T]):
         if blocks is not None:
             nx.set_node_attributes(self, name='block', values={k: ForwardBlock(block) for k, block in blocks.items()})
 
-        # Connect all sink nodes to exit:
-        self.graph.add_node(self.exit_label, block=ForwardBlock([]))
-        sinks = {label for label in self.labels if self.graph.out_degree(label) == 0}
-        for label in sinks:
-            self.graph.add_edge(label, self.exit_label)
+        if add_sink:
+            # Connect all sink nodes to exit:
+            sinks = {label for label in self.labels if self.graph.out_degree(label) == 0}
+            self.graph.add_node(self.exit_label, block=ForwardBlock([]))
+            for label in sinks:
+                self.graph.add_edge(label, self.exit_label)
 
+        [sink] = {label for label in self.labels if self.graph.out_degree(label) == 0}
+        [source] = {label for label in self.labels if self.graph.in_degree(label) == 0}
+        assert {sink, source} == {self.exit_label, self.entry_label}, {sink, source}
         self.annotator = lambda x: ''
 
     @property
@@ -143,7 +148,7 @@ class Cfg(Generic[T]):
         self.graph.nodes[label]['block'] = block
 
     def reverse(self: Cfg[T], copy) -> Cfg[T]:
-        return Cfg(self.graph.reverse(copy=copy))
+        return Cfg(self.graph.reverse(copy=copy), add_sink=False)
 
     def draw(self) -> None:
         import matplotlib.pyplot as plt
@@ -161,7 +166,7 @@ class Cfg(Generic[T]):
         return self.graph.successors(label)
 
     def copy(self: Cfg) -> Cfg:
-        return Cfg(self.graph.copy())
+        return Cfg(self.graph.copy(), add_sink=False)
 
     def dominance_frontiers(self) -> dict[int, set[int]]:
         return nx.dominance_frontiers(self.graph, self.entry_label)
@@ -193,7 +198,9 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
     starts = set(chain((n for n in g if g.in_degree(n) != 1),
                        chain.from_iterable(g.successors(n) for n in g
                                            if g.out_degree(n) > 1)))
-    blocks = Cfg(nx.DiGraph())
+    blocks = {}
+    labels = set()
+    edges = []
     for label in starts:
         n = label
         instructions = []
@@ -207,12 +214,14 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
             if len(instructions) and type(instructions[-1]).__name__ == 'Jump':
                 del instructions[-1]
             n = next_n
-        if label not in blocks.graph:
-            blocks.graph.add_node(label)
-        blocks.graph.add_edges_from((label, suc) for suc in g.successors(n))
+        labels.add(label)
+        edges.extend((label, suc) for suc in g.successors(n))
         blocks[label] = ForwardBlock(instructions)
-    blocks.annotator = cfg.annotator
-    return blocks
+    simplified_cfg = Cfg(edges)
+    for label, block in blocks.items():
+        simplified_cfg[label] = block
+    simplified_cfg.annotator = cfg.annotator
+    return simplified_cfg
 
 
 def refine_to_chain(g, from_attr, to_attr):

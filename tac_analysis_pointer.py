@@ -7,7 +7,9 @@ from itertools import chain
 from typing import TypeAlias, Callable, Final
 
 import tac
-from tac_analysis_domain import VarLattice, InstructionLattice
+from tac_analysis_domain import VarLattice, InstructionLattice, InvariantMap
+from tac_analysis_types import TypeLattice, AllocationType
+from type_system import TypeExpr
 
 
 @dataclass(frozen=True)
@@ -45,14 +47,19 @@ def copy_graph(graph: Graph) -> Graph:
 
 
 class PointerLattice(InstructionLattice[Graph]):
+    type_invariant_map: InvariantMap[TypeLattice]
+    type_lattice: VarLattice[TypeExpr]
+    liveness_analysis: InvariantMap[set[tac.Var]]
     backward: bool = False
 
     def name(self) -> str:
         return "Pointer"
 
-    def __init__(self, type_analysis: VarLattice, liveness_analysis: VarLattice) -> None:
+    def __init__(self, type_invariant_map: InvariantMap[TypeLattice], type_lattice: VarLattice[TypeExpr],
+                 liveness_analysis: InvariantMap) -> None:
         super().__init__()
-        self.type_analysis = type_analysis
+        self.type_invariant_map = type_invariant_map
+        self.type_lattice = type_lattice
         self.liveness_analysis = liveness_analysis
         self.backward = False
 
@@ -83,7 +90,7 @@ class PointerLattice(InstructionLattice[Graph]):
                 pointers[obj] = {field: targets.copy() for field, targets in fields.items() if targets}
         return pointers
 
-    def transfer(self, values: Graph, ins: tac.Tac, location: str) -> Graph:
+    def transfer(self, values: Graph, ins: tac.Tac, location: tuple[int, int]) -> Graph:
         values = copy_graph(values)
         eval = self.evaluator(values, location)
         activation = values[LOCALS]
@@ -113,9 +120,10 @@ class PointerLattice(InstructionLattice[Graph]):
         for var in pointers[LOCALS].keys() - alive_vars:
             del pointers[LOCALS][var]
 
-    def evaluator(self, state: Graph, location: str) -> Callable[[tac.Expr], frozenset[Object]]:
-        location_object = Object(location)
+    def evaluator(self, state: Graph, location: tuple[int, int]) -> Callable[[tac.Expr], frozenset[Object]]:
+        location_object = Object(f'{location[0]}.{location[1]}')
         locals_state = state[LOCALS]
+        type_invariant = self.type_invariant_map[location]
 
         def inner(expr: tac.Expr) -> frozenset[Object]:
             match expr:
@@ -123,27 +131,47 @@ class PointerLattice(InstructionLattice[Graph]):
                 case tac.Predefined(): return frozenset()
                 case tac.Var(): return locals_state.get(expr, frozenset()).copy()
                 case tac.Attribute():
-                    if expr.allocation is not tac.AllocationType.NONE:
+                    attr_type = self.type_lattice.transformer_expr(type_invariant, expr.var)
+                    allocation = self.type_lattice.lattice.allocation_type_attribute(attr_type, expr.field)
+                    if allocation is not AllocationType.NONE:
                         return frozenset({location_object})
                     if expr.var.name == 'GLOBALS':
                         return state[GLOBALS].get(expr.field, frozenset()).copy()
                     else:
                         return frozenset(chain.from_iterable(state.get(obj, {}).get(expr.field, frozenset()).copy()
                                                              for obj in inner(expr.var)))
-                case tac.Call():
-                    if expr.allocation is tac.AllocationType.NONE:
+                case tac.Call(func, args):
+                    func_type = self.type_lattice.transformer_expr(type_invariant, func)
+                    allocation = self.type_lattice.lattice.allocation_type_function(func_type)
+                    if allocation is AllocationType.NONE:
                         return frozenset()
                     return frozenset({location_object})
                 case tac.Subscript(): return frozenset()
                 case tac.Yield(): return frozenset()
                 case tac.Import(): return frozenset()
-                case tac.Binary() | tac.Unary():
-                    if expr.allocation is tac.AllocationType.NONE:  # self.analysis.allocation_type_binary(expr.function):
+                case tac.Unary():
+                    value = self.type_lattice.transformer_expr(type_invariant, expr.var)
+                    allocation = self.type_lattice.lattice.allocation_type_unary(value, expr.op)
+                    if allocation is AllocationType.NONE:  # self.analysis.allocation_type_binary(expr.function):
+                        return frozenset()
+                    return frozenset({location_object})
+                case tac.Binary():
+                    left = self.type_lattice.transformer_expr(type_invariant, expr.left)
+                    right = self.type_lattice.transformer_expr(type_invariant, expr.right)
+                    allocation = self.type_lattice.lattice.allocation_type_binary(left, right, expr.op)
+                    if allocation is AllocationType.NONE:  # self.analysis.allocation_type_binary(expr.function):
                         return frozenset()
                     return frozenset({location_object})
                 case tac.MakeFunction(): return frozenset()
                 case _: raise Exception(f"Unsupported expression {expr}")
         return inner
+
+
+
+def allocation_to_str(t: AllocationType) -> str:
+    if t is not AllocationType.NONE:
+        return f' #  ' + t.name
+    return ''
 
 
 def mark_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, object], get_ins: Callable[[str, str], tac.Assign]) -> None:
@@ -161,4 +189,4 @@ def mark_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, o
                 worklist.add(loc)
                 label, index = [int(x) for x in str(loc)[1:].split('.')]
                 ins = get_ins(label, index)
-                ins.expr.allocation = tac.AllocationType.HEAP
+                ins.expr.allocation = AllocationType.HEAP
