@@ -31,10 +31,12 @@ def next_list(ins: Instruction, fallthrough: Optional[int], se: int) -> list[tup
     if is_raise(ins):
         return []
     if is_for_iter(ins):
+        assert fallthrough is not None
         return [(fallthrough, se),
                 (ins.argval, -1)]
     res = []
     if not is_sequencer(ins):
+        assert fallthrough is not None
         res.append((fallthrough, se))
     if is_jump_source(ins):
         res.append((ins.argval, se))

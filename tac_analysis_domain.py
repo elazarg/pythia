@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import typing
 from dataclasses import dataclass
-from typing import TypeVar, Protocol, Generic, TypeAlias, Callable, Iterable
+from typing import TypeVar, Protocol, Generic, TypeAlias, Callable, Iterable, Optional
 import graph_utils as gu
 
 import tac
@@ -79,7 +80,7 @@ class Lattice(Protocol[T]):
     def copy(self, values: T) -> T:
         raise NotImplementedError
 
-    def initial(self, annotations: dict[K, str]) -> T:
+    def initial(self, annotations: dict[tac.Var, str]) -> T:
         raise NotImplementedError
 
 
@@ -134,7 +135,7 @@ class Map(Generic[T]):
     _map: dict[tac.Var, T]
     default: T
 
-    def __init__(self, default: T, d: dict[tac.Var, T] = None):
+    def __init__(self, default: T, d: Optional[dict[tac.Var, T]] = None):
         self.default = default
         self._map = {}
         if d is not None:
@@ -169,7 +170,7 @@ class Map(Generic[T]):
     def __len__(self):
         return len(self._map)
 
-    def __eq__(self, other: Map[T] | Bottom) -> bool:
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, Map) and self._map == other._map
 
     def __delitem__(self, key: tac.Var) -> None:
@@ -189,26 +190,10 @@ class Map(Generic[T]):
         return self._map.values()
 
     def keys(self) -> set[tac.Var]:
-        return self._map.keys()
+        return set(self._map.keys())
 
     def copy(self) -> Map:
         return Map(self.default, self._map)
-
-    def join(self, other, resolution: Callable[[T, T], T] = None) -> Map:
-        if resolution is None:
-            resolution = self.default.join
-        new_map = self.copy()
-        for k in self.keys() | other.keys():
-            new_map[k] = resolution(new_map[k], other[k])
-        return new_map
-
-    def meet(self, other, resolution: Callable[[T, T], T] = None) -> Map:
-        if resolution is None:
-            resolution = self.default.meet
-        new_map = self.copy()
-        for k in self.keys() & other.keys():
-            new_map[k] = resolution(new_map[k], other[k])
-        return new_map
 
 
 MapDomain: TypeAlias = Map[T] | Bottom
@@ -222,12 +207,12 @@ def normalize(values: MapDomain[T]) -> MapDomain[T]:
     return values
 
 
-class InstructionLattice(Lattice[T]):
+class InstructionLattice(Lattice[T], Generic[T]):
     def transfer(self, values: T, ins: tac.Tac, location: tuple[int, int]) -> T:
         raise NotImplementedError
 
 
-class ValueLattice(Lattice[T]):
+class ValueLattice(Lattice[T], Generic[T]):
     def const(self, value: object) -> T:
         return self.top()
 
@@ -256,10 +241,7 @@ class ValueLattice(Lattice[T]):
     def imported(self, modname: str) -> T:
         return self.top()
 
-    def annotation(self, name: tac.Var, t: T) -> T:
-        return self.top()
-
-    def assign_tuple(self, values: T) -> list[T]:
+    def annotation(self, name: tac.Var, t: str) -> T:
         return self.top()
 
     def assign_var(self, value: T) -> T:
@@ -273,12 +255,12 @@ class ValueLattice(Lattice[T]):
 InvariantMap: TypeAlias = dict[tuple[int, int], T]
 
 
-class VarLattice(InstructionLattice[MapDomain[T]]):
+class VarLattice(InstructionLattice[MapDomain[T]], Generic[T]):
     lattice: ValueLattice[T]
-    liveness: InvariantMap[Lattice[Top | Bottom]]
+    liveness: InvariantMap[Map[Lattice[Top | Bottom]]]
     backward: bool = False
 
-    def __init__(self, lattice: ValueLattice[T], liveness: InvariantMap):
+    def __init__(self, lattice: ValueLattice[T], liveness: InvariantMap[Map[Lattice[Top | Bottom]]]):
         super().__init__()
         self.lattice = lattice
         self.liveness = liveness
@@ -298,11 +280,11 @@ class VarLattice(InstructionLattice[MapDomain[T]]):
     def is_bottom(self, values: MapDomain[T]) -> bool:
         return isinstance(values, Bottom)
 
-    def make_map(self, d: dict[K, T] = None) -> MapDomain[T]:
+    def make_map(self, d: Optional[dict[tac.Var, T]] = None) -> Map[T]:
         d = d or {}
         return Map(default=self.lattice.default(), d=d)
 
-    def initial(self, annotations: dict[K, str]) -> MapDomain[T]:
+    def initial(self, annotations: dict[tac.Var, str]) -> MapDomain[T]:
         result = self.make_map()
         result.update({
             name: self.lattice.annotation(name, t)
@@ -310,7 +292,7 @@ class VarLattice(InstructionLattice[MapDomain[T]]):
         })
         return result
 
-    def top(self) -> MapDomain[T]:
+    def top(self) -> Map[T]:
         return self.make_map()
 
     def bottom(self) -> MapDomain[T]:
@@ -320,11 +302,12 @@ class VarLattice(InstructionLattice[MapDomain[T]]):
         match left, right:
             case (Bottom(), _): return right
             case (_, Bottom()): return left
-            case (Map(), Map()):
-                res = self.top()
+            case (Map() as left, Map() as right):
+                res: Map[T] = self.top()
                 for k in left.keys() | right.keys():
                     res[k] = self.lattice.join(left[k], right[k])
                 return normalize(res)
+        return self.top()
 
     def transformer_expr(self, values: Map[T], expr: tac.Expr) -> T:
         def eval(expr: tac.Var | tac.Predefined) -> T:
@@ -337,26 +320,26 @@ class VarLattice(InstructionLattice[MapDomain[T]]):
             case tac.Attribute():
                 val = eval(expr.var)
                 return self.lattice.attribute(val, expr.field)
-            case tac.Call():
-                func = eval(expr.function)
+            case tac.Call(function=function, args=args):
+                func = eval(function)
                 return self.lattice.call(
                     function=func,
-                    args=[eval(arg) for arg in expr.args]
+                    args=[eval(arg) for arg in args]
                 )
-            case tac.Unary():
-                value = eval(expr.var)
+            case tac.Unary(var=var, op=op):
+                value = eval(var)
                 assert value is not None
-                return self.lattice.unary(value=value, op=expr.op)
-            case tac.Binary():
+                return self.lattice.unary(value=value, op=op)
+            case tac.Binary() as expr:
                 left = eval(expr.left)
                 right = eval(expr.right)
                 return self.lattice.binary(left=left, right=right, op=expr.op)
             case tac.Predefined() as expr:
                 return self.lattice.predefined(expr)
-            case tac.Const():
-                return self.lattice.const(expr.value)
-            case tac.Subscript():
-                return self.lattice.subscr(eval(expr.var), eval(expr.index))
+            case tac.Const(value=value):
+                return self.lattice.const(value)
+            case tac.Subscript(var=var, index=index):
+                return self.lattice.subscr(eval(var), eval(index))
             case tac.Yield():
                 return self.lattice.top()
             case tac.Import():
@@ -373,7 +356,7 @@ class VarLattice(InstructionLattice[MapDomain[T]]):
 
     def transformer_signature(self, value: T, signature: tac.Signature) -> Map[T]:
         match signature:
-            case tuple() as signature:
+            case tuple() as signature:  # type: ignore
                 assert all(isinstance(v, tac.Var) for v in signature)
                 return self.make_map({var: self.lattice.subscr(value, self.lattice.const(i))
                                       for i, var in enumerate(signature)})
@@ -411,9 +394,11 @@ class VarLattice(InstructionLattice[MapDomain[T]]):
         for var in tac.gens(ins):
             if var in values:
                 del values[var]
-        values.update(to_update)
+        if isinstance(to_update, Map):
+            values.update(to_update)
 
         for var in set(values.keys()):
-            if var.is_stackvar and self.liveness[location][var] is BOTTOM:
+            here = self.liveness[location]
+            if var.is_stackvar and here[var] is BOTTOM:
                 del values[var]
         return normalize(values)

@@ -11,12 +11,12 @@ import disassemble
 import graph_utils as gu
 import tac
 import tac_analysis_domain as domain
-from tac_analysis_domain import InvariantMap
+from tac_analysis_domain import InvariantMap, MapDomain
 from tac_analysis_constant import ConstLattice, Constant
 
-from tac_analysis_liveness import LivenessVarLattice
-from tac_analysis_pointer import PointerLattice, pretty_print_pointers, mark_reachable
-from tac_analysis_types import TypeLattice, AllocationChecker
+from tac_analysis_liveness import LivenessVarLattice, Liveness
+from tac_analysis_pointer import PointerLattice, pretty_print_pointers, mark_reachable, Graph
+from tac_analysis_types import TypeLattice, AllocationChecker, Allocation, AllocationType
 import type_system as ts
 
 
@@ -82,42 +82,7 @@ def analyze_single(cfg: Cfg, analysis: typing.Callable[[tac.Tac, tuple[int, int]
     return result
 
 
-def run(f, functions, imports, module_type, simplify=True) -> tuple[Cfg, dict[str, InvariantPair], InvariantMap]:
-    cfg = make_tac_cfg(f, simplify=simplify)
-
-    annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
-
-    liveness_invariants = analyze(cfg, LivenessVarLattice(), annotations)
-    constant_invariants = analyze(cfg, domain.VarLattice[Constant](ConstLattice(), liveness_invariants.post), annotations)
-
-    type_analysis = domain.VarLattice[ts.TypeExpr](TypeLattice(f.__name__, module_type, functions, imports), liveness_invariants.post)
-    type_invariants = analyze(cfg, type_analysis, annotations)
-
-    allocation_invariants = analyze_single(cfg, AllocationChecker(type_invariants.pre, type_analysis))
-
-    pointer_analysis = PointerLattice(allocation_invariants, liveness_invariants.post)
-    pointer_invariants = analyze(cfg, pointer_analysis, annotations)
-
-    for label, block in cfg.items():
-        if not block:
-            continue
-        if isinstance(block[0], tac.For):
-            assert len(block) == 1
-            ptr = pointer_invariants.post[(label, 0)]
-            alive = set(liveness_invariants.post[(label, 0)].keys())
-            mark_reachable(ptr, alive, annotations, get_ins=lambda label, index: cfg[label][index])
-            break
-
-    invariant_pairs = {
-        "Liveness": liveness_invariants,
-        "Constant": constant_invariants,
-        "Type": type_invariants,
-        "Pointer": pointer_invariants,
-    }
-    return cfg, invariant_pairs, allocation_invariants
-
-
-def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], property_map: InvariantMap, print_invariants: bool = True) -> None:
+def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], property_map: InvariantMap[AllocationType], print_invariants: bool = True) -> None:
     for label, block in sorted(cfg.items()):
         if math.isinf(label):
             continue
@@ -141,15 +106,47 @@ def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], property_map:
             print()
 
 
+def run(f, functions, imports, module_type, simplify=True) -> None:
+    cfg: Cfg = make_tac_cfg(f, simplify=simplify)
+
+    annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
+
+    liveness_invariants: InvariantPair[MapDomain[Liveness]] = analyze(cfg, LivenessVarLattice(), annotations)
+    constant_invariants: InvariantPair[MapDomain[Constant]] = analyze(cfg, domain.VarLattice(ConstLattice(), liveness_invariants.post), annotations)
+
+    type_analysis: domain.VarLattice[ts.TypeExpr] = domain.VarLattice(TypeLattice(f.__name__, module_type, functions, imports), liveness_invariants.post)
+    type_invariants: InvariantPair[MapDomain[ts.TypeExpr]] = analyze(cfg, type_analysis, annotations)
+
+    allocation_invariants: InvariantMap[AllocationType] = analyze_single(cfg, AllocationChecker(type_invariants.pre, type_analysis))
+
+    pointer_analysis = PointerLattice(allocation_invariants, liveness_invariants.post)
+    pointer_invariants: InvariantPair[Graph] = analyze(cfg, pointer_analysis, annotations)
+
+    for label, block in cfg.items():
+        if not block:
+            continue
+        if isinstance(block[0], tac.For):
+            assert len(block) == 1
+            ptr = pointer_invariants.post[(label, 0)]
+            alive = set(liveness_invariants.post[(label, 0)].keys())
+            mark_reachable(ptr, alive, annotations, get_ins=lambda label, index: cfg[label][index])
+            break
+
+    invariant_pairs = {
+        "Liveness": liveness_invariants,
+        "Constant": constant_invariants,
+        "Type": type_invariants,
+        "Pointer": pointer_invariants,
+    }
+
+    print_analysis(cfg, invariant_pairs, allocation_invariants)
+
+
 def analyze_function(filename: str, function_name: str) -> None:
     functions, imports = disassemble.read_file(filename)
     module_type = ts.parse_file(filename)
-    cfg, invariants, properties = run(functions[function_name],
-                                      functions=functions,
-                                      imports=imports,
-                                      module_type=module_type,
-                                      simplify=True)
-    print_analysis(cfg, invariants, properties)
+    run(functions[function_name], functions=functions, imports=imports, module_type=module_type,
+        simplify=True)
 
 
 def main() -> None:
@@ -157,9 +154,9 @@ def main() -> None:
     # analyze_function('examples/tests.py', 'iterate')
     # analyze_function('examples/tests.py', 'tup')
     # analyze_function('examples/tests.py', 'destruct')
-    # analyze_function('examples/feature_selection.py', 'do_work')
+    analyze_function('examples/feature_selection.py', 'do_work')
     # analyze_function('examples/toy.py', 'minimal')
-    analyze_function('examples/toy.py', 'not_so_minimal')
+    # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/feature_selection.py', 'run')
 
 

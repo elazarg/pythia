@@ -77,19 +77,19 @@ class BackwardBlock(Generic[T]):
         return self.block
 
 
-Block: TypeAlias = ForwardBlock | BackwardBlock
+Block: TypeAlias = ForwardBlock[T] | BackwardBlock[T]
 
 
 class Cfg(Generic[T]):
     graph: nx.DiGraph
-    _annotator: Callable[[T], str]
+    _annotator: Callable[[tuple[int, int], T], str]
 
     @property
-    def annotator(self) -> Callable[[T], str]:
+    def annotator(self) -> Callable[[tuple[int, int], T], str]:
         return self._annotator
 
     @annotator.setter
-    def annotator(self, annotator: Callable[[T], str]) -> None:
+    def annotator(self, annotator: Callable[[tuple[int, int], T], str]) -> None:
         self._annotator = staticmethod(annotator)
 
     def __init__(self, graph: nx.DiGraph | dict | list[tuple[int, int, dict]], blocks: dict[int, list[T]]=None, add_sink=True) -> None:
