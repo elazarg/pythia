@@ -269,13 +269,19 @@ class ActionLattice(Lattice[T]):
         return self.top()
 
 
+
+InvariantMap: TypeAlias = dict[tuple[int, int], T]
+
+
 class VarLattice(InstructionLattice[MapDomain[T]]):
     lattice: ActionLattice[T]
+    liveness: InvariantMap[Lattice[Top | Bottom]]
     backward: bool = False
 
-    def __init__(self, lattice: ActionLattice[T]):
+    def __init__(self, lattice: ActionLattice[T], liveness: InvariantMap):
         super().__init__()
         self.lattice = lattice
+        self.liveness = liveness
 
     def name(self) -> str:
         return f"{self.lattice.name()}"
@@ -407,7 +413,7 @@ class VarLattice(InstructionLattice[MapDomain[T]]):
                 del values[var]
         values.update(to_update)
 
+        for var in set(values.keys()):
+            if var.is_stackvar and self.liveness[location][var] is BOTTOM:
+                del values[var]
         return normalize(values)
-
-
-InvariantMap: TypeAlias = dict[tuple[int, int], T]

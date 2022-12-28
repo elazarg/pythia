@@ -1,15 +1,10 @@
 from __future__ import annotations
 
 import math
-import typing
 from dataclasses import dataclass
 from typing import TypeVar, Generic, Callable, Any, Iterator, TypeAlias
 import networkx as nx
 from itertools import chain
-
-
-if typing.TYPE_CHECKING:
-    from tac_analysis_domain import Lattice
 
 T = TypeVar('T')
 Q = TypeVar('Q')
@@ -253,16 +248,6 @@ def node_data_map(cfg: Cfg[T], f: Callable[[int, Block[T]], Block[Q]]) -> Cfg[Q]
     return cfg
 
 
-def test_refine_to_chain():
-    import code_examples
-    tac_name = 'tac_block'
-    from tac_analysis import make_tac_cfg
-    cfg = make_tac_cfg(code_examples.CreateSphere)
-    refined = refine_to_chain(cfg, tac_name, 'tac')
-    for x in sorted(refined.nodes_iter()):
-        print(x, refined.nodes[x]['tac'].format())
-
-
 def print_block(n: int, block: Block[T], annotator) -> None:
     print(n, ':')
     for i, ins in enumerate(block):
@@ -281,7 +266,3 @@ def pretty_print_cfg(cfg: Cfg[T]) -> None:
 
 def single_source_dijkstra_path_length(cfg: Cfg, source: int, weight='weight'):
     return nx.single_source_dijkstra_path_length(cfg.graph, source, weight=weight)
-
-
-if __name__ == '__main__':
-    test_refine_to_chain()

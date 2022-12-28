@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass
-from itertools import chain
 from typing import TypeVar
 
 import graph_utils
@@ -35,15 +34,6 @@ from tac_analysis_domain import IterationStrategy, BackwardIterationStrategy, To
 import graph_utils as gu
 
 T = TypeVar('T')
-
-
-def update_liveness(ins, inv) -> Tac:
-    uses = [(inv.get(v, v)) for v in ins.uses]
-    if ins.is_inplace:
-        uses[1] = ins.uses[1]
-    for v in chain(ins.gens, ins.kills):
-        if v in inv:
-            del inv[v]
 
 
 Liveness = Top | Bottom
@@ -163,16 +153,6 @@ class LivenessVarLattice(InstructionLattice[Liveness]):
                 del values[var]
         values.update(to_update)
         return normalize(values)
-
-    @staticmethod
-    def remove_dead_variables(values: MapDomain[Liveness], target: Map[T]) -> Map[T]:
-        res = target.copy()
-        for var in target.keys():
-            if not var.is_stackvar:
-                continue
-            if values[var] is BOTTOM:
-                del res[var]
-        return res
 
 
 def single_block_uses(block):

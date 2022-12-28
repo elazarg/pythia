@@ -7,7 +7,7 @@ from itertools import chain
 from typing import TypeAlias, Callable, Final
 
 import tac
-from tac_analysis_domain import VarLattice, InstructionLattice, InvariantMap
+from tac_analysis_domain import VarLattice, InstructionLattice, InvariantMap, BOTTOM, Bottom, Top
 from tac_analysis_types import TypeLattice, AllocationType
 from type_system import TypeExpr
 
@@ -49,18 +49,18 @@ def copy_graph(graph: Graph) -> Graph:
 class PointerLattice(InstructionLattice[Graph]):
     type_invariant_map: InvariantMap[TypeLattice]
     type_lattice: VarLattice[TypeExpr]
-    liveness_analysis: InvariantMap[set[tac.Var]]
+    liveness: InvariantMap[set[tac.Var]]
     backward: bool = False
 
     def name(self) -> str:
         return "Pointer"
 
     def __init__(self, type_invariant_map: InvariantMap[TypeLattice], type_lattice: VarLattice[TypeExpr],
-                 liveness_analysis: InvariantMap) -> None:
+                 liveness: InvariantMap) -> None:
         super().__init__()
         self.type_invariant_map = type_invariant_map
         self.type_lattice = type_lattice
-        self.liveness_analysis = liveness_analysis
+        self.liveness = liveness
         self.backward = False
 
     def is_less_than(self, left, right) -> bool:
@@ -114,6 +114,11 @@ class PointerLattice(InstructionLattice[Graph]):
             case tac.Return():
                 val = eval(ins.value)
                 activation[tac.Var('return')] = val
+
+        for var in set(activation.keys()):
+            if var.is_stackvar and self.liveness[location][var] is BOTTOM:
+                del activation[var]
+
         return values
 
     def keep_only_live_vars(self, pointers: Graph, alive_vars: set[tac.Var]) -> None:
