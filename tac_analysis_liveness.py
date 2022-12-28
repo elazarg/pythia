@@ -84,7 +84,7 @@ class LivenessLattice(Lattice[Liveness]):
         return "Liveness"
 
 
-class LivenessVarLattice(InstructionLattice[Liveness]):
+class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
     lattice: LivenessLattice
     backward: bool = True
 
@@ -95,10 +95,10 @@ class LivenessVarLattice(InstructionLattice[Liveness]):
     def name(self) -> str:
         return f"{self.lattice.name()}"
 
-    def is_less_than(self, left: Liveness, right: Liveness) -> bool:
+    def is_less_than(self, left: MapDomain[Liveness], right: MapDomain[Liveness]) -> bool:
         return self.join(left, right) == right
 
-    def is_equivalent(self, left, right) -> bool:
+    def is_equivalent(self, left: MapDomain[Liveness], right: MapDomain[Liveness]) -> bool:
         return self.is_less_than(left, right) and self.is_less_than(right, left)
 
     def copy(self, values: MapDomain[Liveness]) -> MapDomain[Liveness]:
@@ -120,7 +120,7 @@ class LivenessVarLattice(InstructionLattice[Liveness]):
     def bottom(self) -> MapDomain[Liveness]:
         return BOTTOM
 
-    def join(self, left: MapDomain[Liveness], right: MapDomain[Liveness]) -> MapDomain[T]:
+    def join(self, left: MapDomain[Liveness], right: MapDomain[Liveness]) -> MapDomain[Liveness]:
         match left, right:
             case (Bottom(), _): return right
             case (_, Bottom()): return left

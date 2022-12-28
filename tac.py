@@ -5,6 +5,7 @@ import enum
 import itertools as it
 import dataclasses
 import sys
+import typing
 from dataclasses import dataclass
 from typing import Optional, TypeAlias
 
@@ -90,21 +91,21 @@ class Attribute:
 @dataclass(frozen=True)
 class Subscript:
     var: Var
-    index: Value
+    index: Var
 
     def __str__(self):
         return f'{self.var}[{self.index}]'
 
 
 # Simplified version of the real binding construct in Python.
-Signature: TypeAlias = Var | tuple[Var] | Subscript | Attribute | None
+Signature: TypeAlias = Var | tuple[Var, ...] | Subscript | Attribute | None
 
 
 @dataclass(frozen=False)
 class Binary:
-    left: Value
+    left: Var
     op: str
-    right: Value
+    right: Var
     inplace: bool
 
     def __str__(self):
@@ -115,7 +116,7 @@ class Binary:
 @dataclass(frozen=False)
 class Unary:
     op: UnOp
-    var: Value
+    var: Var
 
     def __str__(self):
         return f'{self.op.name} {self.var}'
@@ -123,9 +124,9 @@ class Unary:
 
 @dataclass(frozen=False)
 class Call:
-    function: Var | Attribute | Predefined | UnOp
-    args: tuple[Value, ...]
-    kwargs: Var = None
+    function: Var | Predefined
+    args: tuple[Var, ...]
+    kwargs: Optional[Var] = None
 
     def location(self) -> int:
         return id(self)
@@ -142,13 +143,13 @@ class Call:
 
 @dataclass
 class Yield:
-    value: Value
+    value: Var
 
 
 @dataclass
 class Import:
     modname: str
-    feature: str = None
+    feature: Optional[str] = None
 
     def __str__(self):
         res = f'IMPORT {self.modname}'
@@ -159,12 +160,12 @@ class Import:
 
 @dataclass
 class MakeFunction:
-    code: Value
-    free_vars: set[Var] = frozenset()
+    code: Var
+    free_vars: frozenset[Var] = frozenset()
     name: Optional[Var] = None
-    annotations: dict[Var, str] = None
-    defaults: dict[Var, Var] = None
-    positional_only_defaults: dict[Var, Var] = None
+    annotations: Optional[dict[Var, str]] = None
+    defaults: Optional[dict[Var, Var]] = None
+    positional_only_defaults: Optional[dict[Var, Var]] = None
 
 
 @dataclass
@@ -172,7 +173,7 @@ class MakeClass:
     name: str
 
 
-Expr: TypeAlias = Value | Attribute | Subscript | Binary | Unary | Call | Yield | Import | MakeFunction | MakeClass
+Expr: TypeAlias = Value | Predefined | Attribute | Subscript | Binary | Unary | Call | Yield | Import | MakeFunction | MakeClass
 
 
 def stackvar(x) -> Var:
@@ -226,7 +227,7 @@ class Jump:
 @dataclass(frozen=True)
 class For:
     lhs: Signature
-    iterator: Value
+    iterator: Var
     jump_target: str
 
     def __str__(self):
@@ -238,7 +239,7 @@ class For:
 
 @dataclass(frozen=True)
 class Return:
-    value: Value
+    value: Var
 
     def __str__(self):
         return f'RETURN {self.value}'
@@ -246,7 +247,7 @@ class Return:
 
 @dataclass(frozen=True)
 class Raise:
-    value: Value
+    value: Var
 
     def __str__(self):
         return f'RAISE {self.value}'
@@ -284,7 +285,7 @@ def free_vars_expr(expr: Expr) -> set[Var]:
                    | ({expr.kwargs} if expr.kwargs else set())
         case Yield(): return free_vars_expr(expr.value)
         case Import(): return set()
-        case MakeFunction(): return {expr.name, expr.code}  # TODO: fix this
+        case MakeFunction() as expr: return set()  # TODO: fix this
         case Predefined(): return set()
         case _: raise NotImplementedError(f'free_vars_expr({repr(expr)})')
 
@@ -313,19 +314,22 @@ def free_vars(tac: Tac) -> set[Var]:
         case _: raise NotImplementedError(f'{tac}')
 
 
+def gens_signature(signature: Signature) -> set[Var]:
+    match signature:
+        case Var() as lhs: return {lhs}
+        case tuple() as items: return set(items)
+        case Attribute(): return set()
+        case Subscript(): return set()
+        case None: return set()
+        case _: raise NotImplementedError(f'gens_signature({repr(signature)})')
+
+
 def gens(tac: Tac) -> set[Var]:
     match tac:
         case Nop(): return set()
-        case Assign():
-            match tac.lhs:
-                case Var(): return {tac.lhs}
-                case tuple(): return set(tac.lhs)
-                case Attribute(): return set()
-                case Subscript(): return set()
-                case None: return set()
-                case _: raise NotImplementedError(f'gens({tac})')
+        case Assign(lhs=lhs): return gens_signature(lhs)
         case Jump(): return set()
-        case For(): return {tac.lhs}
+        case For(lhs=lhs): return gens_signature(lhs)
         case Return(): return set()
         case Raise(): return set()
         case Del(): return set(tac.variables)
@@ -377,9 +381,9 @@ def subst_var_in_signature(signature: Signature, target: Var, new_var: Var) -> S
     match signature:
         case Var():
             return signature
-        case tuple():
-            return tuple(subst_var_in_signature(arg, target, new_var)
-                         for arg in signature)
+        case tuple() as items:
+            return tuple(new_var if var == target else typing.cast(Var, var)
+                         for var in items)
         case Attribute():
             if signature.var == target:
                 return dataclasses.replace(signature, var=new_var)
@@ -460,9 +464,11 @@ def make_tac_cfg(f) -> gu.Cfg[Tac]:
 
     def annotator(location: tuple[int, int], n: Tac) -> str:
         pos = trace_origin[id(n)].positions
+        if pos is None:
+            return f'None'
         return f'{pos.lineno}:{pos.col_offset}'
 
-    tac_cfg = gu.node_data_map(ins_cfg, instruction_block_to_tac_block)
+    tac_cfg: gu.Cfg[Tac] = gu.node_data_map(ins_cfg, instruction_block_to_tac_block)
     tac_cfg.annotator = annotator
     return tac_cfg
 
