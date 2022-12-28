@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import typing
 from dataclasses import dataclass
 from typing import TypeVar, Generic, Callable, Any, Iterator, TypeAlias, Optional
 import networkx as nx  # type: ignore
@@ -92,7 +93,7 @@ class Cfg(Generic[T]):
     def annotator(self, annotator: Callable[[tuple[int, int], T], str]) -> None:
         self._annotator = staticmethod(annotator)
 
-    def __init__(self, graph: nx.DiGraph | dict | list[tuple[int, int, dict]],
+    def __init__(self, graph: nx.DiGraph | dict | list[tuple[int, int]] | list[tuple[int, int, dict]],
                  blocks: Optional[dict[int, list[T]]] = None, add_sink = True) -> None:
         if isinstance(graph, nx.DiGraph):
             self.graph = graph
@@ -113,14 +114,14 @@ class Cfg(Generic[T]):
         [sink] = {label for label in self.labels if self.graph.out_degree(label) == 0}
         [source] = {label for label in self.labels if self.graph.in_degree(label) == 0}
         assert {sink, source} == {self.exit_label, self.entry_label}, {sink, source}
-        self.annotator = lambda x: ''
+        self.annotator = lambda tup, x: ''
 
     @property
     def entry_label(self) -> int:
         return 0
 
     @property
-    def exit_label(self) -> int:
+    def exit_label(self) -> int | float:
         return math.inf
 
     @property
@@ -148,7 +149,7 @@ class Cfg(Generic[T]):
         return Cfg(self.graph.reverse(copy=copy), add_sink=False)
 
     def draw(self) -> None:
-        import matplotlib.pyplot as plt
+        import matplotlib.pyplot as plt  # type: ignore
         nx.draw_networkx(self.graph, with_labels=True)
         plt.show()
 
@@ -197,7 +198,7 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
                                            if g.out_degree(n) > 1)))
     blocks = {}
     labels = set()
-    edges = []
+    edges: list[tuple[int, int]] = []
     for label in starts:
         n = label
         instructions = []
@@ -242,10 +243,10 @@ def refine_to_chain(g, from_attr, to_attr):
 
 
 def node_data_map(cfg: Cfg[T], f: Callable[[int, Block[T]], Block[Q]]) -> Cfg[Q]:
-    cfg: Cfg[Any] = cfg.copy()
+    cfg = cfg.copy()
     for n, data in cfg.nodes.items():
         data['block'] = f(n, data['block'])
-    return cfg
+    return typing.cast(Cfg[Q], cfg)
 
 
 def print_block(label: int, block: Block[T],
