@@ -11,12 +11,12 @@ import disassemble
 import graph_utils as gu
 import tac
 import tac_analysis_domain as domain
-import tac_analysis_types
+from tac_analysis_domain import InvariantMap
 from tac_analysis_constant import ConstLattice, Constant
 
 from tac_analysis_liveness import LivenessVarLattice
 from tac_analysis_pointer import PointerLattice, pretty_print_pointers, mark_reachable
-from tac_analysis_types import TypeLattice
+from tac_analysis_types import TypeLattice, AllocationChecker
 import type_system as ts
 
 
@@ -33,15 +33,15 @@ def make_tac_cfg(f, simplify=True):
 
 @dataclass
 class InvariantPair(typing.Generic[T]):
-    pre: domain.InvariantMap[T]
-    post: domain.InvariantMap[T]
+    pre: InvariantMap[T]
+    post: InvariantMap[T]
 
 
-def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations) -> InvariantPair:
-    pre_result: domain.InvariantMap = {}
-    post_result: domain.InvariantMap = {}
+def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations) -> InvariantPair[T]:
+    pre_result: InvariantMap[T] = {}
+    post_result: InvariantMap[T] = {}
 
-    cfg: domain.IterationStrategy = domain.BackwardIterationStrategy(_cfg) if analysis.backward else domain.ForwardIterationStrategy(_cfg)
+    cfg = domain.BackwardIterationStrategy(_cfg) if analysis.backward else domain.ForwardIterationStrategy(_cfg)
 
     wl = [entry] = {cfg.entry_label}
     initial = analysis.initial(analysis.top() if analysis.backward else annotations)
@@ -52,7 +52,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations) -> I
 
         location = (label, block.first_index())
         pre = pre_result[location]
-        post = invariant = post_result[location] = pre.copy()
+        post = invariant = post_result[location] = analysis.copy(pre)
         for index, ins in block.items():
             location = (label, index)
             pre_result[location] = post
@@ -60,33 +60,42 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations) -> I
 
             post = post_result[location] = invariant
 
-        for succ in cfg.successors(label):
-            next_index = (succ, cfg[succ].first_index())
-            next_pre = pre_result.get(next_index, analysis.bottom())
+        for next_label in cfg.successors(label):
+            next_location = (next_label, cfg[next_label].first_index())
+            next_pre = pre_result.get(next_location, analysis.bottom())
             if not analysis.is_less_than(post, next_pre):
-                pre_result[next_index] = analysis.join(post, next_pre)
-                wl.add(succ)
+                pre_result[next_location] = analysis.join(post, next_pre)
+                wl.add(next_label)
+
     pre_result, post_result = cfg.order((pre_result, post_result))
     return InvariantPair(pre_result, post_result)
 
 
-def run(f, functions, imports, module_type, simplify=True) -> tuple[Cfg, dict[str, InvariantPair]]:
+def analyze_single(cfg: Cfg, analysis: typing.Callable[[tac.Tac, tuple[int, int]], T]) -> InvariantMap[T]:
+    result: InvariantMap[T] = {}
+
+    for label, block in cfg.items():
+        for index, ins in block.items():
+            location = (label, index)
+            result[location] = analysis(ins, location)
+
+    return result
+
+
+def run(f, functions, imports, module_type, simplify=True) -> tuple[Cfg, dict[str, InvariantPair], InvariantMap]:
     cfg = make_tac_cfg(f, simplify=simplify)
 
-    # gu.pretty_print_cfg(cfg)
-
     annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
-    # for label, block in cfg.items():
-    #     rewrite_remove_useless_movs_pairs(block, label)
-    #     rewrite_aliases(block, label)
-    #     rewrite_remove_useless_movs(block, label)
+
     liveness_invariants = analyze(cfg, LivenessVarLattice(), annotations)
     constant_invariants = analyze(cfg, domain.VarLattice[Constant](ConstLattice(), liveness_invariants.post), annotations)
 
     type_analysis = domain.VarLattice[ts.TypeExpr](TypeLattice(f.__name__, module_type, functions, imports), liveness_invariants.post)
     type_invariants = analyze(cfg, type_analysis, annotations)
 
-    pointer_analysis = PointerLattice(type_invariants.pre, type_analysis, liveness_invariants.post)
+    allocation_invariants = analyze_single(cfg, AllocationChecker(type_invariants.pre, type_analysis))
+
+    pointer_analysis = PointerLattice(allocation_invariants, liveness_invariants.post)
     pointer_invariants = analyze(cfg, pointer_analysis, annotations)
 
     for label, block in cfg.items():
@@ -99,17 +108,16 @@ def run(f, functions, imports, module_type, simplify=True) -> tuple[Cfg, dict[st
             mark_reachable(ptr, alive, annotations, get_ins=lambda label, index: cfg[label][index])
             break
 
-    invariants = {
+    invariant_pairs = {
         "Liveness": liveness_invariants,
         "Constant": constant_invariants,
         "Type": type_invariants,
         "Pointer": pointer_invariants,
     }
+    return cfg, invariant_pairs, allocation_invariants
 
-    return cfg, invariants
 
-
-def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], print_invariants: bool = True) -> None:
+def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], property_map: InvariantMap, print_invariants: bool = True) -> None:
     for label, block in sorted(cfg.items()):
         if math.isinf(label):
             continue
@@ -121,7 +129,7 @@ def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], print_invaria
                     print(f'\t{name}:', pretty_print_pointers(pre_invariant))
                 else:
                     print(f'\t{name}:', pre_invariant)
-        gu.print_block(label, block, cfg.annotator)
+        gu.print_block(label, block, cfg.annotator, lambda location, ins: property_map[location])
         if print_invariants:
             print('Post:')
             for name, invariant_pair in invariants.items():
@@ -132,21 +140,16 @@ def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], print_invaria
                     print(f'\t{name}:', post_invariant)
             print()
 
-    if tac_analysis_types.unseen:
-        print("Unseen:")
-        for k, v in tac_analysis_types.unseen.items():
-            print(k, v)
-
 
 def analyze_function(filename: str, function_name: str) -> None:
     functions, imports = disassemble.read_file(filename)
     module_type = ts.parse_file(filename)
-    cfg, invariants = run(functions[function_name],
-                          functions=functions,
-                          imports=imports,
-                          module_type=module_type,
-                          simplify=True)
-    print_analysis(cfg, invariants)
+    cfg, invariants, properties = run(functions[function_name],
+                                      functions=functions,
+                                      imports=imports,
+                                      module_type=module_type,
+                                      simplify=True)
+    print_analysis(cfg, invariants, properties)
 
 
 def main() -> None:
@@ -154,11 +157,10 @@ def main() -> None:
     # analyze_function('examples/tests.py', 'iterate')
     # analyze_function('examples/tests.py', 'tup')
     # analyze_function('examples/tests.py', 'destruct')
-    analyze_function('examples/feature_selection.py', 'do_work')
+    # analyze_function('examples/feature_selection.py', 'do_work')
     # analyze_function('examples/toy.py', 'minimal')
-    # analyze_function('examples/toy.py', 'not_so_minimal')
+    analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/feature_selection.py', 'run')
-    # analyze_function('examples/toy.py', 'toy3')
 
 
 if __name__ == '__main__':

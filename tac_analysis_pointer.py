@@ -7,9 +7,8 @@ from itertools import chain
 from typing import TypeAlias, Callable, Final
 
 import tac
-from tac_analysis_domain import VarLattice, InstructionLattice, InvariantMap, BOTTOM, Bottom, Top
-from tac_analysis_types import TypeLattice, AllocationType
-from type_system import TypeExpr
+from tac_analysis_domain import InstructionLattice, InvariantMap, BOTTOM
+from tac_analysis_types import AllocationType
 
 
 @dataclass(frozen=True)
@@ -47,19 +46,16 @@ def copy_graph(graph: Graph) -> Graph:
 
 
 class PointerLattice(InstructionLattice[Graph]):
-    type_invariant_map: InvariantMap[TypeLattice]
-    type_lattice: VarLattice[TypeExpr]
+    allocation_invariant_map: InvariantMap[AllocationType]
     liveness: InvariantMap[set[tac.Var]]
     backward: bool = False
 
     def name(self) -> str:
         return "Pointer"
 
-    def __init__(self, type_invariant_map: InvariantMap[TypeLattice], type_lattice: VarLattice[TypeExpr],
-                 liveness: InvariantMap) -> None:
+    def __init__(self, allocation_invariant_map: InvariantMap[AllocationType], liveness: InvariantMap) -> None:
         super().__init__()
-        self.type_invariant_map = type_invariant_map
-        self.type_lattice = type_lattice
+        self.allocation_invariant_map = allocation_invariant_map
         self.liveness = liveness
         self.backward = False
 
@@ -92,7 +88,27 @@ class PointerLattice(InstructionLattice[Graph]):
 
     def transfer(self, values: Graph, ins: tac.Tac, location: tuple[int, int]) -> Graph:
         values = copy_graph(values)
-        eval = self.evaluator(values, location)
+        location_object = Object(f'{location[0]}.{location[1]}')
+        allocated = self.allocation_invariant_map.get(location) != AllocationType.NONE
+
+        def eval(expr: tac.Expr) -> frozenset[Object]:
+            match expr:
+                case tac.Var():
+                    return values[LOCALS].get(expr, frozenset()).copy()
+                case tac.Call() | tac.Unary() | tac.Binary():
+                    if allocated:
+                        return frozenset({location_object})
+                    return frozenset()
+                case tac.Attribute():
+                    if allocated:
+                        return frozenset({location_object})
+                    if expr.var.name == 'GLOBALS':
+                        return values[GLOBALS].get(expr.field, frozenset()).copy()
+                    else:
+                        return frozenset(chain.from_iterable(values.get(obj, {}).get(expr.field, frozenset()).copy()
+                                                             for obj in eval(expr.var)))
+                case _: return frozenset()
+
         activation = values[LOCALS]
 
         for var in tac.gens(ins):
@@ -120,58 +136,6 @@ class PointerLattice(InstructionLattice[Graph]):
                 del activation[var]
 
         return values
-
-    def keep_only_live_vars(self, pointers: Graph, alive_vars: set[tac.Var]) -> None:
-        for var in pointers[LOCALS].keys() - alive_vars:
-            del pointers[LOCALS][var]
-
-    def evaluator(self, state: Graph, location: tuple[int, int]) -> Callable[[tac.Expr], frozenset[Object]]:
-        location_object = Object(f'{location[0]}.{location[1]}')
-        locals_state = state[LOCALS]
-        type_invariant = self.type_invariant_map[location]
-
-        def inner(expr: tac.Expr) -> frozenset[Object]:
-            match expr:
-                case tac.Const(): return frozenset()
-                case tac.Predefined(): return frozenset()
-                case tac.Var(): return locals_state.get(expr, frozenset()).copy()
-                case tac.Attribute():
-                    attr_type = self.type_lattice.transformer_expr(type_invariant, expr.var)
-                    allocation = self.type_lattice.lattice.allocation_type_attribute(attr_type, expr.field)
-                    if allocation is not AllocationType.NONE:
-                        return frozenset({location_object})
-                    if expr.var.name == 'GLOBALS':
-                        return state[GLOBALS].get(expr.field, frozenset()).copy()
-                    else:
-                        return frozenset(chain.from_iterable(state.get(obj, {}).get(expr.field, frozenset()).copy()
-                                                             for obj in inner(expr.var)))
-                case tac.Call(func, args):
-                    func_type = self.type_lattice.transformer_expr(type_invariant, func)
-                    allocation = self.type_lattice.lattice.allocation_type_function(func_type)
-                    if allocation is AllocationType.NONE:
-                        return frozenset()
-                    return frozenset({location_object})
-                case tac.Subscript(): return frozenset()
-                case tac.Yield(): return frozenset()
-                case tac.Import(): return frozenset()
-                case tac.Unary():
-                    value = self.type_lattice.transformer_expr(type_invariant, expr.var)
-                    allocation = self.type_lattice.lattice.allocation_type_unary(value, expr.op)
-                    if allocation is AllocationType.NONE:  # self.analysis.allocation_type_binary(expr.function):
-                        return frozenset()
-                    return frozenset({location_object})
-                case tac.Binary():
-                    left = self.type_lattice.transformer_expr(type_invariant, expr.left)
-                    right = self.type_lattice.transformer_expr(type_invariant, expr.right)
-                    allocation = self.type_lattice.lattice.allocation_type_binary(left, right, expr.op)
-                    if allocation is AllocationType.NONE:  # self.analysis.allocation_type_binary(expr.function):
-                        return frozenset()
-                    return frozenset({location_object})
-                case tac.MakeFunction(): return frozenset()
-                case _: raise Exception(f"Unsupported expression {expr}")
-        return inner
-
-
 
 def allocation_to_str(t: AllocationType) -> str:
     if t is not AllocationType.NONE:
