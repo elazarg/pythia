@@ -50,8 +50,9 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations) -> I
         label = wl.pop()
         block = cfg[label]
 
-        pre = pre_result[(label, block.first_index())]
-        post = invariant = pre.copy()
+        location = (label, block.first_index())
+        pre = pre_result[location]
+        post = invariant = post_result[location] = pre.copy()
         for index, ins in block.items():
             location = (label, index)
             pre_result[location] = post
@@ -67,6 +68,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations) -> I
                 wl.add(succ)
     pre_result, post_result = cfg.order((pre_result, post_result))
     return InvariantPair(pre_result, post_result)
+
 
 def run(f, functions, imports, module_type, simplify=True) -> tuple[Cfg, dict[str, InvariantPair]]:
     cfg = make_tac_cfg(f, simplify=simplify)
@@ -114,7 +116,7 @@ def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], print_invaria
         if print_invariants:
             print('Pre:')
             for name, invariant_pair in invariants.items():
-                pre_invariant = invariant_pair.pre[(label, 0)]
+                pre_invariant = invariant_pair.pre[(label, block.first_index())]
                 if name == 'Pointer':
                     print(f'\t{name}:', pretty_print_pointers(pre_invariant))
                 else:
@@ -152,8 +154,8 @@ def main() -> None:
     # analyze_function('examples/tests.py', 'iterate')
     # analyze_function('examples/tests.py', 'tup')
     # analyze_function('examples/tests.py', 'destruct')
-    # analyze_function('examples/feature_selection.py', 'do_work')
-    analyze_function('examples/toy.py', 'minimal')
+    analyze_function('examples/feature_selection.py', 'do_work')
+    # analyze_function('examples/toy.py', 'minimal')
     # analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/feature_selection.py', 'run')
     # analyze_function('examples/toy.py', 'toy3')
