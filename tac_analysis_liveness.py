@@ -27,13 +27,11 @@ from dataclasses import dataclass
 from itertools import chain
 from typing import TypeVar
 
-import typing
-
 import graph_utils
 import tac
 from tac import Tac, Var
 from tac_analysis_domain import IterationStrategy, BackwardIterationStrategy, Top, Bottom, TOP, BOTTOM, \
-    VarLattice, MapDomain, Lattice, Map, normalize
+    VarLattice, MapDomain, Lattice, Map, normalize, InstructionLattice
 import graph_utils as gu
 
 T = TypeVar('T')
@@ -96,7 +94,7 @@ class LivenessLattice(Lattice[Liveness]):
         return "Liveness"
 
 
-class LivenessVarLattice:
+class LivenessVarLattice(InstructionLattice[Liveness]):
     lattice: LivenessLattice
     backward: bool = True
 
@@ -145,7 +143,7 @@ class LivenessVarLattice:
     def back_transformer_signature(self, signature: tac.Signature) -> tuple[set[Var], set[Var]]:
         return tac.gens(signature), tac.free_vars(signature)
 
-    def back_transfer(self, values: MapDomain[Liveness], ins: tac.Tac, location: str) -> MapDomain[Liveness]:
+    def back_transfer(self, values: MapDomain[Liveness], ins: tac.Tac, location: tuple[int, int]) -> MapDomain[Liveness]:
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()
@@ -155,7 +153,7 @@ class LivenessVarLattice:
             values[v] = TOP
         return values
 
-    def transfer(self, values: MapDomain[Liveness], ins: tac.Tac, location: str) -> MapDomain[Liveness]:
+    def transfer(self, values: MapDomain[Liveness], ins: tac.Tac, location: tuple[int, int]) -> MapDomain[Liveness]:
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()

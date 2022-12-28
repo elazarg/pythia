@@ -13,13 +13,6 @@ import disassemble
 import graph_utils as gu
 
 
-class AllocationType(enum.Enum):
-    NONE = ''
-    STACK = 'STACK'
-    HEAP = 'HEAP'
-    UNKNOWN = 'UNKNOWN'
-
-
 @dataclass(frozen=True)
 class Module:
     name: str
@@ -85,22 +78,13 @@ Value: TypeAlias = Var | Const
 Name: TypeAlias = Var | Predefined
 
 
-def allocation_to_str(t: AllocationType) -> str:
-    if t is not AllocationType.NONE:
-        return f' #  ' + t.name
-    return ''
-
-
 @dataclass(frozen=False)
 class Attribute:
     var: Name
     field: Var
-    allocation: AllocationType = AllocationType.UNKNOWN
 
     def __str__(self):
-        res = f'{self.var}.{self.field}'
-        res += allocation_to_str(self.allocation)
-        return res
+        return f'{self.var}.{self.field}'
 
 
 @dataclass(frozen=True)
@@ -122,11 +106,9 @@ class Binary:
     op: str
     right: Value
     inplace: bool
-    allocation: AllocationType = AllocationType.UNKNOWN
 
     def __str__(self):
         res = f'{self.left} {self.op} {self.right}'
-        res += allocation_to_str(self.allocation)
         return res
 
 
@@ -134,12 +116,9 @@ class Binary:
 class Unary:
     op: UnOp
     var: Value
-    allocation: AllocationType = AllocationType.UNKNOWN
 
     def __str__(self):
-        res = f'{self.op.name} {self.var}'
-        res += allocation_to_str(self.allocation)
-        return res
+        return f'{self.op.name} {self.var}'
 
 
 @dataclass(frozen=False)
@@ -147,7 +126,6 @@ class Call:
     function: Var | Attribute | Predefined | UnOp
     args: tuple[Value, ...]
     kwargs: Var = None
-    allocation: AllocationType = AllocationType.UNKNOWN
 
     def location(self) -> int:
         return id(self)
@@ -159,7 +137,6 @@ class Call:
         res += f'({", ".join(str(x) for x in self.args)})'
         if self.kwargs:
             res += f', kwargs={self.kwargs}'
-        res += allocation_to_str(self.allocation)
         return res
 
 
@@ -588,7 +565,7 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
         case ['STORE', 'GLOBAL']:
             return [Assign(make_global(val), stackvar(stack_depth))]
         case ['STORE', 'ATTR']:
-            attr = Attribute(stackvar(stack_depth), Var(val), allocation=AllocationType.NONE)
+            attr = Attribute(stackvar(stack_depth), Var(val))
             return [Assign(attr, stackvar(stack_depth - 1))]
         case ['STORE', 'SUBSCR']:
             return [Assign(Subscript(stackvar(stack_depth - 1), stackvar(stack_depth)), stackvar(stack_depth - 2))]
@@ -676,7 +653,7 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
 
 
 def main():
-    env, imports = disassemble.read_function('examples/toy.py', 'main')
+    env, imports = disassemble.read_file('examples/toy.py')
 
     for k, func in env.items():
         cfg = make_tac_cfg(func)

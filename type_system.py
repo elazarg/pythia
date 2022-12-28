@@ -192,7 +192,7 @@ class FunctionType(TypeExpr):
 @dataclass(frozen=True)
 class Instantiation(TypeExpr):
     generic: TypeExpr
-    type_args: tuple[TypeExpr]
+    type_args: tuple[TypeExpr, ...]
 
     def __repr__(self):
         return f'{self.generic}[{", ".join(repr(x) for x in self.type_args)}]'
@@ -326,7 +326,7 @@ def unpack_type_args(type_args: typing.Iterable[TypeExpr], context: dict[TypeVar
     return tuple(unpacked_args)
 
 
-def intersect(rows: typing.Iterable[R]) -> TypedDict:
+def intersect(rows: typing.Iterable[T]) -> TypedDict:
     return Intersection[R](frozenset(rows))
 
 

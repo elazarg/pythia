@@ -1,5 +1,3 @@
-from frozendict import frozendict
-
 import type_system as ts
 
 
@@ -19,7 +17,7 @@ def make_function(return_type: ts.TypeExpr, params: ts.Intersection[ts.Row], typ
     return ts.FunctionType(params, return_type,
                            new=ts.Literal(True),
                            property=ts.Literal(False),
-                           type_params=frozendict({x: None for x in type_params}))
+                           type_params=type_params)
 
 
 def make_rows(*types) -> ts.Intersection[ts.Row]:
@@ -30,7 +28,7 @@ def make_rows(*types) -> ts.Intersection[ts.Row]:
 def test_join():
     t1 = ts.Ref('builtins.int')
     t2 = ts.Ref('builtins.float')
-    assert ts.join(t1, t2) == ts.Union({t1, t2})
+    assert ts.join(t1, t2) == ts.union([t1, t2])
 
 
 def test_function_call():
