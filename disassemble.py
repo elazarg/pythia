@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import builtins
-import inspect
 import marshal
 import struct
 import ast
-from typing import Optional, Any
+from typing import Any
 
 
 # Based on https://stackoverflow.com/a/67428655/2289509
-def read_pyc_file(path: str) -> builtins.code:
+def read_pyc_file(path: str):
     """Read the contents of a pyc-file."""
     with open(path, 'rb') as file:
         _magic = file.read(4)
@@ -38,7 +36,7 @@ def read_function_using_compile(file_path, function_name):
     raise ValueError(f'Could not find function {function_name} in {file_path}')
 
 
-def read_file(file_path: str) -> tuple[dict, Any]:
+def read_file(file_path: str) -> tuple[dict[str, object], Any]:
     module = ast.parse("from __future__ import annotations\n", filename=file_path)
 
     with open(file_path, 'r', encoding='utf-8') as file:
@@ -49,19 +47,19 @@ def read_file(file_path: str) -> tuple[dict, Any]:
         if isinstance(node, ast.FunctionDef):
             module.body.append(node)
     functions = compile(module, '', 'exec', dont_inherit=True, flags=0, optimize=0)
-    env = {}
+    env: dict[str, object] = {}
     # exec should be safe here, since it cannot have any side effects
     exec(functions, {}, env)
     del env['annotations']
 
-    globals = {}
+    globals: dict[str, str] = {}
     for node in code.body:
         if isinstance(node, ast.Import):
             for name in node.names:
                 globals[name.asname or name.name] = name.name
         if isinstance(node, ast.ImportFrom):
             for name in node.names:
-                globals[name.asname or name.name] = node.module + '.' + name.name
+                globals[name.asname or name.name] = f'{node.module}.{name.name}'
     return env, globals
 
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import TypeVar, Generic, Callable, Any, Iterator, TypeAlias
-import networkx as nx
+from typing import TypeVar, Generic, Callable, Any, Iterator, TypeAlias, Optional
+import networkx as nx  # type: ignore
 from itertools import chain
 
 T = TypeVar('T')
@@ -50,7 +50,7 @@ class ForwardBlock(Generic[T]):
 
 @dataclass
 class BackwardBlock(Generic[T]):
-    block: Block[T]
+    block: ForwardBlock[T]
 
     def __iter__(self) -> Iterator[T]:
         return iter(reversed(self.block._instructions))
@@ -92,7 +92,8 @@ class Cfg(Generic[T]):
     def annotator(self, annotator: Callable[[tuple[int, int], T], str]) -> None:
         self._annotator = staticmethod(annotator)
 
-    def __init__(self, graph: nx.DiGraph | dict | list[tuple[int, int, dict]], blocks: dict[int, list[T]]=None, add_sink=True) -> None:
+    def __init__(self, graph: nx.DiGraph | dict | list[tuple[int, int, dict]],
+                 blocks: Optional[dict[int, list[T]]] = None, add_sink = True) -> None:
         if isinstance(graph, nx.DiGraph):
             self.graph = graph
         else:
