@@ -3,66 +3,16 @@
 from __future__ import annotations as _
 
 import enum
-from collections import defaultdict
-from dataclasses import dataclass
+import typing
 from typing import Optional, Iterable
 
 import tac
 from tac import Predefined, UnOp
-from tac_analysis_domain import ActionLattice, Lattice
+from tac_analysis_domain import ValueLattice, VarLattice, InvariantMap, Map
 import type_system as ts
 
 
-class AllocationType(enum.Flag):
-    NONE = enum.auto()
-    STACK = enum.auto()
-    HEAP = enum.auto()
-
-
-UNKONWN_ALLOCATION = AllocationType.NONE | AllocationType.STACK | AllocationType.HEAP
-
-
-class AllocationLattice(Lattice[AllocationType]):
-    backward = False
-
-    def name(self) -> str:
-        return 'Allocation'
-
-    def top(self) -> AllocationType:
-        return UNKONWN_ALLOCATION
-
-    def bottom(self) -> AllocationType:
-        return AllocationType.NONE
-
-    def is_top(self, elem: AllocationType) -> bool:
-        return elem == UNKONWN_ALLOCATION
-
-    def is_bottom(self, elem: AllocationType) -> bool:
-        return elem == AllocationType.NONE
-
-    def join(self, left: AllocationType, right: AllocationType) -> AllocationType:
-        return left | right
-
-    def is_less_than(self, left: AllocationType, right: AllocationType) -> bool:
-        return left in right
-
-    def is_equivalent(self, left, right) -> bool:
-        return left == right
-
-    def copy(self, values: AllocationType) -> AllocationType:
-        return values
-
-    def initial(self, annotations: dict[str, str]) -> AllocationType:
-        return AllocationType.NONE
-
-
-@dataclass(frozen=True)
-class TypeEffect:
-    type: ts.TypeExpr
-    allocation: AllocationType
-
-
-class TypeLattice(ActionLattice[ts.TypeExpr]):
+class TypeLattice(ValueLattice[ts.TypeExpr]):
     """
     Abstract domain for type analysis with lattice operations.
     """
@@ -198,28 +148,58 @@ class TypeLattice(ActionLattice[ts.TypeExpr]):
     def is_supertype(self, left: ts.TypeExpr, right: ts.TypeExpr) -> bool:
         return self.join(left, right) == left
 
-    def allocation_type_function(self, function: ts.TypeExpr) -> AllocationType:
+
+class AllocationType(enum.StrEnum):
+    NONE = ''
+    STACK = 'Stack'
+    HEAP = 'Heap'
+    UNKNOWN = 'Unknown'
+
+Allocation: typing.TypeAlias = AllocationType
+
+
+class AllocationChecker:
+    type_invariant_map: InvariantMap[Map[ts.TypeExpr]]
+    type_lattice: VarLattice[ts.TypeExpr]
+    backward = False
+
+    def __init__(self, type_invariant_map: InvariantMap[Map[ts.TypeExpr]], type_lattice: VarLattice[ts.TypeExpr]) -> None:
+        super().__init__()
+        self.type_invariant_map = type_invariant_map
+        self.type_lattice = type_lattice
+
+    def __call__(self, ins: tac.Tac, location: tuple[int, int]) -> AllocationType:
+        type_invariant: Map[ts.TypeExpr] = self.type_invariant_map[location]
+        if isinstance(ins, tac.Assign):
+            match ins.expr:
+                case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
+                    var_type = self.type_lattice.transformer_expr(type_invariant, var)
+                    function = self.type_lattice.lattice._attribute(var_type, field)
+                    if isinstance(function, ts.FunctionType) and function.property != ts.Literal(False):
+                        return self.from_function(function)
+                    return AllocationType.NONE
+                case tac.Call(func, args):
+                    function = self.type_lattice.transformer_expr(type_invariant, func)
+                    return self.from_function(function)
+                case tac.Subscript(var=tac.Var() as var, index=tac.Var() as index):
+                    var_type = self.type_lattice.transformer_expr(type_invariant, var)
+                    index_type = self.type_lattice.transformer_expr(type_invariant, index)
+                    return AllocationType.UNKNOWN
+                case tac.Unary(var=tac.Var() as var, op=tac.UnOp() as op):
+                    value = self.type_lattice.transformer_expr(type_invariant, var)
+                    function = self.type_lattice.lattice.get_unary_attribute(value, op)
+                    return self.from_function(function)
+                case tac.Binary(left=tac.Var() as left, right=tac.Var() as right, op=str() as op):
+                    left_type: ts.TypeExpr = self.type_lattice.transformer_expr(type_invariant, left)
+                    right_type: ts.TypeExpr = self.type_lattice.transformer_expr(type_invariant, right)
+                    function = ts.get_binop(left_type, right_type, op)
+                    return self.from_function(function)
+        return AllocationType.NONE
+
+    def from_function(self, function: ts.TypeExpr) -> Allocation:
         if isinstance(function, ts.FunctionType):
             if function.new != ts.Literal(False):
                 return AllocationType.STACK
             else:
                 return AllocationType.NONE
-        return UNKONWN_ALLOCATION
-
-    def allocation_type_binary(self, left: ts.TypeExpr, right: ts.TypeExpr, op: str) -> AllocationType:
-        f = ts.get_binop(left, right, op)
-        return self.allocation_type_function(f)
-
-    def allocation_type_unary(self, value: ts.TypeExpr, op: tac.UnOp) -> AllocationType:
-        f = self.get_unary_attribute(value, op)
-        return self.allocation_type_function(f)
-
-    def allocation_type_attribute(self, var: ts.TypeExpr, attr: tac.Var) -> AllocationType:
-        return AllocationType.NONE
-        p = self._attribute(var, attr)
-        if isinstance(p, Property) and p.new:
-            return AllocationType.STACK
-        return AllocationType.NONE
-
-
-unseen = defaultdict(set)
+        return AllocationType.UNKNOWN

@@ -6,14 +6,14 @@ from typing import TypeVar, Optional, TypeAlias
 
 import tac
 from tac import Const, Predefined
-from tac_analysis_domain import ActionLattice, TOP, BOTTOM, Top, Bottom
+from tac_analysis_domain import ValueLattice, TOP, BOTTOM, Top, Bottom
 
 T = TypeVar('T')
 
 Constant: TypeAlias = Const | Predefined | Top | Bottom
 
 
-class ConstLattice(ActionLattice[Constant]):
+class ConstLattice(ValueLattice[Constant]):
     """
     Abstract domain for type analysis with lattice operations.
     """

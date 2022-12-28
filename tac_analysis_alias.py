@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import dataclasses
-from copy import deepcopy
-
-from networkx.utils import UnionFind
 from dataclasses import dataclass
-from typing import Type, TypeVar, Optional, ClassVar
+from typing import Type, TypeVar, ClassVar
 
 import graph_utils
 import tac
-from tac_analysis_domain import AbstractDomain, IterationStrategy, ForwardIterationStrategy
+from tac_analysis_domain import IterationStrategy, ForwardIterationStrategy
 
 import graph_utils as gu
 
@@ -92,9 +89,6 @@ class AliasDomain(AbstractDomain):
 
     def __repr__(self) -> str:
         return str(self)
-
-    def keep_only_live_vars(self, alive_vars: set[tac.Var]) -> None:
-        self.alias = {k: v for k, v in self.alias.items() if k in alive_vars}
 
 
 def rewrite_ins(ins: tac.Tac, pre: AliasDomain) -> tac.Tac:

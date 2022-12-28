@@ -458,7 +458,7 @@ def make_tac_cfg(f) -> gu.Cfg[Tac]:
         return gu.ForwardBlock(list(it.chain.from_iterable(make_tac(ins, depths[ins.offset], trace_origin)
                                                            for ins in block)))
 
-    def annotator(n: Tac) -> str:
+    def annotator(location: tuple[int, int], n: Tac) -> str:
         pos = trace_origin[id(n)].positions
         return f'{pos.lineno}:{pos.col_offset}'
 

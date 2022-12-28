@@ -227,7 +227,7 @@ class InstructionLattice(Lattice[T]):
         raise NotImplementedError
 
 
-class ActionLattice(Lattice[T]):
+class ValueLattice(Lattice[T]):
     def const(self, value: object) -> T:
         return self.top()
 
@@ -274,11 +274,11 @@ InvariantMap: TypeAlias = dict[tuple[int, int], T]
 
 
 class VarLattice(InstructionLattice[MapDomain[T]]):
-    lattice: ActionLattice[T]
+    lattice: ValueLattice[T]
     liveness: InvariantMap[Lattice[Top | Bottom]]
     backward: bool = False
 
-    def __init__(self, lattice: ActionLattice[T], liveness: InvariantMap):
+    def __init__(self, lattice: ValueLattice[T], liveness: InvariantMap):
         super().__init__()
         self.lattice = lattice
         self.liveness = liveness

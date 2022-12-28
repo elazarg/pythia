@@ -92,14 +92,15 @@ class Cfg(Generic[T]):
     def annotator(self, annotator: Callable[[T], str]) -> None:
         self._annotator = staticmethod(annotator)
 
-    def __init__(self, graph: nx.DiGraph | dict | list[tuple[int, int, dict]], blocks=None, add_sink=True) -> None:
+    def __init__(self, graph: nx.DiGraph | dict | list[tuple[int, int, dict]], blocks: dict[int, list[T]]=None, add_sink=True) -> None:
         if isinstance(graph, nx.DiGraph):
             self.graph = graph
         else:
             self.graph = nx.DiGraph(graph)
 
         if blocks is not None:
-            nx.set_node_attributes(self, name='block', values={k: ForwardBlock(block) for k, block in blocks.items()})
+            self.graph.add_nodes_from(blocks.keys())
+            nx.set_node_attributes(self.graph, name='block', values={k: ForwardBlock(block) for k, block in blocks.items()})
 
         if add_sink:
             # Connect all sink nodes to exit:
@@ -211,10 +212,8 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
             n = next_n
         labels.add(label)
         edges.extend((label, suc) for suc in g.successors(n))
-        blocks[label] = ForwardBlock(instructions)
-    simplified_cfg = Cfg(edges)
-    for label, block in blocks.items():
-        simplified_cfg[label] = block
+        blocks[label] = instructions
+    simplified_cfg = Cfg(edges, blocks=blocks, add_sink=True)
     simplified_cfg.annotator = cfg.annotator
     return simplified_cfg
 
@@ -248,11 +247,13 @@ def node_data_map(cfg: Cfg[T], f: Callable[[int, Block[T]], Block[Q]]) -> Cfg[Q]
     return cfg
 
 
-def print_block(n: int, block: Block[T], annotator) -> None:
-    print(n, ':')
-    for i, ins in enumerate(block):
-        label = f'{n}.{i}'
-        print(f'\t{label:6} {annotator(ins):5}\t', ins)
+def print_block(label: int, block: Block[T],
+                *annotators: Callable[[tuple[int, int], T], object]) -> None:
+    print(label, ':')
+    for index, ins in enumerate(block):
+        location = (label, index)
+        str_location = f'{label}.{index}'
+        print(f'\t{str_location:6}', *[f'{annotator(location, ins):7}' for annotator in annotators], ins)
 
 
 def pretty_print_cfg(cfg: Cfg[T]) -> None:
