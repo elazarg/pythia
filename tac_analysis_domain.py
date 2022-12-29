@@ -4,11 +4,13 @@ import typing
 from dataclasses import dataclass
 from typing import TypeVar, Protocol, Generic, TypeAlias, Iterable, Optional
 import graph_utils as gu
+from graph_utils import Label, Location
 
 import tac
 
 T = TypeVar('T')
 K = TypeVar('K')
+Q = TypeVar('Q')
 
 
 @dataclass
@@ -16,16 +18,16 @@ class ForwardIterationStrategy(Generic[T]):
     cfg: gu.Cfg[T]
 
     @property
-    def entry_label(self):
+    def entry_label(self) -> Label:
         return self.cfg.entry_label
 
-    def successors(self, label):
+    def successors(self, label: Label) -> typing.Iterator[Label]:
         return self.cfg.successors(label)
 
-    def __getitem__(self, label) -> gu.Block:
+    def __getitem__(self, label: Label) -> gu.ForwardBlock:
         return self.cfg[label]
 
-    def order(self, pair):
+    def order(self, pair: tuple[K, Q]) -> tuple[K ,Q]:
         return pair
 
 
@@ -34,16 +36,16 @@ class BackwardIterationStrategy(Generic[T]):
     cfg: gu.Cfg[T]
 
     @property
-    def entry_label(self):
+    def entry_label(self) -> Label:
         return self.cfg.exit_label
 
-    def successors(self, label):
+    def successors(self, label: Label) -> typing.Iterator[Label]:
         return self.cfg.predecessors(label)
 
-    def __getitem__(self, label) -> gu.Block:
+    def __getitem__(self, label: Label) -> gu.Block:
         return gu.BackwardBlock(self.cfg[label])
 
-    def order(self, pair):
+    def order(self, pair: tuple[K, Q]) -> tuple[Q, K]:
         return pair[1], pair[0]
 
 
@@ -73,7 +75,7 @@ class Lattice(Protocol[T]):
     def is_less_than(self, left: T, right: T) -> bool:
         raise NotImplementedError
 
-    def is_equivalent(self, left, right) -> bool:
+    def is_equivalent(self, left: T, right: T) -> bool:
         raise NotImplementedError
 
     def copy(self, values: T) -> T:
@@ -85,43 +87,43 @@ class Lattice(Protocol[T]):
 
 @dataclass(frozen=True)
 class Top:
-    def __str__(self):
+    def __str__(self) -> str:
         return '⊤'
 
     def copy(self: T) -> T:
         return self
 
-    def __or__(self, other):
+    def __or__(self, other: object) -> Top:
         return self
 
-    def __ror__(self, other):
+    def __ror__(self, other: object) -> Top:
         return self
 
-    def __and__(self, other):
+    def __and__(self, other: T) -> T:
         return other
 
-    def __rand__(self, other):
+    def __rand__(self, other: T) -> T:
         return other
 
 
 @dataclass(frozen=True)
 class Bottom:
-    def __str__(self):
+    def __str__(self) -> str:
         return '⊥'
 
     def copy(self: T) -> T:
         return self
 
-    def __or__(self, other):
+    def __or__(self, other: T) -> T:
         return other
 
-    def __ror__(self, other):
+    def __ror__(self, other: T) -> T:
         return other
 
-    def __rand__(self, other):
+    def __rand__(self, other: object) -> Bottom:
         return self
 
-    def __and__(self, other):
+    def __and__(self, other: object) -> Bottom:
         return self
 
 
@@ -146,7 +148,7 @@ class Map(Generic[T]):
         assert isinstance(key, tac.Var), key
         return self._map.get(key, self.default)
 
-    def __setitem__(self, key: tac.Var, value: T):
+    def __setitem__(self, key: tac.Var, value: T) -> None:
         assert isinstance(key, tac.Var), key
         if value == self.default:
             if key in self._map:
@@ -160,13 +162,13 @@ class Map(Generic[T]):
         for k, v in dictionary.items():
             self[k] = v
 
-    def __iter__(self):
+    def __iter__(self) -> typing.Iterator[tac.Var]:
         return iter(self._map)
 
-    def __contains__(self, key: tac.Var):
+    def __contains__(self, key: tac.Var) -> bool:
         return key in self._map
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._map)
 
     def __eq__(self, other: object) -> bool:
@@ -209,7 +211,7 @@ def normalize(values: MapDomain[T]) -> MapDomain[T]:
 class InstructionLattice(Lattice[T], Generic[T]):
     backward: bool
 
-    def transfer(self, values: T, ins: tac.Tac, location: tuple[int, int]) -> T:
+    def transfer(self, values: T, ins: tac.Tac, location: Location) -> T:
         raise NotImplementedError
 
 
@@ -253,7 +255,7 @@ class ValueLattice(Lattice[T], Generic[T]):
 
 
 
-InvariantMap: TypeAlias = dict[tuple[int, int], T]
+InvariantMap: TypeAlias = dict[Location, T]
 
 
 class VarLattice(InstructionLattice[MapDomain[T]], Generic[T]):
@@ -352,7 +354,7 @@ class VarLattice(InstructionLattice[MapDomain[T]], Generic[T]):
                     val = eval(expr.modname.var)
                     return self.lattice.attribute(val, expr.modname.field)
                 else:
-                    return self.lattice.imported(expr.modname)
+                    return self.lattice.imported(expr.modname.name)
             case tac.MakeFunction():
                 return self.lattice.top()
             case _:
@@ -373,7 +375,7 @@ class VarLattice(InstructionLattice[MapDomain[T]], Generic[T]):
             case _:
                 assert False, f'unexpected signature {signature}'
 
-    def forward_transfer(self, values: MapDomain[T], ins: tac.Tac, location: tuple[int, int]) -> MapDomain[T]:
+    def forward_transfer(self, values: MapDomain[T], ins: tac.Tac, location: Location) -> MapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
         if isinstance(ins, tac.For):
@@ -390,7 +392,7 @@ class VarLattice(InstructionLattice[MapDomain[T]], Generic[T]):
                 })
         return updated
 
-    def transfer(self, values: MapDomain[T], ins: tac.Tac, location: tuple[int, int]) -> MapDomain[T]:
+    def transfer(self, values: MapDomain[T], ins: tac.Tac, location: Location) -> MapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()

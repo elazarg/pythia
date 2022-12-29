@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from graph_utils import Location
+
 from dataclasses import dataclass
 from itertools import chain
-from typing import TypeAlias, Callable, Final
+from typing import TypeAlias, Final
 
 import tac
 import tac_analysis_liveness
@@ -17,10 +19,10 @@ from tac_analysis_types import AllocationType
 class Object:
     location: str
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f'@{self.location}'
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'@{self.location}'
 
 
@@ -61,13 +63,13 @@ class PointerLattice(InstructionLattice[Graph]):
         self.liveness = liveness
         self.backward = False
 
-    def is_less_than(self, left, right) -> bool:
+    def is_less_than(self, left: Graph, right: Graph) -> bool:
         return self.join(left, right) == right
 
-    def is_equivalent(self, left, right):
+    def is_equivalent(self, left: Graph, right: Graph) -> bool:
         return left == right
 
-    def copy(self, values) -> Graph:
+    def copy(self, values: Graph) -> Graph:
         return {obj: {field: targets.copy() for field, targets in fields.items() if targets}
                 for obj, fields in values.items()}
 
@@ -97,7 +99,7 @@ class PointerLattice(InstructionLattice[Graph]):
                 pointers[obj] = {field: targets.copy() for field, targets in fields.items() if targets}
         return pointers
 
-    def transfer(self, values: Graph, ins: tac.Tac, location: tuple[int, int]) -> Graph:
+    def transfer(self, values: Graph, ins: tac.Tac, location: Location) -> Graph:
         values = copy_graph(values)
         location_object = Object(f'{location[0]}.{location[1]}')
         allocated = self.allocation_invariant_map.get(location) != AllocationType.NONE

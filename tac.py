@@ -12,6 +12,7 @@ from typing import Optional, TypeAlias
 import instruction_cfg
 import disassemble
 import graph_utils as gu
+from graph_utils import Label, Location
 
 
 @dataclass(frozen=True)
@@ -32,11 +33,11 @@ class Predefined(enum.Enum):
     CONST_KEY_MAP = 6
     NOT = 7
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
     @classmethod
-    def lookup(cls, op):
+    def lookup(cls, op: str) -> Predefined:
         return cls.__members__[op]
 
 
@@ -54,10 +55,10 @@ class UnOp(enum.Enum):
 class Const:
     value: object
 
-    def __str__(self):
+    def __str__(self) -> str:
         return repr(self.value)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return repr(self.value)
 
 
@@ -66,12 +67,12 @@ class Var:
     name: str
     is_stackvar: bool = False
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.is_stackvar:
             return f'${self.name}'
         return self.name
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str(self)
 
 
@@ -84,7 +85,7 @@ class Attribute:
     var: Name
     field: Var
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f'{self.var}.{self.field}'
 
 
@@ -93,7 +94,7 @@ class Subscript:
     var: Var
     index: Var
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f'{self.var}[{self.index}]'
 
 
@@ -108,7 +109,7 @@ class Binary:
     right: Var
     inplace: bool
 
-    def __str__(self):
+    def __str__(self) -> str:
         res = f'{self.left} {self.op} {self.right}'
         return res
 
@@ -118,7 +119,7 @@ class Unary:
     op: UnOp
     var: Var
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f'{self.op.name} {self.var}'
 
 
@@ -131,7 +132,7 @@ class Call:
     def location(self) -> int:
         return id(self)
 
-    def __str__(self):
+    def __str__(self) -> str:
         res = ''
         if self.function != Var('TUPLE'):
             res += f'{self.function}'
@@ -148,10 +149,10 @@ class Yield:
 
 @dataclass
 class Import:
-    modname: str
+    modname: Var | Attribute
     feature: Optional[str] = None
 
-    def __str__(self):
+    def __str__(self) -> str:
         res = f'IMPORT {self.modname}'
         if self.feature is not None:
             res += f'.{self.feature}'
@@ -163,10 +164,11 @@ class MakeFunction:
     code: Var
     free_vars: frozenset[Var] = frozenset()
     name: Optional[Var] = None
-    annotations: Optional[dict[Var, str]] = None
-    defaults: Optional[dict[Var, Var]] = None
-    positional_only_defaults: Optional[dict[Var, Var]] = None
-
+    annotations: Optional[Var] = None
+    defaults: Optional[Var] = None
+    kwdefaults: Optional[Var] = None
+    positional_only_defaults: Optional[Var] = None
+    free_var_cells: Optional[Var] = None
 
 @dataclass
 class MakeClass:
@@ -176,7 +178,7 @@ class MakeClass:
 Expr: TypeAlias = Value | Predefined | Attribute | Subscript | Binary | Unary | Call | Yield | Import | MakeFunction | MakeClass
 
 
-def stackvar(x) -> Var:
+def stackvar(x: int) -> Var:
     return Var(str(x - 1), True)
 
 
@@ -195,7 +197,7 @@ class Assign:
     lhs: Optional[Signature]
     expr: Expr
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.lhs is None:
             return f'{self.expr}'
         return f'{self.lhs} = {self.expr}'
@@ -215,10 +217,10 @@ class Assign:
 
 @dataclass(frozen=True)
 class Jump:
-    jump_target: str
+    jump_target: int
     cond: Value = Const(True)
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.cond == Const(True):
             return f'GOTO {self.jump_target}'
         return f'IF {self.cond} GOTO {self.jump_target}'
@@ -228,9 +230,9 @@ class Jump:
 class For:
     lhs: Signature
     iterator: Var
-    jump_target: str
+    jump_target: int
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f'{self.lhs} = next({self.iterator}) HANDLE: GOTO {self.jump_target}'
 
     def as_call(self) -> Assign:
@@ -241,7 +243,7 @@ class For:
 class Return:
     value: Var
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f'RETURN {self.value}'
 
 
@@ -249,7 +251,7 @@ class Return:
 class Raise:
     value: Var
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f'RAISE {self.value}'
 
 
@@ -257,7 +259,7 @@ class Raise:
 class Del:
     variables: tuple[Var]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f'DEL {", ".join(str(x) for x in self.variables)}'
 
 
@@ -438,18 +440,21 @@ def make_tac(ins: instruction_cfg.Instruction, stack_depth: int,
 
 
 def make_global(field: str) -> Attribute:
+    assert isinstance(field, str)
     return Attribute(Predefined.GLOBALS, Var(field))
 
 
 def make_nonlocal(field: str) -> Attribute:
+    assert isinstance(field, str)
     return Attribute(Predefined.NONLOCALS, Var(field))
 
 
 def make_class(name: str) -> Attribute:
+    assert isinstance(name, str)
     return Attribute(Predefined.NONLOCALS, Var(name))
 
 
-def make_tac_cfg(f) -> gu.Cfg[Tac]:
+def make_tac_cfg(f: typing.Any) -> gu.Cfg[Tac]:
     assert sys.version_info[:2] == (3, 11), f'Python version is {sys.version_info} but only 3.11 is supported'
     depths, ins_cfg = instruction_cfg.make_instruction_block_cfg_from_function(f)
 
@@ -458,11 +463,11 @@ def make_tac_cfg(f) -> gu.Cfg[Tac]:
 
     trace_origin: dict[int, instruction_cfg.Instruction] = {}
 
-    def instruction_block_to_tac_block(n, block: gu.Block[instruction_cfg.Instruction]) -> gu.Block[Tac]:
+    def instruction_block_to_tac_block(n: Label, block: gu.Block[instruction_cfg.Instruction]) -> gu.Block[Tac]:
         return gu.ForwardBlock(list(it.chain.from_iterable(make_tac(ins, depths[ins.offset], trace_origin)
                                                            for ins in block)))
 
-    def annotator(location: tuple[int, int], n: Tac) -> str:
+    def annotator(location: Location, n: Tac) -> str:
         pos = trace_origin[id(n)].positions
         if pos is None:
             return f'None'
@@ -473,7 +478,7 @@ def make_tac_cfg(f) -> gu.Cfg[Tac]:
     return tac_cfg
 
 
-def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Tac]:
+def make_tac_no_dels(opname: str, val: str | int | None, stack_effect: int, stack_depth: int, argrepr: str) -> list[Tac]:
     """Translate a bytecode operation into a list of TAC instructions.
     """
     out = stack_depth + stack_effect if stack_depth is not None else None
@@ -503,15 +508,17 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             else:
                 return [Assign(lhs, Binary(left, argrepr, right, inplace=False))]
         case ['POP', 'JUMP', 'FORWARD' | 'BACKWARD', 'IF', *v]:
-            op = '_'.join(v)
+            sop = '_'.join(v)
             # 'FALSE' | 'TRUE' | 'NONE' | 'NOT_NONE'
             res: list[Tac]
-            if op == 'FALSE':
+            if sop == 'FALSE':
                 res = [Assign(stackvar(stack_depth), Unary(UnOp.NOT, stackvar(stack_depth)))]
             else:
                 res = []
+            assert isinstance(val, int)
             return res + [Jump(val, stackvar(stack_depth))]
         case ['JUMP', 'ABSOLUTE' | 'FORWARD' | 'BACKWARD'] | ['BREAK', 'LOOP'] | ['CONTINUE', 'LOOP']:
+            assert isinstance(val, int)
             return [Jump(val)]
         case ['POP', 'TOP']:
             return []
@@ -541,9 +548,13 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
         case ['YIELD', 'VALUE']:
             return [Assign(stackvar(out), Yield(stackvar(stack_depth)))]
         case ['FOR', 'ITER']:
+            assert isinstance(val, int)
             return [For(stackvar(out), stackvar(stack_depth), val)]
+        case ['LOAD', 'CONST']:
+            return [Assign(stackvar(out), Const(val))]
         case ['LOAD', *ops]:
             lhs = stackvar(out)
+            assert isinstance(val, str), f'{opname}, {val}, {argrepr}'
             match ops:
                 case ['ATTR']:
                     return [Assign(lhs, Attribute(stackvar(stack_depth), Var(val)))]
@@ -551,8 +562,6 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
                     return [Assign(lhs, Attribute(stackvar(stack_depth), Var(val)))]
                 case ['FAST' | 'NAME']:
                     return [Assign(lhs, Var(val))]
-                case ['CONST']:
-                    return [Assign(lhs, Const(val))]
                 case ['DEREF']:
                     return [Assign(lhs, make_nonlocal(val))]
                 case ['GLOBAL']:
@@ -567,10 +576,13 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
                 case _:
                     assert False, ops
         case ['STORE', 'FAST' | 'NAME']:
+            assert isinstance(val, str)
             return [Assign(Var(val), stackvar(stack_depth))]
         case ['STORE', 'GLOBAL']:
+            assert isinstance(val, str)
             return [Assign(make_global(val), stackvar(stack_depth))]
         case ['STORE', 'ATTR']:
+            assert isinstance(val, str)
             attr = Attribute(stackvar(stack_depth), Var(val))
             return [Assign(attr, stackvar(stack_depth - 1))]
         case ['STORE', 'SUBSCR']:
@@ -582,19 +594,24 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
         case ['RAISE', 'VARARGS']:
             return [Raise(stackvar(stack_depth))]
         case ['UNPACK', 'SEQUENCE']:
+            assert isinstance(val, int)
             seq = tuple(stackvar(stack_depth + i) for i in reversed(range(val)))
             return [Assign(seq, stackvar(stack_depth))]
         case ['IMPORT', 'NAME']:
+            assert isinstance(val, str)
             return [Assign(stackvar(out), Import(Var(val)))]
         case ['IMPORT', 'FROM']:
+            assert isinstance(val, str)
             return [Assign(stackvar(out), Import(Attribute(stackvar(stack_depth), Var(val))))]
         case ['BUILD', 'SLICE']:
+            args: tuple[Var, ...]
             if val == 2:
                 args = (stackvar(stack_depth - 1), stackvar(stack_depth))
             else:
                 args = (stackvar(stack_depth), stackvar(stack_depth - 1), stackvar(stack_depth - 2))
             return [Assign(stackvar(out), Call(Predefined.SLICE, args))]
         case ['BUILD', op]:
+            assert isinstance(val, int)
             return [Assign(stackvar(out),
                            Call(Predefined.lookup(op), tuple(stackvar(i + 1) for i in range(stack_depth - val, stack_depth))))]
         case ['SWAP']:
@@ -603,10 +620,12 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             return [Assign(a, Call(Predefined.TUPLE, (b, a))),
                     Assign((a, b), a)]
         case ['CALL']:
+            assert isinstance(val, int)
             nargs = val & 0xFF
             mid = [stackvar(i + 1) for i in range(stack_depth, stack_depth + nargs)]
             return [Assign(stackvar(out), Call(stackvar(stack_depth), tuple(mid)))]
         case ['CALL', 'FUNCTION', 'KW']:
+            assert isinstance(val, int)
             nargs = val
             mid = [stackvar(i + 1) for i in range(stack_depth - nargs - 1, stack_depth - 1)]
             res = [Assign(stackvar(out), Call(stackvar(stack_depth - nargs - 1), tuple(mid), stackvar(stack_depth)))]
@@ -642,6 +661,7 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
             the qualified name of the function (at TOS)
             """
             function = MakeFunction(stackvar(stack_depth))
+            assert isinstance(val, int)
             i = 2
             if val & 0x01:
                 function.defaults = stackvar(stack_depth - i)
@@ -658,7 +678,7 @@ def make_tac_no_dels(opname, val, stack_effect, stack_depth, argrepr) -> list[Ta
     return [Unsupported(opname)]
 
 
-def main():
+def main() -> None:
     env, imports = disassemble.read_file('examples/toy.py')
 
     for k, func in env.items():

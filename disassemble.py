@@ -7,7 +7,7 @@ from typing import Any
 
 
 # Based on https://stackoverflow.com/a/67428655/2289509
-def read_pyc_file(path: str):
+def read_pyc_file(path: str) -> Any:
     """Read the contents of a pyc-file."""
     with open(path, 'rb') as file:
         _magic = file.read(4)
@@ -17,14 +17,14 @@ def read_pyc_file(path: str):
         return code
 
 
-def do_compile(file_path):
+def do_compile(file_path: str) -> Any:
     with open(file_path, 'rb') as file:
         bytecode = file.read()
 
     return compile(bytecode, file_path, 'exec', dont_inherit=True, flags=0, optimize=0)
 
 
-def read_function_using_compile(file_path, function_name):
+def read_function_using_compile(file_path: str, function_name: str) -> object:
     """Read a function from a file.
     Currently, it does not support annotations"""
     code = do_compile(file_path)

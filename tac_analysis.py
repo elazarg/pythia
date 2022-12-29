@@ -9,6 +9,8 @@ from typing import TypeVar, TypeAlias
 
 import disassemble
 import graph_utils as gu
+from graph_utils import Location
+
 import tac
 import tac_analysis_domain as domain
 from tac_analysis_domain import InvariantMap, MapDomain
@@ -24,7 +26,7 @@ T = TypeVar('T')
 Cfg: TypeAlias = gu.Cfg[tac.Tac]
 
 
-def make_tac_cfg(f, simplify=True):
+def make_tac_cfg(f: typing.Any, simplify: bool = True) -> Cfg:
     cfg = tac.make_tac_cfg(f)
     if simplify:
         cfg = gu.simplify_cfg(cfg)
@@ -37,14 +39,14 @@ class InvariantPair(typing.Generic[T]):
     post: InvariantMap[T]
 
 
-def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations) -> InvariantPair[T]:
+def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations: dict[tac.Var, str]) -> InvariantPair[T]:
     pre_result: InvariantMap[T] = {}
     post_result: InvariantMap[T] = {}
 
     cfg: domain.IterationStrategy = domain.BackwardIterationStrategy(_cfg) if analysis.backward else domain.ForwardIterationStrategy(_cfg)
 
     wl = [entry] = {cfg.entry_label}
-    initial = analysis.initial(analysis.top() if analysis.backward else annotations)
+    initial = analysis.initial(annotations)
     pre_result[(entry, cfg[entry].first_index())] = initial
     while wl:
         label = wl.pop()
@@ -71,7 +73,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations) -> I
     return InvariantPair(pre_result, post_result)
 
 
-def analyze_single(cfg: Cfg, analysis: typing.Callable[[tac.Tac, tuple[int, int]], T]) -> InvariantMap[T]:
+def analyze_single(cfg: Cfg, analysis: typing.Callable[[tac.Tac, Location], T]) -> InvariantMap[T]:
     result: InvariantMap[T] = {}
 
     for label, block in cfg.items():
@@ -106,7 +108,7 @@ def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], property_map:
             print()
 
 
-def run(f, functions, imports, module_type, simplify=True) -> None:
+def run(f: typing.Any, module_type: ts.Module, simplify: bool = True) -> None:
     cfg: Cfg = make_tac_cfg(f, simplify=simplify)
 
     annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
@@ -114,7 +116,7 @@ def run(f, functions, imports, module_type, simplify=True) -> None:
     liveness_invariants: InvariantPair[MapDomain[Liveness]] = analyze(cfg, LivenessVarLattice(), annotations)
     constant_invariants: InvariantPair[MapDomain[Constant]] = analyze(cfg, domain.VarLattice(ConstLattice(), liveness_invariants.post), annotations)
 
-    type_analysis: domain.VarLattice[ts.TypeExpr] = domain.VarLattice[ts.TypeExpr](TypeLattice(f.__name__, module_type, functions, imports),
+    type_analysis: domain.VarLattice[ts.TypeExpr] = domain.VarLattice[ts.TypeExpr](TypeLattice(f.__name__, module_type),
                                                                                    liveness_invariants.post)
     type_invariants: InvariantPair[MapDomain[ts.TypeExpr]] = analyze(cfg, type_analysis, annotations)
     allocation_invariants: InvariantMap[AllocationType] = analyze_single(cfg, AllocationChecker(type_invariants.pre, type_analysis))
@@ -147,7 +149,7 @@ def run(f, functions, imports, module_type, simplify=True) -> None:
 def analyze_function(filename: str, function_name: str) -> None:
     functions, imports = disassemble.read_file(filename)
     module_type = ts.parse_file(filename)
-    run(functions[function_name], functions=functions, imports=imports, module_type=module_type,
+    run(functions[function_name], module_type=module_type,
         simplify=True)
 
 

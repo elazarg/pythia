@@ -6,6 +6,8 @@ import enum
 import typing
 from typing import Iterable
 
+from graph_utils import Location
+
 import tac
 from tac import Predefined, UnOp
 import tac_analysis_domain as domain
@@ -17,7 +19,7 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
     """
     Abstract domain for type analysis with lattice operations.
     """
-    def __init__(self, this_function: str, this_module: ts.Module, functions, imports: dict[str, str]):
+    def __init__(self, this_function: str, this_module: ts.Module):
         this_signature = ts.subscr(this_module, ts.Literal(this_function))
         assert isinstance(this_signature, ts.FunctionType)
         self.annotations: dict[tac.Var, ts.TypeExpr] = {tac.Var(row.index.name, is_stackvar=False): row.type
@@ -72,9 +74,6 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
             ref = ts.resolve_static_ref(ref)
         assert isinstance(ref, (ts.TypeExpr, ts.Module, ts.Class)), ref
         return ref
-
-    def is_match(self, args: list[ts.TypeExpr], params):
-        return True
 
     def join_all(self, types: Iterable[ts.TypeExpr]) -> ts.TypeExpr:
         result = self.bottom()
@@ -175,7 +174,7 @@ class AllocationChecker:
         self.type_invariant_map = type_invariant_map
         self.type_lattice = type_lattice
 
-    def __call__(self, ins: tac.Tac, location: tuple[int, int]) -> AllocationType:
+    def __call__(self, ins: tac.Tac, location: Location) -> AllocationType:
         type_invariant: MapDomain[ts.TypeExpr] = self.type_invariant_map[location]
         if isinstance(type_invariant, domain.Bottom):
             return Allocation.UNKNOWN

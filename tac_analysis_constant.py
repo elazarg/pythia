@@ -52,10 +52,10 @@ class ConstLattice(ValueLattice[Constant]):
     def is_bottom(self, elem: Constant) -> bool:
         return isinstance(elem, Bottom)
 
-    def is_equivalent(self, left, right) -> bool:
+    def is_equivalent(self, left: Constant, right: Constant) -> bool:
         return left == right
 
-    def is_less_than(self, left, right) -> bool:
+    def is_less_than(self, left: Constant, right: Constant) -> bool:
         return self.join(left, right) == right
 
     def copy(self, value: Constant) -> Constant:
