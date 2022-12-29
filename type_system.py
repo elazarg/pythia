@@ -19,7 +19,7 @@ K = typing.TypeVar('K')
 
 @dataclass(frozen=True)
 class Literal(TypeExpr):
-    value: int | str | bool | None
+    value: int | str | bool | float | None
 
     def __repr__(self):
         return f'Literal({self.value!r})'
@@ -207,7 +207,7 @@ class Instantiation(TypeExpr):
 
 
 def constant(value: object) -> TypeExpr:
-    assert isinstance(value, (int, str, type(None), bool))
+    assert isinstance(value, (int, str, type(None), bool, float)), value
     if value is None:
         t = Ref('builtins.NoneType')
     else:
@@ -771,7 +771,7 @@ def pretty_print_type(t: Module | TypeExpr, indent=0):
             if isinstance(typeexpr, Intersection):
                 print()
             pretty_print_type(typeexpr, indent)
-        case FunctionType(params, return_type, Literal(new), Literal(property), type_params):
+        case FunctionType(params, return_type, new, property, type_params):
             # pretty_params = ', '.join(f'{row.index.name}: {row.type}'
             #                           for row in sorted(params.row_items(), key=lambda x: x.index))
             pretty_type_params = ', '.join(str(x) for x in type_params)
