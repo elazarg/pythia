@@ -21,7 +21,7 @@ K = typing.TypeVar('K')
 class Literal(TypeExpr):
     value: int | str | bool | float | None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'Literal({self.value!r})'
 
 
@@ -29,7 +29,7 @@ class Literal(TypeExpr):
 class Ref(TypeExpr):
     name: str
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.name
 
 
@@ -38,7 +38,7 @@ class TypeVar(TypeExpr):
     name: str
     is_args: bool = False
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'*{self.name}' if self.is_args else self.name
 
 
@@ -47,7 +47,7 @@ class Index:
     number: typing.Optional[int]
     name: typing.Optional[str]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self.number is None:
             if self.name is None:
                 return 'None'
@@ -82,7 +82,7 @@ class Row(TypeExpr):
     index: Index
     type: TypeExpr
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'{self.index}: {self.type}'
 
     def __le__(self, other: Row) -> bool:
@@ -94,13 +94,13 @@ def make_row(number: typing.Optional[int], name: typing.Optional[str], type: Typ
 
 
 @dataclass(frozen=True)
-class Union(TypeExpr, typing.Generic[T]):
-    items: frozenset[T]
+class Union(TypeExpr):
+    items: frozenset[TypeExpr]
 
     def __repr__(self) -> str:
         return f'{{{" | ".join(f"{decl}" for decl in self.items)}}}'
 
-    def squeeze(self):
+    def squeeze(self) -> TypeExpr:
         if len(self.items) == 1:
             return next(iter(self.items))
         return self
@@ -165,7 +165,7 @@ class Class(TypeExpr):
     protocol: bool
     type_params: tuple[TypeVar, ...]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'{self.name}'
 
 
@@ -174,7 +174,7 @@ class Module(TypeExpr):
     name: str
     class_dict: TypedDict
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'module {self.name}({self.class_dict})'
 
 
@@ -202,7 +202,7 @@ class Instantiation(TypeExpr):
     generic: TypeExpr
     type_args: tuple[TypeExpr, ...]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'{self.generic}[{", ".join(repr(x) for x in self.type_args)}]'
 
 
@@ -340,7 +340,7 @@ def intersect(rows: typing.Iterable[T]) -> TypedDict:
     return Intersection(frozenset(rows))
 
 
-def union(items: typing.Iterable[TypeExpr]) -> Union:
+def union(items: typing.Iterable[TypeExpr]) -> TypeExpr:
     return Union(frozenset(items)).squeeze()
 
 
@@ -949,7 +949,7 @@ MODULES = Module('typeshed',
                             for index, file in enumerate(os.listdir('typeshed_mini'))]))
 
 
-def main():
+def main() -> None:
     pretty_print_type(MODULES)
 
 

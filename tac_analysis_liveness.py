@@ -22,16 +22,16 @@ Here:
 """
 from __future__ import annotations
 
-import dataclasses
 import typing
 from dataclasses import dataclass
 from typing import TypeVar
 
-import graph_utils
+from graph_utils import Location
+
 import tac
-from tac import Tac, Var
+from tac import Var
 from tac_analysis_domain import IterationStrategy, BackwardIterationStrategy, Top, Bottom, TOP, BOTTOM, \
-    VarLattice, MapDomain, Lattice, Map, normalize, InstructionLattice
+    MapDomain, Lattice, Map, normalize, InstructionLattice
 import graph_utils as gu
 
 T = TypeVar('T')
@@ -63,25 +63,31 @@ class LivenessLattice(Lattice[Liveness]):
     def top(self) -> Liveness:
         return TOP
 
+    def initial(self, values: dict[tac.Var, str]) -> Liveness:
+        return TOP
+
     def is_top(self, elem: Liveness) -> bool:
         return isinstance(elem, Top)
 
     def is_bottom(self, elem: Liveness) -> bool:
         return isinstance(elem, Bottom)
 
+    def is_equivalent(self, left: Liveness, right: Liveness) -> bool:
+        return left == right
+
+    def is_less_than(self, left: Liveness, right: Liveness) -> bool:
+        return self.join(left, right) == right
+
+    def copy(self, values: Liveness) -> Liveness:
+        return values
+
     def default(self) -> Liveness:
         return BOTTOM
 
-    @classmethod
-    def bottom(cls) -> Liveness:
+    def bottom(self) -> Liveness:
         return BOTTOM
 
-    @classmethod
-    def view(cls, cfg: gu.Cfg[T]) -> IterationStrategy:
-        return BackwardIterationStrategy(cfg)
-
-    @staticmethod
-    def name() -> str:
+    def name(self) -> str:
         return "Liveness"
 
 
@@ -89,7 +95,7 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
     lattice: LivenessLattice
     backward: bool = True
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.lattice = LivenessLattice()
 
@@ -138,7 +144,7 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
     def back_transformer_signature(self, signature: tac.Signature) -> tuple[set[Var], set[Var]]:
         return tac.gens_signature(signature), tac.free_vars_lval(signature)
 
-    def back_transfer(self, values: MapDomain[Liveness], ins: tac.Tac, location: tuple[int, int]) -> MapDomain[Liveness]:
+    def back_transfer(self, values: MapDomain[Liveness], ins: tac.Tac, location: Location) -> MapDomain[Liveness]:
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()
@@ -148,7 +154,7 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
             values[v] = TOP
         return values
 
-    def transfer(self, values: MapDomain[Liveness], ins: tac.Tac, location: tuple[int, int]) -> MapDomain[Liveness]:
+    def transfer(self, values: MapDomain[Liveness], ins: tac.Tac, location: Location) -> MapDomain[Liveness]:
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()
@@ -160,20 +166,3 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
                 del values[var]
         values.update(to_update)
         return normalize(values)
-
-
-def single_block_uses(block):
-    uses = set()
-    for ins in reversed(block):
-        uses.difference_update(ins.gens)
-        uses.update(ins.uses)
-    return tuple(x for x in uses if is_extended_identifier(x))
-
-
-def undef(kills, gens):
-    return tuple(('_' if v in kills and tac.is_stackvar(v) else v)
-                 for v in gens)
-
-
-def is_extended_identifier(name):
-    return name.replace('.', '').isidentifier()

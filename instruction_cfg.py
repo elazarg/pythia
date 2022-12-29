@@ -1,4 +1,4 @@
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Any
 
 import dis
 from dis import Instruction
@@ -23,7 +23,7 @@ def is_jump_source(ins: Instruction) -> bool:
     # exceptions do not count, since they can occur practically anywhere
 
 
-def is_jump(ins: Instruction):
+def is_jump(ins: Instruction) -> bool:
     return ins.opcode in dis.hasjrel or ins.opcode in dis.hasjabs
 
 
@@ -101,5 +101,5 @@ def make_instruction_block_cfg(instructions: Iterable[Instruction]) -> tuple[dic
     return depths, cfg
 
 
-def make_instruction_block_cfg_from_function(f) -> tuple[dict[int, int], Cfg]:
+def make_instruction_block_cfg_from_function(f: Any) -> tuple[dict[int, int], Cfg]:
     return make_instruction_block_cfg(dis.get_instructions(f))

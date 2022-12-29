@@ -1,14 +1,21 @@
 from __future__ import annotations
+import typing
+from typing import TypeVar, Generic, Callable, Iterator, TypeAlias, Optional
 
 import math
-import typing
 from dataclasses import dataclass
-from typing import TypeVar, Generic, Callable, Any, Iterator, TypeAlias, Optional
-import networkx as nx  # type: ignore
 from itertools import chain
+
+import networkx as nx  # type: ignore
+from networkx.classes.reportviews import NodeView  # type: ignore
+
 
 T = TypeVar('T')
 Q = TypeVar('Q')
+
+
+Label: TypeAlias = int | float
+Location: TypeAlias = tuple[Label, int]
 
 
 @dataclass
@@ -33,7 +40,7 @@ class ForwardBlock(Generic[T]):
     def __len__(self) -> int:
         return len(self._instructions)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return bool(self._instructions)
 
     def __getitem__(self, index: int) -> T:
@@ -68,7 +75,7 @@ class BackwardBlock(Generic[T]):
     def __len__(self) -> int:
         return len(self.block)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return bool(self.block)
 
     def __getitem__(self, index: int) -> T:
@@ -83,18 +90,18 @@ Block: TypeAlias = ForwardBlock[T] | BackwardBlock[T]
 
 class Cfg(Generic[T]):
     graph: nx.DiGraph
-    _annotator: Callable[[tuple[int, int], T], str]
+    _annotator: Callable[[Location, T], str]
 
     @property
-    def annotator(self) -> Callable[[tuple[int, int], T], str]:
+    def annotator(self) -> Callable[[Location, T], str]:
         return self._annotator
 
     @annotator.setter
-    def annotator(self, annotator: Callable[[tuple[int, int], T], str]) -> None:
+    def annotator(self, annotator: Callable[[Location, T], str]) -> None:
         self._annotator = staticmethod(annotator)
 
-    def __init__(self, graph: nx.DiGraph | dict | list[tuple[int, int]] | list[tuple[int, int, dict]],
-                 blocks: Optional[dict[int, list[T]]] = None, add_sink = True) -> None:
+    def __init__(self, graph: nx.DiGraph | dict | list[tuple[Label, Label]] | list[tuple[Label, Label, dict]],
+                 blocks: Optional[dict[Label, list[T]]] = None, add_sink: bool = True) -> None:
         if isinstance(graph, nx.DiGraph):
             self.graph = graph
         else:
@@ -117,35 +124,35 @@ class Cfg(Generic[T]):
         self.annotator = lambda tup, x: ''
 
     @property
-    def entry_label(self) -> int:
+    def entry_label(self) -> Label:
         return 0
 
     @property
-    def exit_label(self) -> int | float:
+    def exit_label(self) -> Label:
         return math.inf
 
     @property
-    def entry(self):
+    def entry(self) -> ForwardBlock:
         return self.graph.nodes[self.entry_label]
 
     @property
-    def nodes(self):
+    def nodes(self) -> NodeView:
         return self.graph.nodes
 
     @property
-    def labels(self):
-        return self.graph.nodes.keys()
+    def labels(self) -> set[Label]:
+        return set(self.graph.nodes.keys())
 
-    def items(self) -> Iterator[tuple[int, ForwardBlock[T]]]:
+    def items(self) -> Iterator[tuple[Label, ForwardBlock[T]]]:
         yield from ((label, self[label]) for label in self.labels)
 
-    def __getitem__(self, label: int) -> ForwardBlock[T]:
+    def __getitem__(self, label: Label) -> ForwardBlock[T]:
         return self.graph.nodes[label]['block']
 
-    def __setitem__(self, label: int, block: ForwardBlock[T]) -> None:
+    def __setitem__(self, label: Label, block: ForwardBlock[T]) -> None:
         self.graph.nodes[label]['block'] = block
 
-    def reverse(self: Cfg[T], copy) -> Cfg[T]:
+    def reverse(self: Cfg[T], copy: bool) -> Cfg[T]:
         return Cfg(self.graph.reverse(copy=copy), add_sink=False)
 
     def draw(self) -> None:
@@ -157,32 +164,24 @@ class Cfg(Generic[T]):
         for label in sorted(self.graph.nodes()):
             print(label, ':', self[label])
 
-    def predecessors(self, label) -> Iterator[int]:
+    def predecessors(self, label: Label) -> Iterator[Label]:
         return self.graph.predecessors(label)
 
-    def successors(self, label) -> Iterator[int]:
+    def successors(self, label: Label) -> Iterator[Label]:
         return self.graph.successors(label)
 
     def copy(self: Cfg) -> Cfg:
         return Cfg(self.graph.copy(), add_sink=False)
 
-    def dominance_frontiers(self) -> dict[int, set[int]]:
+    def dominance_frontiers(self) -> dict[Label, set[Label]]:
         return nx.dominance_frontiers(self.graph, self.entry_label)
 
-    def immediate_dominators(self) -> dict[int, set[int]]:
+    def immediate_dominators(self) -> dict[Label, set[Label]]:
         return nx.immediate_dominators(self.graph, self.entry_label)
 
-    def reverse_dom_tree(self) -> set[tuple[int, int]]:
+    def reverse_dom_tree(self) -> set[tuple[Label, Label]]:
         dominators = nx.DiGraph((y, x) for x, y in self.immediate_dominators().items())
         return {(y, x) for x, y in nx.transitive_closure(dominators).edges}
-
-
-def reverse_weights(g: nx.DiGraph, weight='weight'):
-    g = g.reverse()
-    for s, t in g.edges():
-        e = g[s][t]
-        e[weight] = -e[weight]
-    return g
 
 
 def simplify_cfg(cfg: Cfg) -> Cfg:
@@ -198,7 +197,7 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
                                            if g.out_degree(n) > 1)))
     blocks = {}
     labels = set()
-    edges: list[tuple[int, int]] = []
+    edges: list[tuple[Label, Label]] = []
     for label in starts:
         n = label
         instructions = []
@@ -220,7 +219,7 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
     return simplified_cfg
 
 
-def refine_to_chain(g, from_attr, to_attr):
+def refine_to_chain(g: nx.Digraph, from_attr: str, to_attr: str) -> nx.DiGraph:
     """can be used to refine basic blocks into blocks - the dual of simplify_cfg()
     assume g.nodes[n][attr] is a list
     returns a graph whose nodes are the refinement of the lists into paths
@@ -242,15 +241,15 @@ def refine_to_chain(g, from_attr, to_attr):
     return res
 
 
-def node_data_map(cfg: Cfg[T], f: Callable[[int, Block[T]], Block[Q]]) -> Cfg[Q]:
+def node_data_map(cfg: Cfg[T], f: Callable[[Label, Block[T]], Block[Q]]) -> Cfg[Q]:
     cfg = cfg.copy()
     for n, data in cfg.nodes.items():
         data['block'] = f(n, data['block'])
     return typing.cast(Cfg[Q], cfg)
 
 
-def print_block(label: int, block: Block[T],
-                *annotators: Callable[[tuple[int, int], T], object]) -> None:
+def print_block(label: Label, block: Block[T],
+                *annotators: Callable[[Location, T], object]) -> None:
     print(label, ':')
     for index, ins in enumerate(block):
         location = (label, index)
@@ -267,5 +266,5 @@ def pretty_print_cfg(cfg: Cfg[T]) -> None:
         print()
 
 
-def single_source_dijkstra_path_length(cfg: Cfg, source: int, weight='weight'):
+def single_source_dijkstra_path_length(cfg: Cfg, source: int, weight: str = 'weight') -> nx.DiGraph:
     return nx.single_source_dijkstra_path_length(cfg.graph, source, weight=weight)
