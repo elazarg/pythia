@@ -19,8 +19,9 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
     def __init__(self, this_function: str, this_module: ts.Module, functions, imports: dict[str, str]):
         this_signature = ts.subscr(this_module, ts.Literal(this_function))
         assert isinstance(this_signature, ts.FunctionType)
-        self.annotations = {tac.Var(row.index.name.value, is_stackvar=False): row.type
-                            for row in this_signature.params.items}
+        self.annotations = {tac.Var(row.index.name, is_stackvar=False): row.type
+                            for row in this_signature.params.row_items()
+                            if row.index.name is not None}
         self.annotations[tac.Var('return', is_stackvar=False)] = this_signature.return_type
         self.globals = this_module
         self.builtins = ts.resolve_static_ref(ts.Ref('builtins'))
@@ -55,7 +56,7 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
             if '.' in ref.name:
                 module, name = ref.name.split('.', 1)
                 if module == self.globals.name:
-                    return ts.subscr(self.globals, ts.Literal[str](name))
+                    return ts.subscr(self.globals, ts.Literal(name))
             ref = ts.resolve_static_ref(ref)
         assert isinstance(ref, (ts.TypeExpr, ts.Module, ts.Class)), ref
         return ref
@@ -70,7 +71,7 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
         return result
 
     def call(self, function: ts.TypeExpr, args: list[ts.TypeExpr]) -> ts.TypeExpr:
-        return ts.call(self.resolve(function), ts.intersect([ts.Row(ts.Index(ts.Literal(index), None), self.resolve(arg))
+        return ts.call(self.resolve(function), ts.intersect([ts.make_row(index, None, self.resolve(arg))
                                                              for index, arg in enumerate(args)]))
 
     def binary(self, left: ts.TypeExpr, right: ts.TypeExpr, op: str) -> ts.TypeExpr:
@@ -99,7 +100,7 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
         f = self.get_unary_attribute(value, op)
         return self.call(f, [])
 
-    def predefined(self, name: Predefined) -> Optional[ts.TypeExpr]:
+    def predefined(self, name: Predefined) -> ts.TypeExpr:
         match name:
             case Predefined.LIST: return ts.make_constructor(ts.Ref('builtins.list'))
             case Predefined.TUPLE: return ts.make_constructor(ts.Ref('builtins.tuple'))
@@ -108,7 +109,7 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
             case Predefined.NONLOCALS: return self.top()
             case Predefined.LOCALS: return self.top()
             case Predefined.CONST_KEY_MAP: return self.top()
-        return None
+        assert False, name
 
     def const(self, value: object) -> ts.TypeExpr:
         return ts.constant(value)
@@ -175,7 +176,7 @@ class AllocationChecker:
                 case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
                     var_type = self.type_lattice.transformer_expr(type_invariant, var)
                     function = self.type_lattice.lattice._attribute(var_type, field)
-                    if isinstance(function, ts.FunctionType) and function.property != ts.Literal(False):
+                    if isinstance(function, ts.FunctionType) and function.property:
                         return self.from_function(function)
                     return AllocationType.NONE
                 case tac.Call(func, args):
@@ -198,7 +199,7 @@ class AllocationChecker:
 
     def from_function(self, function: ts.TypeExpr) -> Allocation:
         if isinstance(function, ts.FunctionType):
-            if function.new != ts.Literal(False):
+            if function.new:
                 return AllocationType.STACK
             else:
                 return AllocationType.NONE

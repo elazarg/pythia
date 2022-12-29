@@ -114,7 +114,7 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
     def initial(self, annotations: dict) -> MapDomain[Liveness]:
         return self.top()
 
-    def top(self) -> MapDomain[Liveness]:
+    def top(self) -> Map[Liveness]:
         return self.make_map()
 
     def bottom(self) -> MapDomain[Liveness]:
@@ -124,11 +124,12 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
         match left, right:
             case (Bottom(), _): return right
             case (_, Bottom()): return left
-            case (Map(), Map()):
+            case (Map() as left, Map() as right):
                 res = self.top()
                 for k in left.keys() | right.keys():
                     res[k] = self.lattice.join(left[k], right[k])
                 return normalize(res)
+        return self.top()
 
     def back_transformer_signature(self, signature: tac.Signature) -> tuple[set[Var], set[Var]]:
         return tac.gens(signature), tac.free_vars(signature)

@@ -7,7 +7,8 @@ from itertools import chain
 from typing import TypeAlias, Callable, Final
 
 import tac
-from tac_analysis_domain import InstructionLattice, InvariantMap, BOTTOM
+import tac_analysis_liveness
+from tac_analysis_domain import InstructionLattice, InvariantMap, BOTTOM, Map
 from tac_analysis_types import AllocationType
 
 
@@ -47,7 +48,7 @@ def copy_graph(graph: Graph) -> Graph:
 
 class PointerLattice(InstructionLattice[Graph]):
     allocation_invariant_map: InvariantMap[AllocationType]
-    liveness: InvariantMap[set[tac.Var]]
+    liveness: InvariantMap[Map[tac_analysis_liveness.Liveness]]
     backward: bool = False
 
     def name(self) -> str:
@@ -143,7 +144,8 @@ def allocation_to_str(t: AllocationType) -> str:
     return ''
 
 
-def mark_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, object], get_ins: Callable[[str, str], tac.Assign]) -> None:
+def mark_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, object],
+                   alloc_invs: InvariantMap[AllocationType]) -> None:
     worklist = {LOCALS}
     while worklist:
         root = worklist.pop()
@@ -157,5 +159,4 @@ def mark_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, o
                     continue
                 worklist.add(loc)
                 label, index = [int(x) for x in str(loc)[1:].split('.')]
-                ins = get_ins(label, index)
-                ins.expr.allocation = AllocationType.HEAP
+                alloc_invs[(label, index)] = AllocationType.HEAP

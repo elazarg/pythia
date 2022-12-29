@@ -13,15 +13,15 @@ N = ts.TypeVar('N')
 Args = ts.TypeVar('Args', is_args=True)
 
 
-def make_function(return_type: ts.TypeExpr, params: ts.Intersection[ts.Row], type_params=()) -> ts.FunctionType:
+def make_function(return_type: ts.TypeExpr, params: ts.Intersection, type_params=()) -> ts.FunctionType:
     return ts.FunctionType(params, return_type,
-                           new=ts.Literal(True),
-                           property=ts.Literal(False),
+                           new=True,
+                           property=False,
                            type_params=type_params)
 
 
-def make_rows(*types) -> ts.Intersection[ts.Row]:
-    return ts.intersect([ts.Row(ts.Index(ts.Literal(index), None), t)
+def make_rows(*types) -> ts.Intersection:
+    return ts.intersect([ts.make_row(index, None, t)
                          for index, t in enumerate(types)])
 
 
@@ -29,6 +29,22 @@ def test_join():
     t1 = ts.Ref('builtins.int')
     t2 = ts.Ref('builtins.float')
     assert ts.join(t1, t2) == ts.union([t1, t2])
+
+
+def test_overload():
+    f1 = make_function(STR, make_rows(INT))
+    f2 = make_function(FLOAT, make_rows(FLOAT))
+    arg = INT
+    args = make_rows(arg)
+    overload = ts.intersect([f1, f2])
+    assert ts.call(overload, args) == STR
+
+    f1 = make_function(STR, make_rows(INT))
+    f2 = make_function(FLOAT, make_rows(FLOAT))
+    arg = ts.intersect([ts.Literal(0), INT])
+    args = make_rows(arg)
+    overload = ts.intersect([f1, f2])
+    assert ts.call(overload, args) == STR
 
 
 def test_function_call():
@@ -42,7 +58,7 @@ def test_function_call():
 
     f = make_function(INT, make_rows(INT, FLOAT))
     arg = make_rows(INT, INT)
-    assert ts.call(f, arg) == ts.TOP
+    assert ts.call(f, arg) == ts.BOTTOM
 
     f = make_function(INT, make_rows())
     arg = ts.BOTTOM
@@ -118,10 +134,10 @@ def test_tuple():
     second_intersect = ts.intersect([second, ts.Ref('builtins.int')])
 
     gt = ts.subscr(tuple_named, ts.Literal('__getitem__'))
-    f = ts.FunctionType(params=ts.intersect([ts.Row(ts.Index(ts.Literal(0), ts.Literal('item')), N)]),
+    f = ts.FunctionType(params=ts.intersect([ts.make_row(0, 'item', N)]),
                         return_type=ts.Instantiation(tuple_structure, (N,)),
-                        new=ts.Literal(True),
-                        property=ts.Literal(False),
+                        new=True,
+                        property=False,
                         type_params=(N,))
     assert gt == f
     x = ts.call(gt, make_rows(first))
@@ -198,7 +214,7 @@ def test_getitem_numpy():
     assert x == ARRAY
 
     x = ts.subscr(ARRAY, ts.Ref('builtins.None'))
-    assert x == ts.TOP
+    assert x == ts.BOTTOM
 
 
 def test_list_constructor():
