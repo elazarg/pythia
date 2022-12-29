@@ -16,7 +16,7 @@ from tac_analysis_constant import ConstLattice, Constant
 
 from tac_analysis_liveness import LivenessVarLattice, Liveness
 from tac_analysis_pointer import PointerLattice, pretty_print_pointers, mark_reachable, Graph
-from tac_analysis_types import TypeLattice, AllocationChecker, Allocation, AllocationType
+from tac_analysis_types import TypeLattice, AllocationChecker, AllocationType
 import type_system as ts
 
 
@@ -114,9 +114,9 @@ def run(f, functions, imports, module_type, simplify=True) -> None:
     liveness_invariants: InvariantPair[MapDomain[Liveness]] = analyze(cfg, LivenessVarLattice(), annotations)
     constant_invariants: InvariantPair[MapDomain[Constant]] = analyze(cfg, domain.VarLattice(ConstLattice(), liveness_invariants.post), annotations)
 
-    type_analysis: domain.VarLattice[ts.TypeExpr] = domain.VarLattice(TypeLattice(f.__name__, module_type, functions, imports), liveness_invariants.post)
+    type_analysis: domain.VarLattice[ts.TypeExpr] = domain.VarLattice[ts.TypeExpr](TypeLattice(f.__name__, module_type, functions, imports),
+                                                                                   liveness_invariants.post)
     type_invariants: InvariantPair[MapDomain[ts.TypeExpr]] = analyze(cfg, type_analysis, annotations)
-
     allocation_invariants: InvariantMap[AllocationType] = analyze_single(cfg, AllocationChecker(type_invariants.pre, type_analysis))
 
     pointer_analysis = PointerLattice(allocation_invariants, liveness_invariants.post)
@@ -134,7 +134,7 @@ def run(f, functions, imports, module_type, simplify=True) -> None:
             mark_reachable(ptr, alive, annotations, alloc_invs=allocation_invariants)
             break
 
-    invariant_pairs = {
+    invariant_pairs: dict[str, InvariantPair] = {
         "Liveness": liveness_invariants,
         "Constant": constant_invariants,
         "Type": type_invariants,

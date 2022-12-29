@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import typing
 from typing import TypeVar, Optional, TypeAlias
 
 import tac
@@ -39,8 +40,11 @@ class ConstLattice(ValueLattice[Constant]):
             return left
         return self.bottom()
 
-    def top(self) -> Constant:
+    def top(self) -> Top:
         return TOP
+
+    def initial(self, annotations: dict[tac.Var, str]) -> Constant:
+        return self.top()
 
     def is_top(self, elem: Constant) -> bool:
         return isinstance(elem, Top)
@@ -48,8 +52,16 @@ class ConstLattice(ValueLattice[Constant]):
     def is_bottom(self, elem: Constant) -> bool:
         return isinstance(elem, Bottom)
 
-    @classmethod
-    def bottom(cls) -> Constant:
+    def is_equivalent(self, left, right) -> bool:
+        return left == right
+
+    def is_less_than(self, left, right) -> bool:
+        return self.join(left, right) == right
+
+    def copy(self, value: Constant) -> Constant:
+        return value
+
+    def bottom(self) -> Constant:
         return BOTTOM
 
     def call(self, function: Constant, args: list[Constant]) -> Constant:
@@ -59,16 +71,18 @@ class ConstLattice(ValueLattice[Constant]):
             case Predefined.SLICE: return Const(slice(*args))
         return self.top()
 
-    def unary(self, value: Const, op: tac.UnOp) -> Const:
+    def unary(self, value: Constant, op: tac.UnOp) -> Constant:
         if self.is_bottom(value):
             return self.bottom()
         if self.is_top(value):
             return self.top()
+        assert isinstance(value, Const)
+        const: typing.Any = value.value
         match op:
-            case tac.UnOp.NEG: return Const(-value.value)
-            case tac.UnOp.NOT: return Const(not value.value)
-            case tac.UnOp.POS: return Const(+value.value)
-            case tac.UnOp.INVERT: return Const(~value.value)
+            case tac.UnOp.NEG: return Const(-const)
+            case tac.UnOp.NOT: return Const(not const)
+            case tac.UnOp.POS: return Const(+const)
+            case tac.UnOp.INVERT: return Const(~const)
         return self.top()
 
     def binary(self, left: Constant, right: Constant, op: str) -> Constant:
@@ -77,11 +91,16 @@ class ConstLattice(ValueLattice[Constant]):
         if self.is_top(left) or self.is_top(right):
             return self.top()
         try:
-            return eval_binary(op, left, right)
+            assert isinstance(left, Const)
+            assert isinstance(right, Const)
+            res = eval_binary(op, left, right)
+            if res is None:
+                return self.bottom()
+            return res
         except TypeError:
             return self.top()
 
-    def predefined(self, name: tac.Predefined) -> Optional[Constant]:
+    def predefined(self, name: tac.Predefined) -> tac.Predefined:
         return name
 
     def const(self, value: object) -> Constant:
@@ -98,7 +117,7 @@ class ConstLattice(ValueLattice[Constant]):
         return tac.Const(tac.Module(modname))
 
 
-def eval_binary(op: str, left: object, right: object) -> Optional[Const]:
+def eval_binary(op: str, left: typing.Any, right: typing.Any) -> Optional[Const]:
     match op:
         case '+': return Const(left + right)
         case '-': return Const(left - right)

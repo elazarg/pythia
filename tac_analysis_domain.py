@@ -51,7 +51,6 @@ IterationStrategy: TypeAlias = ForwardIterationStrategy | BackwardIterationStrat
 
 
 class Lattice(Protocol[T]):
-    backward: bool
 
     def name(self) -> str:
         raise NotImplementedError
@@ -208,6 +207,8 @@ def normalize(values: MapDomain[T]) -> MapDomain[T]:
 
 
 class InstructionLattice(Lattice[T], Generic[T]):
+    backward: bool
+
     def transfer(self, values: T, ins: tac.Tac, location: tuple[int, int]) -> T:
         raise NotImplementedError
 
@@ -257,10 +258,10 @@ InvariantMap: TypeAlias = dict[tuple[int, int], T]
 
 class VarLattice(InstructionLattice[MapDomain[T]], Generic[T]):
     lattice: ValueLattice[T]
-    liveness: InvariantMap[Map[Lattice[Top | Bottom]]]
+    liveness: InvariantMap[MapDomain[Top | Bottom]]
     backward: bool = False
 
-    def __init__(self, lattice: ValueLattice[T], liveness: InvariantMap[Map[Lattice[Top | Bottom]]]):
+    def __init__(self, lattice: ValueLattice[T], liveness: InvariantMap[MapDomain[Top | Bottom]]):
         super().__init__()
         self.lattice = lattice
         self.liveness = liveness
@@ -400,8 +401,9 @@ class VarLattice(InstructionLattice[MapDomain[T]], Generic[T]):
         if isinstance(to_update, Map):
             values.update(to_update)
 
-        for var in set(values.keys()):
-            here = self.liveness[location]
-            if var.is_stackvar and here[var] is BOTTOM:
-                del values[var]
+        here = self.liveness[location]
+        if not isinstance(here, Bottom):
+            for var in set(values.keys()):
+                if var.is_stackvar and here[var] is BOTTOM:
+                    del values[var]
         return normalize(values)

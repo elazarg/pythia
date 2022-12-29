@@ -4,11 +4,12 @@ from __future__ import annotations as _
 
 import enum
 import typing
-from typing import Optional, Iterable
+from typing import Iterable
 
 import tac
 from tac import Predefined, UnOp
-from tac_analysis_domain import ValueLattice, VarLattice, InvariantMap, Map
+import tac_analysis_domain as domain
+from tac_analysis_domain import ValueLattice, VarLattice, InvariantMap, MapDomain
 import type_system as ts
 
 
@@ -19,9 +20,9 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
     def __init__(self, this_function: str, this_module: ts.Module, functions, imports: dict[str, str]):
         this_signature = ts.subscr(this_module, ts.Literal(this_function))
         assert isinstance(this_signature, ts.FunctionType)
-        self.annotations = {tac.Var(row.index.name, is_stackvar=False): row.type
-                            for row in this_signature.params.row_items()
-                            if row.index.name is not None}
+        self.annotations: dict[tac.Var, ts.TypeExpr] = {tac.Var(row.index.name, is_stackvar=False): row.type
+                                                        for row in this_signature.params.row_items()
+                                                        if row.index.name is not None}
         self.annotations[tac.Var('return', is_stackvar=False)] = this_signature.return_type
         self.globals = this_module
         self.builtins = ts.resolve_static_ref(ts.Ref('builtins'))
@@ -47,9 +48,20 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
     def is_bottom(self, elem: ts.TypeExpr) -> bool:
         return elem == ts.BOTTOM
 
-    @classmethod
-    def bottom(cls) -> ts.TypeExpr:
+    def bottom(self) -> ts.TypeExpr:
         return ts.BOTTOM
+
+    def copy(self, values: ts.TypeExpr) -> ts.TypeExpr:
+        return values
+
+    def is_equivalent(self, left: ts.TypeExpr, right: ts.TypeExpr) -> bool:
+        return left == right
+
+    def is_less_than(self, left: ts.TypeExpr, right: ts.TypeExpr) -> bool:
+        return ts.join(left, right) == right
+
+    def initial(self, annotations: dict[tac.Var, str]) -> ts.TypeExpr:
+        return self.top()
 
     def resolve(self, ref: ts.TypeExpr) -> ts.TypeExpr:
         if isinstance(ref, ts.Ref):
@@ -65,7 +77,7 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
         return True
 
     def join_all(self, types: Iterable[ts.TypeExpr]) -> ts.TypeExpr:
-        result = TypeLattice.bottom()
+        result = self.bottom()
         for t in types:
             result = self.join(result, t)
         return result
@@ -114,7 +126,7 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
     def const(self, value: object) -> ts.TypeExpr:
         return ts.constant(value)
 
-    def _attribute(self, var: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
+    def attribute(self, var: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
         mod = self.resolve(var)
         assert mod != ts.TOP, f'Cannot resolve {var}'
         try:
@@ -128,18 +140,12 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
                 return ts.subscr(self.builtins, ts.Literal(attr.name))
             raise
 
-    def attribute(self, var: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
-        assert isinstance(attr, tac.Var)
-        return self._attribute(var, attr)
-
     def subscr(self, array: ts.TypeExpr, index: ts.TypeExpr) -> ts.TypeExpr:
         return ts.subscr(self.resolve(array), self.resolve(index))
 
-    def imported(self, modname: tac.Var) -> ts.TypeExpr:
-        if isinstance(modname, tac.Var):
-            return ts.resolve_static_ref(ts.Ref(modname.name))
-        elif isinstance(modname, tac.Attribute):
-            return self.attribute(modname.var, modname.field)
+    def imported(self, modname: str) -> ts.TypeExpr:
+        assert isinstance(modname, str)
+        return ts.resolve_static_ref(ts.Ref(modname))
 
     def is_subtype(self, left: ts.TypeExpr, right: ts.TypeExpr) -> bool:
         left = self.resolve(left)
@@ -160,22 +166,24 @@ Allocation: typing.TypeAlias = AllocationType
 
 
 class AllocationChecker:
-    type_invariant_map: InvariantMap[Map[ts.TypeExpr]]
+    type_invariant_map: InvariantMap[MapDomain[ts.TypeExpr]]
     type_lattice: VarLattice[ts.TypeExpr]
     backward = False
 
-    def __init__(self, type_invariant_map: InvariantMap[Map[ts.TypeExpr]], type_lattice: VarLattice[ts.TypeExpr]) -> None:
+    def __init__(self, type_invariant_map: InvariantMap[MapDomain[ts.TypeExpr]], type_lattice: VarLattice[ts.TypeExpr]) -> None:
         super().__init__()
         self.type_invariant_map = type_invariant_map
         self.type_lattice = type_lattice
 
     def __call__(self, ins: tac.Tac, location: tuple[int, int]) -> AllocationType:
-        type_invariant: Map[ts.TypeExpr] = self.type_invariant_map[location]
+        type_invariant: MapDomain[ts.TypeExpr] = self.type_invariant_map[location]
+        if isinstance(type_invariant, domain.Bottom):
+            return Allocation.UNKNOWN
         if isinstance(ins, tac.Assign):
             match ins.expr:
                 case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
                     var_type = self.type_lattice.transformer_expr(type_invariant, var)
-                    function = self.type_lattice.lattice._attribute(var_type, field)
+                    function = self.type_lattice.lattice.attribute(var_type, field)
                     if isinstance(function, ts.FunctionType) and function.property:
                         return self.from_function(function)
                     return AllocationType.NONE
@@ -188,7 +196,9 @@ class AllocationChecker:
                     return AllocationType.UNKNOWN
                 case tac.Unary(var=tac.Var() as var, op=tac.UnOp() as op):
                     value = self.type_lattice.transformer_expr(type_invariant, var)
-                    function = self.type_lattice.lattice.get_unary_attribute(value, op)
+                    lattice = self.type_lattice.lattice
+                    assert isinstance(lattice, TypeLattice)
+                    function = lattice.get_unary_attribute(value, op)
                     return self.from_function(function)
                 case tac.Binary(left=tac.Var() as left, right=tac.Var() as right, op=str() as op):
                     left_type: ts.TypeExpr = self.type_lattice.transformer_expr(type_invariant, left)

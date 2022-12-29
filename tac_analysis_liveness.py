@@ -23,6 +23,7 @@ Here:
 from __future__ import annotations
 
 import dataclasses
+import typing
 from dataclasses import dataclass
 from typing import TypeVar
 
@@ -104,10 +105,13 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
     def copy(self, values: MapDomain[Liveness]) -> MapDomain[Liveness]:
         return values.copy()
 
+    def is_top(self, elem: T) -> bool:
+        return isinstance(elem, Top)
+
     def is_bottom(self, values: MapDomain[Liveness]) -> bool:
         return isinstance(values, Bottom)
 
-    def make_map(self, d: dict[Var, Liveness] = None) -> MapDomain[Liveness]:
+    def make_map(self, d: typing.Optional[dict[Var, Liveness]] = None) -> Map[Liveness]:
         d = d or {}
         return Map(default=self.lattice.default(), d=d)
 
@@ -132,7 +136,7 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
         return self.top()
 
     def back_transformer_signature(self, signature: tac.Signature) -> tuple[set[Var], set[Var]]:
-        return tac.gens(signature), tac.free_vars(signature)
+        return tac.gens_signature(signature), tac.free_vars_lval(signature)
 
     def back_transfer(self, values: MapDomain[Liveness], ins: tac.Tac, location: tuple[int, int]) -> MapDomain[Liveness]:
         if isinstance(values, Bottom):
@@ -149,6 +153,8 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
             return BOTTOM
         values = values.copy()
         to_update = self.back_transfer(values, ins, location)
+        if isinstance(to_update, Bottom):
+            return BOTTOM
         for var in tac.gens(ins):
             if var in values:
                 del values[var]
@@ -169,79 +175,5 @@ def undef(kills, gens):
                  for v in gens)
 
 
-def _filter_killed(ins: Tac, kills, new_kills):
-    # moved here only because it is a transformation and not an analysis
-    if isinstance(ins, tac.Del) or isinstance(ins, tac.Assign) and set(tac.gens(ins)).issubset(kills):
-        return
-    yield ins._replace(gens=undef(kills, ins.gens),
-                       kills=kills - new_kills)
-
-
-def single_block_liveness(block, kills=frozenset()):
-    """kills: the set of names that will no longer be used"""
-    for ins in reversed(block):
-        new_kills = kills.union(ins.kills).difference(ins.uses)
-        yield from _filter_killed(ins, kills, kills.difference(ins.uses))
-        kills = new_kills
-
-
-def single_block_gens(block, inb=frozenset()):
-    gens = set()
-    for ins in block:
-        gens.difference_update(ins.kills)
-        gens.update(ins.gens)
-    return [x for x in gens if is_extended_identifier(x)]
-
-
 def is_extended_identifier(name):
     return name.replace('.', '').isidentifier()
-
-
-def rewrite_remove_useless_movs(block: graph_utils.Block, label: int) -> None:
-    alive: VarLattice[Liveness] = block.post[LivenessLattice.name()]
-    if alive.is_bottom:
-        return
-    if len(block) <= 1:
-        return
-    for i in reversed(range(len(block))):
-        ins = block[i]
-        if isinstance(ins, tac.Assign) and ins.no_side_effect and ins.lhs not in alive.vars:
-                del block[i]
-                continue
-        alive.transfer(block[i], f'{label}.{i}')
-
-
-# poor man's use-def
-def rewrite_remove_useless_movs_pairs(block: graph_utils.Block, label: int) -> None:
-    alive: VarLattice[Liveness] = block.post[LivenessLattice.name()]
-    if alive.is_bottom:
-        return
-    for i in reversed(range(1, len(block))):
-        ins = block[i]
-        if isinstance(ins, tac.Assign) and ins.assign_stack and ins.lhs not in alive.vars:
-            ins = block[i] = dataclasses.replace(ins, lhs=None)
-
-        prev = block[i-1]
-        merged_instruction = None
-        killed_by_ins = tac.free_vars(ins) - (alive.vars - tac.gens(ins))
-        if isinstance(prev, tac.Assign) and prev.assign_stack and prev.lhs in killed_by_ins:
-            # $0 = Var
-            # v = EXP($0)  # $0 is killed
-            match ins:
-                case tac.Return():
-                    merged_instruction = tac.subst_var_in_ins(ins, prev.lhs, prev.expr)
-                case tac.Assign():
-                    if isinstance(prev.expr, (tac.Var, tac.Liveness)):
-                        merged_instruction = tac.subst_var_in_ins(ins, prev.lhs, prev.expr)
-                    elif isinstance(ins.expr, tac.Var):
-                        expr = tac.subst_var_in_expr(ins.expr, prev.lhs, prev.expr)
-                        merged_instruction = dataclasses.replace(ins, expr=expr)
-        if merged_instruction is not None:
-            # print(f'{label}.{i}: {prev}; {ins} -> {merged_instruction}')
-            block[i] = merged_instruction
-            del block[i - 1]
-            # if prev.lhs in tac.free_vars(merged_instruction):
-            #     print(f'{prev}; {ins}: {prev.lhs} in {merged_instruction}')
-        else:
-            # print(f'{label}.{i}: {prev}; {ins} -> {merged_instruction}')
-            alive.transfer(ins, f'{label}.{i}')

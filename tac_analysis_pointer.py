@@ -8,7 +8,8 @@ from typing import TypeAlias, Callable, Final
 
 import tac
 import tac_analysis_liveness
-from tac_analysis_domain import InstructionLattice, InvariantMap, BOTTOM, Map
+import tac_analysis_domain as domain
+from tac_analysis_domain import InstructionLattice, InvariantMap, BOTTOM, Map, MapDomain
 from tac_analysis_types import AllocationType
 
 
@@ -48,13 +49,13 @@ def copy_graph(graph: Graph) -> Graph:
 
 class PointerLattice(InstructionLattice[Graph]):
     allocation_invariant_map: InvariantMap[AllocationType]
-    liveness: InvariantMap[Map[tac_analysis_liveness.Liveness]]
+    liveness: InvariantMap[MapDomain[tac_analysis_liveness.Liveness]]
     backward: bool = False
 
     def name(self) -> str:
         return "Pointer"
 
-    def __init__(self, allocation_invariant_map: InvariantMap[AllocationType], liveness: InvariantMap) -> None:
+    def __init__(self, allocation_invariant_map: InvariantMap[AllocationType], liveness: InvariantMap[MapDomain[tac_analysis_liveness.Liveness]]) -> None:
         super().__init__()
         self.allocation_invariant_map = allocation_invariant_map
         self.liveness = liveness
@@ -76,6 +77,15 @@ class PointerLattice(InstructionLattice[Graph]):
 
     def bottom(self) -> Graph:
         return {}
+
+    def top(self) -> Graph:
+        raise NotImplementedError
+
+    def is_top(self, elem: Graph) -> bool:
+        return False
+
+    def is_bottom(self, elem: Graph) -> bool:
+        return elem == self.bottom()
 
     def join(self, left: Graph, right: Graph) -> Graph:
         pointers = copy_graph(left)
@@ -132,8 +142,12 @@ class PointerLattice(InstructionLattice[Graph]):
                 val = eval(ins.value)
                 activation[tac.Var('return')] = val
 
+        here = self.liveness[location]
+        if isinstance(here, domain.Bottom):
+            return values
+
         for var in set(activation.keys()):
-            if var.is_stackvar and self.liveness[location][var] is BOTTOM:
+            if var.is_stackvar and here[var] is BOTTOM:
                 del activation[var]
 
         return values
