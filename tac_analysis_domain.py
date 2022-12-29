@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typing
 from dataclasses import dataclass
-from typing import TypeVar, Protocol, Generic, TypeAlias, Callable, Iterable, Optional
+from typing import TypeVar, Protocol, Generic, TypeAlias, Iterable, Optional
 import graph_utils as gu
 
 import tac
@@ -294,6 +294,9 @@ class VarLattice(InstructionLattice[MapDomain[T]], Generic[T]):
 
     def top(self) -> Map[T]:
         return self.make_map()
+
+    def is_top(self, elem: MapDomain[T]) -> bool:
+        return elem == self.top()
 
     def bottom(self) -> MapDomain[T]:
         return BOTTOM

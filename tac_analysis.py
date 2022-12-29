@@ -41,7 +41,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations) -> I
     pre_result: InvariantMap[T] = {}
     post_result: InvariantMap[T] = {}
 
-    cfg = domain.BackwardIterationStrategy(_cfg) if analysis.backward else domain.ForwardIterationStrategy(_cfg)
+    cfg: domain.IterationStrategy = domain.BackwardIterationStrategy(_cfg) if analysis.backward else domain.ForwardIterationStrategy(_cfg)
 
     wl = [entry] = {cfg.entry_label}
     initial = analysis.initial(analysis.top() if analysis.backward else annotations)
@@ -128,8 +128,10 @@ def run(f, functions, imports, module_type, simplify=True) -> None:
         if isinstance(block[0], tac.For):
             assert len(block) == 1
             ptr = pointer_invariants.post[(label, 0)]
-            alive = set(liveness_invariants.post[(label, 0)].keys())
-            mark_reachable(ptr, alive, annotations, get_ins=lambda label, index: cfg[label][index])
+            liveness_post = liveness_invariants.post[(label, 0)]
+            assert not isinstance(liveness_post, domain.Bottom)
+            alive = set(liveness_post.keys())
+            mark_reachable(ptr, alive, annotations, alloc_invs=allocation_invariants)
             break
 
     invariant_pairs = {

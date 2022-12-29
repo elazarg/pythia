@@ -58,7 +58,7 @@ def linear_regression(features: np.ndarray, target: np.ndarray, dims) -> np.ndar
     return grad
 
 
-def get_float(array: np.ndarray, idx: int) -> float:
+def get_float(array: np.ndarray, idx: float) -> float:
     return array[idx]
 
 
@@ -86,7 +86,7 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
             if get_float(grad, i) > get_float(grad, a):
                 a = i
 
-        if grad[a] >= 0:
+        if get_float(grad, a) >= 0:
             S = np.unique(np.append(S, a))
         else:
             break

@@ -136,13 +136,13 @@ class Cfg(Generic[T]):
     def labels(self):
         return self.graph.nodes.keys()
 
-    def items(self) -> Iterator[tuple[int, Block[T]]]:
+    def items(self) -> Iterator[tuple[int, ForwardBlock[T]]]:
         yield from ((label, self[label]) for label in self.labels)
 
-    def __getitem__(self, label: int) -> Block[T]:
+    def __getitem__(self, label: int) -> ForwardBlock[T]:
         return self.graph.nodes[label]['block']
 
-    def __setitem__(self, label: int, block: Block[T]) -> None:
+    def __setitem__(self, label: int, block: ForwardBlock[T]) -> None:
         self.graph.nodes[label]['block'] = block
 
     def reverse(self: Cfg[T], copy) -> Cfg[T]:
