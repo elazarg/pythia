@@ -215,13 +215,13 @@ def constant(value: object) -> TypeExpr:
     return intersect([t, Literal(value)])
 
 
-def simplify_generic(t, context: dict[TypeVar, TypeExpr]):
+def simplify_generic(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
     match t:
-        case Module(name, class_dict):
+        case Module():
             return t
         case Ref():
             return t
-        case TypeVar():
+        case TypeVar() as t:
             return context.get(t, t)
         case Literal():
             return t
@@ -233,10 +233,12 @@ def simplify_generic(t, context: dict[TypeVar, TypeExpr]):
             return Row(index, simplify_generic(typeexpr, context))
         case FunctionType(params, return_type, new, property, type_params):
             new_params = simplify_generic(params, context)
+            assert isinstance(new_params, Intersection)
             new_return_type = simplify_generic(return_type, context)
             return FunctionType(new_params, new_return_type, new, property, type_params)
         case Class(name, class_dict, inherits, protocol, type_params):
-            class_dict = simplify_generic(class_dict, context)
+            new_class_dict = simplify_generic(class_dict, context)
+            assert isinstance(new_class_dict, Intersection)
             inherits = tuple(simplify_generic(x, context) for x in inherits)
             return Class(name, class_dict, inherits, protocol, type_params)
         case Instantiation(generic, type_args):
@@ -318,6 +320,7 @@ def simplify_generic(t, context: dict[TypeVar, TypeExpr]):
 
         case _:
             raise NotImplementedError(f'{t!r}, {type(t)}')
+    raise AssertionError
 
 
 def unpack_type_args(type_args: typing.Iterable[TypeExpr], context: dict[TypeVar, TypeExpr]) -> tuple[TypeExpr, ...]:
@@ -346,7 +349,7 @@ BOTTOM = union([])
 
 
 
-def join(t1: TypeExpr, t2: TypeExpr):
+def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
     if t1 == t2:
         return t1
     if t1 == BOTTOM:
@@ -381,13 +384,13 @@ def join(t1: TypeExpr, t2: TypeExpr):
 
 
 def join_all(items: typing.Iterable[TypeExpr]) -> TypeExpr:
-    res = BOTTOM
+    res: TypeExpr = BOTTOM
     for t in items:
         res = join(res, t)
     return res
 
 
-def meet(t1: TypeExpr, t2: TypeExpr):
+def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
     if t1 == TOP:
         return t2
     if t2 == TOP:
@@ -419,9 +422,11 @@ def meet(t1: TypeExpr, t2: TypeExpr):
                 return t1
             else:
                 return intersect([t1, t2])
+    raise AssertionError
+
 
 def meet_all(items: typing.Iterable[TypeExpr]) -> TypeExpr:
-    res = TOP
+    res: TypeExpr = TOP
     for t in items:
         res = meet(res, t)
     if isinstance(res, Intersection):
@@ -601,7 +606,9 @@ def bind_self(t: TypeExpr, f: FunctionType) -> FunctionType:
     curried_params = intersect(Row(r.index - 1, r.type) for r in f.params.row_items() if r.index.number != 0)
     res = dataclasses.replace(f, params=curried_params, type_params=f.type_params[1:])
     if f.type_params:
-        res = simplify_generic(res, {f.type_params[0]: t})
+        func = simplify_generic(res, {f.type_params[0]: t})
+        assert isinstance(func, FunctionType)
+        res = func
     return res
 
 
@@ -728,12 +735,12 @@ def get_unop(left: TypeExpr, op: str) -> TypeExpr:
     return subscr(left, Literal(unop_to_dunder_method(op)))
 
 
-def resolve_static_ref(ref):
+def resolve_static_ref(ref: Ref) -> TypeExpr:
     return resolve_relative_ref(ref, MODULES)
 
 
-def resolve_relative_ref(ref, module):
-    result = module
+def resolve_relative_ref(ref: Ref, module: Module) -> TypeExpr:
+    result: TypeExpr = module
     for attr in ref.name.split('.'):
         result = subscr(result, Literal(attr))
     return result
@@ -758,7 +765,7 @@ def infer_self(row: Row) -> Row:
     return Row(row.index, g)
 
 
-def pretty_print_type(t: Module | TypeExpr, indent=0):
+def pretty_print_type(t: Module | TypeExpr, indent: int = 0) -> None:
     match t:
         case Intersection(items):
             for row in items:
@@ -800,7 +807,7 @@ def pretty_print_type(t: Module | TypeExpr, indent=0):
 
 
 def module_to_type(module: ast.Module, name: str) -> Module:
-    def free_vars(node: ast.expr | ast.arg):
+    def free_vars(node: ast.expr | ast.arg) -> set[str]:
         return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
 
     def expr_to_type(expr: typing.Optional[ast.expr]) -> TypeExpr:
