@@ -365,6 +365,10 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             return union([t1, t2])
         case (Intersection(items), other) | (other, Intersection(items)):  # type: ignore
             return Intersection(items & {other}).squeeze()
+        case Union(items1), Union(items2):
+            return Union(items1 | items2).squeeze()
+        case (Union(items), other) | (other, Union(items)):  # type: ignore
+            return Union(items | {other}).squeeze()
         case (Ref() as ref, other) | (other, Ref() as ref):  # type: ignore
             return union([ref, other])
         case Literal(value1), Literal(value2):
