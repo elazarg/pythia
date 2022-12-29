@@ -216,6 +216,7 @@ def constant(value: object) -> TypeExpr:
 
 
 def simplify_generic(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
+    # TODO: simplify to ClassInstance
     match t:
         case Module():
             return t
@@ -231,39 +232,18 @@ def simplify_generic(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
             return union(simplify_generic(item, context) for item in items)
         case Row(index, typeexpr):
             return Row(index, simplify_generic(typeexpr, context))
-        case FunctionType(params, return_type, new, property, type_params):
+        case FunctionType(params=params, return_type=return_type) as function:
             new_params = simplify_generic(params, context)
             assert isinstance(new_params, Intersection)
             new_return_type = simplify_generic(return_type, context)
-            return FunctionType(new_params, new_return_type, new, property, type_params)
-        case Class(name, class_dict, inherits, protocol, type_params):
+            return dataclasses.replace(function, params=new_params, return_type=new_return_type)
+        case Class(class_dict=class_dict, inherits=inherits) as klass:
             new_class_dict = simplify_generic(class_dict, context)
             assert isinstance(new_class_dict, Intersection)
             inherits = tuple(simplify_generic(x, context) for x in inherits)
-            return Class(name, class_dict, inherits, protocol, type_params)
+            return dataclasses.replace(klass, class_dict=new_class_dict, inherits=inherits)
         case Instantiation(generic, type_args):
             match generic, type_args:
-                case (Class(type_params=type_params) | FunctionType(type_params=type_params)), type_args:
-                    unpacked_args = unpack_type_args(type_args, context)
-                    star_index = None
-                    for n, type_param in enumerate(type_params):
-                        if type_params[n].is_args:
-                            star_index = n
-                            break
-                    if star_index is None:
-                        assert len(type_params) == len(unpacked_args)
-                        new_context = context.copy()
-                        for type_var, v in zip(type_params, unpacked_args):
-                            new_context[type_var] = v
-                        return simplify_generic(generic, new_context)
-                    left_params, star_param, right_params = type_params[:star_index], type_params[star_index], type_params[star_index + 1:]
-                    left_args, star_args = unpacked_args[:len(left_params)], unpacked_args[len(left_params):]
-                    star_args, right_args = star_args[:len(star_args)-len(right_params)], star_args[-len(right_params):]
-                    new_context = context.copy()
-                    new_context[star_param] = intersect(make_row(i, None, arg) for i, arg in enumerate(star_args))
-                    for type_var, v in zip(left_params + right_params, left_args + right_args):
-                        new_context[type_var] = v
-                    return simplify_generic(generic, new_context)
                 case generic, type_args if all(isinstance(ta, TypeVar) for ta in type_args):
                     new_type_args_list: list[TypeExpr] = []
                     for ta in type_args:
@@ -282,6 +262,28 @@ def simplify_generic(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
                     if new_type_args == type_args:
                         return Instantiation(simplify_generic(generic, context), type_args)
                     return simplify_generic(Instantiation(generic, new_type_args), context)
+                case (Class(type_params=type_params) | FunctionType(type_params=type_params)) as generic, type_args:
+                    unpacked_args = unpack_type_args(type_args, context)
+                    star_index = None
+                    for n, type_param in enumerate(type_params):
+                        if type_params[n].is_args:
+                            star_index = n
+                            break
+                    new_context = context.copy()
+                    if star_index is not None:
+                        left_params, star_param, right_params = type_params[:star_index], type_params[star_index], type_params[star_index + 1:]
+                        left_end_index = len(left_params)
+                        left_args, star_args = unpacked_args[:left_end_index], unpacked_args[left_end_index:]
+                        right_start_index = len(star_args) - len(right_params)
+                        star_args, right_args = star_args[:right_start_index], star_args[right_start_index:]
+                        new_context[star_param] = intersect(make_row(i, None, arg) for i, arg in enumerate(star_args))
+                        type_params = left_params + right_params
+                        unpacked_args = left_args + right_args
+                    assert len(type_params) == len(unpacked_args), (type_params, unpacked_args)
+                    for type_var, v in zip(type_params, unpacked_args):
+                        new_context[type_var] = v
+                    generic = dataclasses.replace(generic, type_params=())
+                    return simplify_generic(generic, new_context)
                 case Ref() as ref, type_args:
                     # avoid infinite recursion when instantiating a generic class with its own parameter
                     return t
@@ -573,7 +575,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
             if name == 'builtins.int' and index.number is not None:
                 return t
             return BOTTOM
-        case Instantiation(generic=FunctionType()|Class()) | TypeVar() as t, arg:
+        case Instantiation(generic=FunctionType()|Class()|TypeVar()) as t, arg:
             new_t = simplify_generic(t, {})
             if new_t != t:
                 return access(new_t, arg)

@@ -198,10 +198,12 @@ def test_list():
     x = ts.call(gt, make_rows(ts.Literal(0)))
     assert x == INT
 
+
 def test_getitem_list():
     t = ts.Instantiation(ts.Ref('builtins.list'), (INT,))
     x = ts.subscr(t, ts.Literal(0))
     assert x == INT
+
 
 def test_getitem_numpy():
     x = ts.subscr(ARRAY, ts.intersect([ts.Literal(0), INT]))
