@@ -26,11 +26,10 @@ import typing
 from dataclasses import dataclass
 from typing import TypeVar
 
-from graph_utils import Location
+from pythia.graph_utils import Location
 
-import tac
-from tac import Var
-from analysis_domain import Top, Bottom, TOP, BOTTOM, \
+from pythia import tac
+from pythia.analysis_domain import Top, Bottom, TOP, BOTTOM, \
     MapDomain, Lattice, Map, normalize, InstructionLattice
 
 T = TypeVar('T')
@@ -116,7 +115,7 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
     def is_bottom(self, values: MapDomain[Liveness]) -> bool:
         return isinstance(values, Bottom)
 
-    def make_map(self, d: typing.Optional[dict[Var, Liveness]] = None) -> Map[Liveness]:
+    def make_map(self, d: typing.Optional[dict[tac.Var, Liveness]] = None) -> Map[Liveness]:
         d = d or {}
         return Map(default=self.lattice.default(), d=d)
 
@@ -140,7 +139,7 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
                 return normalize(res)
         return self.top()
 
-    def back_transformer_signature(self, signature: tac.Signature) -> tuple[set[Var], set[Var]]:
+    def back_transformer_signature(self, signature: tac.Signature) -> tuple[set[tac.Var], set[tac.Var]]:
         return tac.gens_signature(signature), tac.free_vars_lval(signature)
 
     def back_transfer(self, values: MapDomain[Liveness], ins: tac.Tac, location: Location) -> MapDomain[Liveness]:

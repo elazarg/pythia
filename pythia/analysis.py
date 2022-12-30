@@ -7,20 +7,20 @@ import typing
 from dataclasses import dataclass
 from typing import TypeVar, TypeAlias
 
-import disassemble
-import graph_utils as gu
-from graph_utils import Location
+from pythia import disassemble
+import pythia.graph_utils as gu
+from pythia.graph_utils import Location
 
-import tac
-import analysis_domain as domain
-from analysis_dirty import DirtyLattice, Dirty
-from analysis_domain import InvariantMap, MapDomain
-from analysis_constant import ConstLattice, Constant
+from pythia import tac
+import pythia.analysis_domain as domain
+from pythia.analysis_dirty import DirtyLattice, Dirty
+from pythia.analysis_domain import InvariantMap, MapDomain
+from pythia.analysis_constant import ConstLattice, Constant
 
-from analysis_liveness import LivenessVarLattice, Liveness
-from analysis_pointer import PointerLattice, pretty_print_pointers, find_reachable, Graph
-from analysis_types import TypeLattice, AllocationChecker, AllocationType
-import type_system as ts
+from pythia.analysis_liveness import LivenessVarLattice, Liveness
+from pythia.analysis_pointer import PointerLattice, pretty_print_pointers, find_reachable, Graph
+from pythia.analysis_types import TypeLattice, AllocationChecker, AllocationType
+import pythia.type_system as ts
 
 
 T = TypeVar('T')

@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import typing
 
-from graph_utils import Location
-
 from dataclasses import dataclass
 from itertools import chain
 from typing import TypeAlias, Final
 
-import tac
-import analysis_liveness
-import analysis_domain as domain
-from analysis_domain import InstructionLattice, InvariantMap, BOTTOM, Map, MapDomain
-from analysis_types import AllocationType
+from pythia.graph_utils import Location
+from pythia import tac
+from . import analysis_liveness
+from . import analysis_domain as domain
+from .analysis_domain import InstructionLattice, InvariantMap, BOTTOM, MapDomain
+from .analysis_types import AllocationType
 
 
 @dataclass(frozen=True)
@@ -59,7 +58,8 @@ class PointerLattice(InstructionLattice[Graph]):
     def name(self) -> str:
         return "Pointer"
 
-    def __init__(self, allocation_invariant_map: InvariantMap[AllocationType], liveness: InvariantMap[MapDomain[analysis_liveness.Liveness]]) -> None:
+    def __init__(self, allocation_invariant_map: InvariantMap[AllocationType], liveness: InvariantMap[MapDomain[
+        analysis_liveness.Liveness]]) -> None:
         super().__init__()
         self.allocation_invariant_map = allocation_invariant_map
         self.liveness = liveness

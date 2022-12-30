@@ -4,7 +4,7 @@ Translating Python [bytecode](https://docs.python.org/3.5/library/dis.html#pytho
 
 ## Pipeline operations by modules:
   
-1. [tac.py](tac.py): Translate basic block CFG into equivalent Three Address Code (TAC)
+1. [tac.py](pythia/tac.py): Translate basic block CFG into equivalent Three Address Code (TAC)
 2. [tac_analysis.py](tac_analysis.py): Data flow analysis of TAC CFG
 
 

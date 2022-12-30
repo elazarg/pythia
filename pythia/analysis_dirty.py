@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from typing import TypeAlias
-import tac
-from graph_utils import Location
-from analysis_domain import InvariantMap, InstructionLattice, Bottom, BOTTOM
-from analysis_pointer import Graph, Object, LOCALS
+
+from pythia import tac
+from pythia.graph_utils import Location
+from .analysis_domain import InvariantMap, InstructionLattice, Bottom, BOTTOM
+from .analysis_pointer import Graph, Object, LOCALS
 
 Dirty: TypeAlias = set[Object] | Bottom
 

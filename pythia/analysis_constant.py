@@ -5,13 +5,12 @@ from __future__ import annotations
 import typing
 from typing import TypeVar, Optional, TypeAlias
 
-import tac
-from tac import Const, Predefined
-from analysis_domain import ValueLattice, TOP, BOTTOM, Top, Bottom
+from pythia import tac
+from .analysis_domain import ValueLattice, TOP, BOTTOM, Top, Bottom
 
 T = TypeVar('T')
 
-Constant: TypeAlias = Const | Predefined | Top | Bottom
+Constant: TypeAlias = tac.Const | tac.Predefined | Top | Bottom
 
 
 class ConstLattice(ValueLattice[Constant]):
@@ -66,9 +65,9 @@ class ConstLattice(ValueLattice[Constant]):
 
     def call(self, function: Constant, args: list[Constant]) -> Constant:
         match function:
-            case Predefined.LIST: return Const(args)
-            case Predefined.TUPLE: return Const(tuple(args))
-            case Predefined.SLICE: return Const(slice(*args))
+            case tac.Predefined.LIST: return tac.Const(args)
+            case tac.Predefined.TUPLE: return tac.Const(tuple(args))
+            case tac.Predefined.SLICE: return tac.Const(slice(*args))
         return self.top()
 
     def unary(self, value: Constant, op: tac.UnOp) -> Constant:
@@ -76,13 +75,13 @@ class ConstLattice(ValueLattice[Constant]):
             return self.bottom()
         if self.is_top(value):
             return self.top()
-        assert isinstance(value, Const)
+        assert isinstance(value, tac.Const)
         const: typing.Any = value.value
         match op:
-            case tac.UnOp.NEG: return Const(-const)
-            case tac.UnOp.NOT: return Const(not const)
-            case tac.UnOp.POS: return Const(+const)
-            case tac.UnOp.INVERT: return Const(~const)
+            case tac.UnOp.NEG: return tac.Const(-const)
+            case tac.UnOp.NOT: return tac.Const(not const)
+            case tac.UnOp.POS: return tac.Const(+const)
+            case tac.UnOp.INVERT: return tac.Const(~const)
         return self.top()
 
     def binary(self, left: Constant, right: Constant, op: str) -> Constant:
@@ -91,8 +90,8 @@ class ConstLattice(ValueLattice[Constant]):
         if self.is_top(left) or self.is_top(right):
             return self.top()
         try:
-            assert isinstance(left, Const)
-            assert isinstance(right, Const)
+            assert isinstance(left, tac.Const)
+            assert isinstance(right, tac.Const)
             res = eval_binary(op, left, right)
             if res is None:
                 return self.bottom()
@@ -104,7 +103,7 @@ class ConstLattice(ValueLattice[Constant]):
         return name
 
     def const(self, value: object) -> Constant:
-        return Const(value)
+        return tac.Const(value)
 
     def attribute(self, var: Constant, attr: tac.Var) -> Constant:
         assert isinstance(attr, tac.Var)
@@ -117,25 +116,25 @@ class ConstLattice(ValueLattice[Constant]):
         return tac.Const(tac.Module(modname))
 
 
-def eval_binary(op: str, left: typing.Any, right: typing.Any) -> Optional[Const]:
+def eval_binary(op: str, left: typing.Any, right: typing.Any) -> Optional[tac.Const]:
     match op:
-        case '+': return Const(left + right)
-        case '-': return Const(left - right)
-        case '*': return Const(left * right)
-        case '/': return Const(left / right)
-        case '%': return Const(left % right)
-        case '**': return Const(left ** right)
-        case '&': return Const(left & right)
-        case '|': return Const(left | right)
-        case '^': return Const(left ^ right)
-        case '<<': return Const(left << right)
-        case '>>': return Const(left >> right)
-        case '>': return Const(left > right)
-        case '<': return Const(left < right)
-        case '>=': return Const(left >= right)
-        case '<=': return Const(left <= right)
-        case '==': return Const(left == right)
-        case '!=': return Const(left != right)
-        case 'in': return Const(left in right)
-        case 'is': return Const(left is right)
+        case '+': return tac.Const(left + right)
+        case '-': return tac.Const(left - right)
+        case '*': return tac.Const(left * right)
+        case '/': return tac.Const(left / right)
+        case '%': return tac.Const(left % right)
+        case '**': return tac.Const(left ** right)
+        case '&': return tac.Const(left & right)
+        case '|': return tac.Const(left | right)
+        case '^': return tac.Const(left ^ right)
+        case '<<': return tac.Const(left << right)
+        case '>>': return tac.Const(left >> right)
+        case '>': return tac.Const(left > right)
+        case '<': return tac.Const(left < right)
+        case '>=': return tac.Const(left >= right)
+        case '<=': return tac.Const(left <= right)
+        case '==': return tac.Const(left == right)
+        case '!=': return tac.Const(left != right)
+        case 'in': return tac.Const(left in right)
+        case 'is': return tac.Const(left is right)
         case _: raise ValueError(f'unknown binary operator: {op}')

@@ -1,5 +1,4 @@
-import type_system as ts
-
+from pythia import type_system as ts
 
 INT = ts.Ref('builtins.int')
 FLOAT = ts.Ref('builtins.float')

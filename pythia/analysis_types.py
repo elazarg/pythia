@@ -6,13 +6,13 @@ import enum
 import typing
 from typing import Iterable
 
-from graph_utils import Location
+from pythia.graph_utils import Location
 
-import tac
-from tac import Predefined, UnOp
-import analysis_domain as domain
-from analysis_domain import ValueLattice, VarLattice, InvariantMap, MapDomain
-import type_system as ts
+from pythia import tac
+from pythia.tac import Predefined, UnOp
+from . import analysis_domain as domain
+from .analysis_domain import ValueLattice, VarLattice, InvariantMap, MapDomain
+import pythia.type_system as ts
 
 
 class TypeLattice(ValueLattice[ts.TypeExpr]):

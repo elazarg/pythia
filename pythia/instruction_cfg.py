@@ -3,7 +3,7 @@ from typing import Iterable, Optional, Any
 import dis
 from dis import Instruction
 
-import graph_utils as gu
+import pythia.graph_utils as gu
 
 Cfg = gu.Cfg[Instruction]
 
