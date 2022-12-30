@@ -9,10 +9,10 @@ import typing
 from dataclasses import dataclass
 from typing import Optional, TypeAlias
 
-import instruction_cfg
-import disassemble
-import graph_utils as gu
-from graph_utils import Label, Location
+from pythia import instruction_cfg
+from pythia import disassemble
+from pythia import graph_utils as gu
+from pythia.graph_utils import Label, Location
 
 
 @dataclass(frozen=True)
@@ -679,7 +679,7 @@ def make_tac_no_dels(opname: str, val: str | int | None, stack_effect: int, stac
 
 
 def main() -> None:
-    env, imports = disassemble.read_file('examples/toy.py')
+    env, imports = disassemble.read_file('../examples/toy.py')
 
     for k, func in env.items():
         cfg = make_tac_cfg(func)

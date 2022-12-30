@@ -2,19 +2,18 @@ from __future__ import annotations
 
 import typing
 from dataclasses import dataclass
-from typing import TypeVar, Protocol, Generic, TypeAlias, Iterable, Optional
-import graph_utils as gu
-from graph_utils import Label, Location
 
-import tac
+from pythia import graph_utils as gu
+from pythia.graph_utils import Label, Location
+from pythia import tac
 
-T = TypeVar('T')
-K = TypeVar('K')
-Q = TypeVar('Q')
+T = typing.TypeVar('T')
+K = typing.TypeVar('K')
+Q = typing.TypeVar('Q')
 
 
 @dataclass
-class ForwardIterationStrategy(Generic[T]):
+class ForwardIterationStrategy(typing.Generic[T]):
     cfg: gu.Cfg[T]
 
     @property
@@ -32,7 +31,7 @@ class ForwardIterationStrategy(Generic[T]):
 
 
 @dataclass
-class BackwardIterationStrategy(Generic[T]):
+class BackwardIterationStrategy(typing.Generic[T]):
     cfg: gu.Cfg[T]
 
     @property
@@ -49,10 +48,10 @@ class BackwardIterationStrategy(Generic[T]):
         return pair[1], pair[0]
 
 
-IterationStrategy: TypeAlias = ForwardIterationStrategy | BackwardIterationStrategy
+IterationStrategy: typing.TypeAlias = ForwardIterationStrategy | BackwardIterationStrategy
 
 
-class Lattice(Protocol[T]):
+class Lattice(typing.Protocol[T]):
 
     def name(self) -> str:
         raise NotImplementedError
@@ -131,12 +130,12 @@ BOTTOM = Bottom()
 TOP = Top()
 
 
-class Map(Generic[T]):
+class Map(typing.Generic[T]):
     # Essentially a defaultdict, but a defaultdict makes values appear out of nowhere
     _map: dict[tac.Var, T]
     default: T
 
-    def __init__(self, default: T, d: Optional[dict[tac.Var, T]] = None):
+    def __init__(self, default: T, d: typing.Optional[dict[tac.Var, T]] = None):
         self.default = default
         self._map = {}
         if d is not None:
@@ -184,10 +183,10 @@ class Map(Generic[T]):
     def __str__(self) -> str:
         return repr(self)
 
-    def items(self) -> Iterable[tuple[tac.Var, T]]:
+    def items(self) -> typing.Iterable[tuple[tac.Var, T]]:
         return self._map.items()
 
-    def values(self) -> Iterable[T]:
+    def values(self) -> typing.Iterable[T]:
         return self._map.values()
 
     def keys(self) -> set[tac.Var]:
@@ -197,7 +196,7 @@ class Map(Generic[T]):
         return Map(self.default, self._map)
 
 
-MapDomain: TypeAlias = Map[T] | Bottom
+MapDomain: typing.TypeAlias = Map[T] | Bottom
 
 
 def normalize(values: MapDomain[T]) -> MapDomain[T]:
@@ -208,14 +207,14 @@ def normalize(values: MapDomain[T]) -> MapDomain[T]:
     return values
 
 
-class InstructionLattice(Lattice[T], Generic[T]):
+class InstructionLattice(Lattice[T], typing.Generic[T]):
     backward: bool
 
     def transfer(self, values: T, ins: tac.Tac, location: Location) -> T:
         raise NotImplementedError
 
 
-class ValueLattice(Lattice[T], Generic[T]):
+class ValueLattice(Lattice[T], typing.Generic[T]):
     def const(self, value: object) -> T:
         return self.top()
 
@@ -255,10 +254,10 @@ class ValueLattice(Lattice[T], Generic[T]):
 
 
 
-InvariantMap: TypeAlias = dict[Location, T]
+InvariantMap: typing.TypeAlias = dict[Location, T]
 
 
-class VarLattice(InstructionLattice[MapDomain[T]], Generic[T]):
+class VarLattice(InstructionLattice[MapDomain[T]], typing.Generic[T]):
     lattice: ValueLattice[T]
     liveness: InvariantMap[MapDomain[Top | Bottom]]
     backward: bool = False
@@ -283,7 +282,7 @@ class VarLattice(InstructionLattice[MapDomain[T]], Generic[T]):
     def is_bottom(self, values: MapDomain[T]) -> bool:
         return isinstance(values, Bottom)
 
-    def make_map(self, d: Optional[dict[tac.Var, T]] = None) -> Map[T]:
+    def make_map(self, d: typing.Optional[dict[tac.Var, T]] = None) -> Map[T]:
         d = d or {}
         return Map(default=self.lattice.default(), d=d)
 
