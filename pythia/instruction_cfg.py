@@ -1,7 +1,7 @@
-from typing import Iterable, Optional, Any
-
 import dis
+import math
 from dis import Instruction
+from typing import Iterable, Any
 
 import pythia.graph_utils as gu
 
@@ -27,19 +27,19 @@ def is_jump(ins: Instruction) -> bool:
     return ins.opcode in dis.hasjrel or ins.opcode in dis.hasjabs
 
 
-def next_list(ins: Instruction, fallthrough: Optional[int], se: int) -> list[tuple[int, int]]:
+def next_list(ins: Instruction, fallthrough: gu.Label, stack_effect: int) -> list[tuple[gu.Label, int]]:
     if is_raise(ins):
         return []
     if is_for_iter(ins):
         assert fallthrough is not None
-        return [(fallthrough, se),
+        return [(fallthrough, stack_effect),
                 (ins.argval, -1)]
-    res = []
+    res: list[tuple[gu.Label, int]] = []
     if not is_sequencer(ins):
         assert fallthrough is not None
-        res.append((fallthrough, se))
+        res.append((fallthrough, stack_effect))
     if is_jump_source(ins):
-        res.append((ins.argval, se))
+        res.append((ins.argval, stack_effect))
     return res
 
 
@@ -47,7 +47,7 @@ def is_block_boundary(ins: Instruction) -> bool:
     return is_jump_source(ins) or ins.is_jump_target
 
 
-def stack_effect(ins: Instruction) -> int:
+def calculate_stack_effect(ins: Instruction) -> int:
     """not exact.
     see https://github.com/python/cpython/blob/master/Python/compile.c#L860"""
     if ins.opname in ['SETUP_EXCEPT', 'SETUP_FINALLY', 'POP_EXCEPT', 'END_FINALLY']:
@@ -68,12 +68,12 @@ def is_raise(ins: Instruction) -> bool:
     return ins.opname == 'RAISE_VARARGS'
 
 
-def calculate_stack_depth(cfg: Cfg) -> dict[int, int]:
+def calculate_stack_depth(cfg: Cfg) -> dict[gu.Label, int]:
     """The stack depth is supposed to be independent of path, so dijkstra on the undirected graph suffices
     (and may be too strong, since we don't need minimality).
     We do it bidirectionally because we want to work with unreachable code too.
     """
-    res: dict[int, int] = {}
+    res: dict[gu.Label, int] = {}
     backwards_cfg = cfg.reverse(copy=True)
     for label in cfg.nodes:
         if cfg[label] and is_return(cfg[label][-1]):
@@ -84,22 +84,22 @@ def calculate_stack_depth(cfg: Cfg) -> dict[int, int]:
     return res
 
 
-def make_instruction_block_cfg(instructions: Iterable[Instruction]) -> tuple[dict[int, int], Cfg]:
+def make_instruction_block_cfg(instructions: Iterable[Instruction]) -> tuple[dict[gu.Label, int], Cfg]:
     instructions = list(instructions)
 
-    next_instruction: list[Optional[int]] = [instructions[i+1].offset for i in range(len(instructions)-1)]
-    next_instruction.append(None)
+    next_instruction: list[gu.Label] = [instructions[i + 1].offset for i in range(len(instructions) - 1)]
+    next_instruction.append(math.inf)
 
-    dbs = {ins.offset: ins for ins in instructions}
-    edges = [(ins.offset, dbs[j].offset, {'stack_effect': se})
+    dbs: dict[gu.Label, Instruction] = {ins.offset: ins for ins in instructions}
+    edges = [(ins.offset, dbs[j].offset, {'stack_effect': stack_effect})
              for i, ins in enumerate(instructions)
-             for (j, se) in next_list(ins, fallthrough=next_instruction[i], se=stack_effect(ins))
+             for (j, stack_effect) in next_list(ins, fallthrough=next_instruction[i], stack_effect=calculate_stack_effect(ins))
              if dbs.get(j) is not None]
-    cfg = gu.Cfg(edges, blocks={k: [v] for k, v in dbs.items()})
+    cfg: Cfg = gu.Cfg(edges, blocks={k: [v] for k, v in dbs.items()})
     depths = calculate_stack_depth(cfg)
     # each node will hold a block of dictionaries - instruction and stack_depth
     return depths, cfg
 
 
-def make_instruction_block_cfg_from_function(f: Any) -> tuple[dict[int, int], Cfg]:
+def make_instruction_block_cfg_from_function(f: Any) -> tuple[dict[gu.Label, int], Cfg]:
     return make_instruction_block_cfg(dis.get_instructions(f))

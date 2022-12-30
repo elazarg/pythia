@@ -1,12 +1,11 @@
-from __future__ import annotations
+from __future__ import annotations as _
 
-import dataclasses
+import ast
 import enum
 import os
 import typing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-import ast
 
 
 class TypeExpr:
@@ -88,9 +87,9 @@ class Row(TypeExpr):
     def __le__(self, other: Row) -> bool:
         return self.index <= other.index
 
-def make_row(number: typing.Optional[int], name: typing.Optional[str], type: TypeExpr) -> Row:
+def make_row(number: typing.Optional[int], name: typing.Optional[str], t: TypeExpr) -> Row:
     return Row(Index(number if number is not None else None,
-                     name if name is not None else None), type)
+                     name if name is not None else None), t)
 
 
 @dataclass(frozen=True)
@@ -98,7 +97,7 @@ class Union(TypeExpr):
     items: frozenset[TypeExpr]
 
     def __repr__(self) -> str:
-        return f'{{{" | ".join(f"{decl}" for decl in self.items)}}}'
+        return f'{{{" | ".join(f"{item}" for item in self.items)}}}'
 
     def squeeze(self) -> TypeExpr:
         if len(self.items) == 1:
@@ -230,18 +229,18 @@ def simplify_generic(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
             return intersect(simplify_generic(item, context) for item in items)
         case Union(items):
             return union(simplify_generic(item, context) for item in items)
-        case Row(index, typeexpr):
-            return Row(index, simplify_generic(typeexpr, context))
+        case Row() as row:
+            return replace(row, type=simplify_generic(row.type, context))
         case FunctionType(params=params, return_type=return_type) as function:
             new_params = simplify_generic(params, context)
             assert isinstance(new_params, Intersection)
             new_return_type = simplify_generic(return_type, context)
-            return dataclasses.replace(function, params=new_params, return_type=new_return_type)
+            return replace(function, params=new_params, return_type=new_return_type)
         case Class(class_dict=class_dict, inherits=inherits) as klass:
             new_class_dict = simplify_generic(class_dict, context)
             assert isinstance(new_class_dict, Intersection)
             inherits = tuple(simplify_generic(x, context) for x in inherits)
-            return dataclasses.replace(klass, class_dict=new_class_dict, inherits=inherits)
+            return replace(klass, class_dict=new_class_dict, inherits=inherits)
         case Instantiation(generic, type_args):
             match generic, type_args:
                 case generic, type_args if all(isinstance(ta, TypeVar) for ta in type_args):
@@ -282,7 +281,7 @@ def simplify_generic(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
                     assert len(type_params) == len(unpacked_args), (type_params, unpacked_args)
                     for type_var, v in zip(type_params, unpacked_args):
                         new_context[type_var] = v
-                    generic = dataclasses.replace(generic, type_params=())
+                    generic = replace(generic, type_params=())
                     return simplify_generic(generic, new_context)
                 case Ref() as ref, type_args:
                     # avoid infinite recursion when instantiating a generic class with its own parameter
@@ -379,7 +378,7 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             else:
                 return union([t1, t2])
         case FunctionType() as f1, FunctionType() as f2:
-            return union([t1, t2])
+            return union([f1, f2])
         case Class(), Class():
             return TOP
         case (Class(name="int") | Ref('builtins.int') as c, Literal(int())) | (Literal(int()), Class(name="int") | Ref('builtins.int') as c):
@@ -409,7 +408,7 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
                 return Literal(value1)
             else:
                 return BOTTOM
-        case (Union(items1), Union(items2)):
+        case (Union(), Union()):
             raise NotImplementedError
         case (Union(items), t) | (t, Union(items)):  # type: ignore
             if t in items:
@@ -610,7 +609,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
 
 def bind_self(t: TypeExpr, f: FunctionType) -> FunctionType:
     curried_params = intersect(Row(r.index - 1, r.type) for r in f.params.row_items() if r.index.number != 0)
-    res = dataclasses.replace(f, params=curried_params, type_params=f.type_params[1:])
+    res = replace(f, params=curried_params, type_params=f.type_params[1:])
     if f.type_params:
         func = simplify_generic(res, {f.type_params[0]: t})
         assert isinstance(func, FunctionType)
@@ -764,7 +763,7 @@ def infer_self(row: Row) -> Row:
     type_params = function.type_params
     if self_arg_row.type == Ref('typing.Any'):
         self_type = TypeVar('Self')
-        self_arg_row = dataclasses.replace(self_arg_row, type=self_type)
+        self_arg_row = replace(self_arg_row, type=self_type)
         type_params = (self_type, *type_params)
     params = intersect([self_arg_row, *other_args.row_items()])
     g = FunctionType(params, function.return_type, function.new, function.property, type_params)
@@ -865,16 +864,15 @@ def module_to_type(module: ast.Module, name: str) -> Module:
         match definition:
             case ast.Pass():
                 return
-            case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation, value=value):
+            case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
                 yield make_row(index, name, expr_to_type(annotation))
             case ast.Import(names=aliases):
                 for alias in aliases:
-                    name = alias.name
                     asname = alias.asname
                     if asname is None:
                         continue
-                    yield make_row(index, asname, Ref(name))
-            case ast.ClassDef(name=name, body=body, bases=base_expressions, decorator_list=decorator_list):
+                    yield make_row(index, asname, Ref(alias.name))
+            case ast.ClassDef(name=name, body=body, bases=base_expressions):
                 base_classes_list = []
                 protocol = False
                 type_params: tuple[TypeVar, ...] = ()
@@ -951,8 +949,8 @@ def parse_file(path: str) -> Module:
 
 
 MODULES = Module('typeshed',
-                 intersect([make_row(index, file.split('.')[0], parse_file(f'typeshed_mini/{file}'))
-                            for index, file in enumerate(os.listdir('typeshed_mini'))]))
+                 intersect([make_row(index, file.split('.')[0], parse_file(f'../typeshed_mini/{file}'))
+                            for index, file in enumerate(os.listdir('../typeshed_mini'))]))
 
 
 def main() -> None:

@@ -1,17 +1,16 @@
 # Data flow analysis and stuff.
 
-from __future__ import annotations
+from __future__ import annotations as _
 
 import typing
-
 from dataclasses import dataclass
 from itertools import chain
 from typing import TypeAlias, Final
 
-from pythia.graph_utils import Location
 from pythia import tac
-from . import analysis_liveness
+from pythia.graph_utils import Location
 from . import analysis_domain as domain
+from . import analysis_liveness
 from .analysis_domain import InstructionLattice, InvariantMap, BOTTOM, MapDomain
 from .analysis_types import AllocationType
 

@@ -7,21 +7,18 @@ import typing
 from dataclasses import dataclass
 from typing import TypeVar, TypeAlias
 
-from pythia import disassemble
-import pythia.graph_utils as gu
-from pythia.graph_utils import Location
-
-from pythia import tac
 import pythia.analysis_domain as domain
+import pythia.graph_utils as gu
+import pythia.type_system as ts
+from pythia import disassemble
+from pythia import tac
+from pythia.analysis_constant import ConstLattice, Constant
 from pythia.analysis_dirty import DirtyLattice, Dirty
 from pythia.analysis_domain import InvariantMap, MapDomain
-from pythia.analysis_constant import ConstLattice, Constant
-
 from pythia.analysis_liveness import LivenessVarLattice, Liveness
 from pythia.analysis_pointer import PointerLattice, pretty_print_pointers, find_reachable, Graph
 from pythia.analysis_types import TypeLattice, AllocationChecker, AllocationType
-import pythia.type_system as ts
-
+from pythia.graph_utils import Location
 
 T = TypeVar('T')
 Cfg: TypeAlias = gu.Cfg[tac.Tac]
@@ -160,14 +157,15 @@ def analyze_function(filename: str, function_name: str) -> None:
 
 
 def main() -> None:
-    # analyze_function('examples/tests.py', 'access')
-    # analyze_function('examples/tests.py', 'iterate')
-    # analyze_function('examples/tests.py', 'tup')
-    # analyze_function('examples/tests.py', 'destruct')
-    # analyze_function('examples/feature_selection.py', 'do_work')
-    # analyze_function('examples/toy.py', 'minimal')
-    analyze_function('examples/toy.py', 'not_so_minimal')
-    # analyze_function('examples/feature_selection.py', 'run')
+    example_dir = '../examples'
+    # analyze_function(f'{example_dir}/tests.py', 'access')
+    # analyze_function(f'{example_dir}/tests.py', 'iterate')
+    # analyze_function(f'{example_dir}/tests.py', 'tup')
+    # analyze_function(f'{example_dir}/tests.py', 'destruct')
+    # analyze_function(f'{example_dir}/feature_selection.py', 'do_work')
+    # analyze_function(f'{example_dir}/toy.py', 'minimal')
+    analyze_function(f'{example_dir}/toy.py', 'not_so_minimal')
+    # analyze_function(f'{example_dir}/feature_selection.py', 'run')
 
 
 if __name__ == '__main__':

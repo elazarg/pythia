@@ -20,17 +20,16 @@ Here:
       So in some cases, `x = f(a, b)` might have e.g. KILLS={a}
       (and implicitly x too) if it is the last command to use the variable `a`.
 """
-from __future__ import annotations
+from __future__ import annotations as _
 
 import typing
 from dataclasses import dataclass
 from typing import TypeVar
 
-from pythia.graph_utils import Location
-
 from pythia import tac
 from pythia.analysis_domain import Top, Bottom, TOP, BOTTOM, \
     MapDomain, Lattice, Map, normalize, InstructionLattice
+from pythia.graph_utils import Location
 
 T = TypeVar('T')
 

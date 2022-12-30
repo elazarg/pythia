@@ -1,17 +1,16 @@
 
-from __future__ import annotations
+from __future__ import annotations as _
 
 import enum
 import itertools as it
-import dataclasses
 import sys
 import typing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional, TypeAlias
 
-from pythia import instruction_cfg
 from pythia import disassemble
 from pythia import graph_utils as gu
+from pythia import instruction_cfg
 from pythia.graph_utils import Label, Location
 
 
@@ -287,7 +286,7 @@ def free_vars_expr(expr: Expr) -> set[Var]:
                    | ({expr.kwargs} if expr.kwargs else set())
         case Yield(): return free_vars_expr(expr.value)
         case Import(): return set()
-        case MakeFunction() as expr: return set()  # TODO: fix this
+        case MakeFunction(): return set()  # TODO: fix this
         case Predefined(): return set()
         case _: raise NotImplementedError(f'free_vars_expr({repr(expr)})')
 
@@ -345,34 +344,34 @@ def subst_var_in_expr(expr: Expr, target: Var, new_var: Var) -> Expr:
             return new_var if expr == target else expr
         case MakeFunction():
             if expr.name == target:
-                expr = dataclasses.replace(expr, name=new_var)
+                expr = replace(expr, name=new_var)
             if expr.code == target:
-                expr = dataclasses.replace(expr, code=new_var)
+                expr = replace(expr, code=new_var)
             return expr
         case Attribute():
             if expr.var == target:
-                return dataclasses.replace(expr, var=new_var)
+                return replace(expr, var=new_var)
             return expr
         case Call():
             args = tuple(subst_var_in_expr(arg, target, new_var) for arg in expr.args)
             function = new_var if expr.function == target else expr.function
-            return dataclasses.replace(expr, function=function, args=args)
+            return replace(expr, function=function, args=args)
         case Subscript():
             if expr.var == target:
-                expr = dataclasses.replace(expr, var=new_var)
+                expr = replace(expr, var=new_var)
             if expr.index == target:
-                expr = dataclasses.replace(expr, index=new_var)
+                expr = replace(expr, index=new_var)
             return expr
         case Binary():
             if expr.left == target:
-                expr = dataclasses.replace(expr, left=new_var)
+                expr = replace(expr, left=new_var)
             if expr.right == target:
-                expr = dataclasses.replace(expr, right=new_var)
+                expr = replace(expr, right=new_var)
             return expr
         case Import():
             assert False
         case Yield():
-            return dataclasses.replace(expr, value=new_var)
+            return replace(expr, value=new_var)
         case Const():
             return expr
         case _:
@@ -388,13 +387,13 @@ def subst_var_in_signature(signature: Signature, target: Var, new_var: Var) -> S
                          for var in items)
         case Attribute():
             if signature.var == target:
-                return dataclasses.replace(signature, var=new_var)
+                return replace(signature, var=new_var)
             return signature
         case Subscript():
             if signature.var == target:
-                signature = dataclasses.replace(signature, var=new_var)
+                signature = replace(signature, var=new_var)
             if signature.index == target:
-                signature = dataclasses.replace(signature, index=new_var)
+                signature = replace(signature, index=new_var)
             return signature
     return signature
 
@@ -402,28 +401,23 @@ def subst_var_in_signature(signature: Signature, target: Var, new_var: Var) -> S
 def subst_var_in_ins(ins: Tac, target: Var, new_var: Var) -> Tac:
     match ins:
         case Assign():
-            return dataclasses.replace(ins,
-                                       lhs=subst_var_in_signature(ins.lhs, target, new_var),
-                                       expr=subst_var_in_expr(ins.expr, target, new_var))
+            return replace(ins, lhs=subst_var_in_signature(ins.lhs, target, new_var),
+                                expr=subst_var_in_expr(ins.expr, target, new_var))
         case For():
-            return dataclasses.replace(ins,
-                                       lhs=subst_var_in_signature(ins.lhs, target, new_var),
-                                       iterator=subst_var_in_expr(ins.iterator, target, new_var))
+            return replace(ins, lhs=subst_var_in_signature(ins.lhs, target, new_var),
+                                iterator=subst_var_in_expr(ins.iterator, target, new_var))
         case Return():
-            return dataclasses.replace(ins,
-                                       value=subst_var_in_expr(ins.value, target, new_var))
+            return replace(ins, value=subst_var_in_expr(ins.value, target, new_var))
         case Yield():
-            return dataclasses.replace(ins,
-                                       value=subst_var_in_expr(ins.value, target, new_var))
+            return replace(ins, value=subst_var_in_expr(ins.value, target, new_var))
         case Raise():
-            return dataclasses.replace(ins,
-                                       value=subst_var_in_expr(ins.value, target, new_var))
+            return replace(ins, value=subst_var_in_expr(ins.value, target, new_var))
     return ins
 
 
 def make_tac(ins: instruction_cfg.Instruction, stack_depth: int,
              trace_origin: dict[int, instruction_cfg.Instruction]) -> list[Tac]:
-    stack_effect = instruction_cfg.stack_effect(ins)
+    stack_effect = instruction_cfg.calculate_stack_effect(ins)
     if ins.opname == 'LOAD_CONST' and isinstance(ins.argval, tuple):
         # We want to handle list and tuple literal in the same way,
         # So we load tuple as if it was a list

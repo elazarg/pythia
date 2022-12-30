@@ -1,14 +1,13 @@
-from __future__ import annotations
-import typing
-from typing import TypeVar, Generic, Callable, Iterator, TypeAlias, Optional
+from __future__ import annotations as _
 
 import math
+import typing
 from dataclasses import dataclass
 from itertools import chain
+from typing import TypeVar, Generic, Callable, Iterator, TypeAlias, Optional
 
 import networkx as nx  # type: ignore
 from networkx.classes.reportviews import NodeView  # type: ignore
-
 
 T = TypeVar('T')
 Q = TypeVar('Q')
@@ -266,5 +265,5 @@ def pretty_print_cfg(cfg: Cfg[T]) -> None:
         print()
 
 
-def single_source_dijkstra_path_length(cfg: Cfg, source: int, weight: str = 'weight') -> nx.DiGraph:
+def single_source_dijkstra_path_length(cfg: Cfg, source: int, weight: str = 'weight') -> dict[Label, int]:
     return nx.single_source_dijkstra_path_length(cfg.graph, source, weight=weight)

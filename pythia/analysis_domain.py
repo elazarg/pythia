@@ -1,11 +1,11 @@
-from __future__ import annotations
+from __future__ import annotations as _
 
 import typing
 from dataclasses import dataclass
 
 from pythia import graph_utils as gu
-from pythia.graph_utils import Label, Location
 from pythia import tac
+from pythia.graph_utils import Label, Location
 
 T = typing.TypeVar('T')
 K = typing.TypeVar('K')

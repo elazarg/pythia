@@ -1,6 +1,6 @@
 # Data flow analysis and stuff.
 
-from __future__ import annotations
+from __future__ import annotations as _
 
 import typing
 from typing import TypeVar, Optional, TypeAlias

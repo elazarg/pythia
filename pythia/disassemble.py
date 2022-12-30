@@ -1,8 +1,8 @@
-from __future__ import annotations
+from __future__ import annotations as _
 
+import ast
 import marshal
 import struct
-import ast
 from typing import Any
 
 
@@ -52,15 +52,15 @@ def read_file(file_path: str) -> tuple[dict[str, object], Any]:
     exec(functions, {}, env)
     del env['annotations']
 
-    globals: dict[str, str] = {}
+    globals_dict: dict[str, str] = {}
     for node in code.body:
         if isinstance(node, ast.Import):
             for name in node.names:
-                globals[name.asname or name.name] = name.name
+                globals_dict[name.asname or name.name] = name.name
         if isinstance(node, ast.ImportFrom):
             for name in node.names:
-                globals[name.asname or name.name] = f'{node.module}.{name.name}'
-    return env, globals
+                globals_dict[name.asname or name.name] = f'{node.module}.{name.name}'
+    return env, globals_dict
 
 
 if __name__ == '__main__':
