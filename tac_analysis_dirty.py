@@ -2,24 +2,40 @@ from __future__ import annotations
 
 from typing import TypeAlias
 import tac
-from tac_analysis_domain import Lattice
+from graph_utils import Location
+from tac_analysis_domain import InvariantMap, InstructionLattice, Bottom, BOTTOM
 from tac_analysis_pointer import Graph, Object, LOCALS
 
-Dirty: TypeAlias = set[Object]
+Dirty: TypeAlias = set[Object] | Bottom
 
 
-def copy_dirty(dirty: Dirty) -> Dirty:
-    return dirty.copy()
-
-
-class DirtyLattice(Lattice[Dirty]):
+class DirtyLattice(InstructionLattice[Dirty]):
     backward: bool = False
+    pointer_map: InvariantMap[Graph]
 
     def name(self) -> str:
         return "Dirty"
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, pointer_map: InvariantMap[Graph]) -> None:
+        self.pointer_map = pointer_map
+
+    def copy(self, values: Dirty) -> Dirty:
+        return values.copy()
+
+    def initial(self, annotations: dict[tac.Var, str]) -> Dirty:
+        return set()
+
+    def bottom(self) -> Dirty:
+        return BOTTOM
+
+    def top(self) -> Dirty:
+        raise NotImplementedError
+
+    def is_top(self, elem: Dirty) -> bool:
+        return False
+
+    def is_bottom(self, elem: Dirty) -> bool:
+        return elem == self.bottom()
 
     def is_less_than(self, left: Dirty, right: Dirty) -> bool:
         return self.join(left, right) == right
@@ -27,21 +43,18 @@ class DirtyLattice(Lattice[Dirty]):
     def is_equivalent(self, left: Dirty, right: Dirty) -> bool:
         return left == right
 
-    def copy(self, values: Dirty) -> Dirty:
-        return copy_dirty(values)
-
-    def initial(self, annotations: dict[tac.Var, str]) -> Dirty:
-        return set()
-
-    def bottom(self) -> Dirty:
-        return set()
-
     def join(self, left: Dirty, right: Dirty) -> Dirty:
+        if left is BOTTOM:
+            return right
+        if right is BOTTOM:
+            return left
         return left | right
 
-    def transfer(self, values: Dirty, ins: tac.Tac, pointers: Graph, location: str) -> Dirty:
+    def transfer(self, values: Dirty, ins: tac.Tac, location: Location) -> Dirty:
+        if isinstance(values, Bottom):
+            return self.bottom()
         values = values.copy()
         match ins:
             case tac.Assign(lhs=tac.Attribute(var=tac.Var() as var) | tac.Subscript(var=tac.Var() as var)):
-                values.update(pointers[LOCALS][var])
+                values.update(self.pointer_map[location][LOCALS][var])
         return values

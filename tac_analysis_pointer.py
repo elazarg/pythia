@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import typing
+
 from graph_utils import Location
 
 from dataclasses import dataclass
@@ -160,8 +162,7 @@ def allocation_to_str(t: AllocationType) -> str:
     return ''
 
 
-def mark_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, object],
-                   alloc_invs: InvariantMap[AllocationType]) -> None:
+def find_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, object]) -> typing.Iterator[Location]:
     worklist = {LOCALS}
     while worklist:
         root = worklist.pop()
@@ -175,4 +176,4 @@ def mark_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, o
                     continue
                 worklist.add(loc)
                 label, index = [int(x) for x in str(loc)[1:].split('.')]
-                alloc_invs[(label, index)] = AllocationType.HEAP
+                yield (label, index)
