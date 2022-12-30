@@ -13,11 +13,12 @@ from graph_utils import Location
 
 import tac
 import tac_analysis_domain as domain
+from tac_analysis_dirty import DirtyLattice, Dirty
 from tac_analysis_domain import InvariantMap, MapDomain
 from tac_analysis_constant import ConstLattice, Constant
 
 from tac_analysis_liveness import LivenessVarLattice, Liveness
-from tac_analysis_pointer import PointerLattice, pretty_print_pointers, mark_reachable, Graph
+from tac_analysis_pointer import PointerLattice, pretty_print_pointers, find_reachable, Graph
 from tac_analysis_types import TypeLattice, AllocationChecker, AllocationType
 import type_system as ts
 
@@ -124,6 +125,9 @@ def run(f: typing.Any, module_type: ts.Module, simplify: bool = True) -> None:
     pointer_analysis = PointerLattice(allocation_invariants, liveness_invariants.post)
     pointer_invariants: InvariantPair[Graph] = analyze(cfg, pointer_analysis, annotations)
 
+    dirty_analysis = DirtyLattice(pointer_invariants.pre)
+    dirty_invariants: InvariantPair[Dirty] = analyze(cfg, dirty_analysis, annotations)
+
     for label, block in cfg.items():
         if not block:
             continue
@@ -133,7 +137,8 @@ def run(f: typing.Any, module_type: ts.Module, simplify: bool = True) -> None:
             liveness_post = liveness_invariants.post[(label, 0)]
             assert not isinstance(liveness_post, domain.Bottom)
             alive = set(liveness_post.keys())
-            mark_reachable(ptr, alive, annotations, alloc_invs=allocation_invariants)
+            for location in find_reachable(ptr, alive, annotations):
+                allocation_invariants[location] = AllocationType.HEAP
             break
 
     invariant_pairs: dict[str, InvariantPair] = {
@@ -141,6 +146,7 @@ def run(f: typing.Any, module_type: ts.Module, simplify: bool = True) -> None:
         "Constant": constant_invariants,
         "Type": type_invariants,
         "Pointer": pointer_invariants,
+        "Dirty": dirty_invariants,
     }
 
     print_analysis(cfg, invariant_pairs, allocation_invariants)
@@ -158,9 +164,9 @@ def main() -> None:
     # analyze_function('examples/tests.py', 'iterate')
     # analyze_function('examples/tests.py', 'tup')
     # analyze_function('examples/tests.py', 'destruct')
-    analyze_function('examples/feature_selection.py', 'do_work')
+    # analyze_function('examples/feature_selection.py', 'do_work')
     # analyze_function('examples/toy.py', 'minimal')
-    # analyze_function('examples/toy.py', 'not_so_minimal')
+    analyze_function('examples/toy.py', 'not_so_minimal')
     # analyze_function('examples/feature_selection.py', 'run')
 
 

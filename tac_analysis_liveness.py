@@ -30,9 +30,8 @@ from graph_utils import Location
 
 import tac
 from tac import Var
-from tac_analysis_domain import IterationStrategy, BackwardIterationStrategy, Top, Bottom, TOP, BOTTOM, \
+from tac_analysis_domain import Top, Bottom, TOP, BOTTOM, \
     MapDomain, Lattice, Map, normalize, InstructionLattice
-import graph_utils as gu
 
 T = TypeVar('T')
 
