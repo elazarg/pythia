@@ -10,8 +10,8 @@ from graph_utils import Location
 
 import tac
 from tac import Predefined, UnOp
-import tac_analysis_domain as domain
-from tac_analysis_domain import ValueLattice, VarLattice, InvariantMap, MapDomain
+import analysis_domain as domain
+from analysis_domain import ValueLattice, VarLattice, InvariantMap, MapDomain
 import type_system as ts
 
 

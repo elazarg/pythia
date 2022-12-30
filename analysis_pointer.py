@@ -11,10 +11,10 @@ from itertools import chain
 from typing import TypeAlias, Final
 
 import tac
-import tac_analysis_liveness
-import tac_analysis_domain as domain
-from tac_analysis_domain import InstructionLattice, InvariantMap, BOTTOM, Map, MapDomain
-from tac_analysis_types import AllocationType
+import analysis_liveness
+import analysis_domain as domain
+from analysis_domain import InstructionLattice, InvariantMap, BOTTOM, Map, MapDomain
+from analysis_types import AllocationType
 
 
 @dataclass(frozen=True)
@@ -53,13 +53,13 @@ def copy_graph(graph: Graph) -> Graph:
 
 class PointerLattice(InstructionLattice[Graph]):
     allocation_invariant_map: InvariantMap[AllocationType]
-    liveness: InvariantMap[MapDomain[tac_analysis_liveness.Liveness]]
+    liveness: InvariantMap[MapDomain[analysis_liveness.Liveness]]
     backward: bool = False
 
     def name(self) -> str:
         return "Pointer"
 
-    def __init__(self, allocation_invariant_map: InvariantMap[AllocationType], liveness: InvariantMap[MapDomain[tac_analysis_liveness.Liveness]]) -> None:
+    def __init__(self, allocation_invariant_map: InvariantMap[AllocationType], liveness: InvariantMap[MapDomain[analysis_liveness.Liveness]]) -> None:
         super().__init__()
         self.allocation_invariant_map = allocation_invariant_map
         self.liveness = liveness

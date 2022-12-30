@@ -7,7 +7,7 @@ from typing import TypeVar, Optional, TypeAlias
 
 import tac
 from tac import Const, Predefined
-from tac_analysis_domain import ValueLattice, TOP, BOTTOM, Top, Bottom
+from analysis_domain import ValueLattice, TOP, BOTTOM, Top, Bottom
 
 T = TypeVar('T')
 

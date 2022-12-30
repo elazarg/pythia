@@ -12,14 +12,14 @@ import graph_utils as gu
 from graph_utils import Location
 
 import tac
-import tac_analysis_domain as domain
-from tac_analysis_dirty import DirtyLattice, Dirty
-from tac_analysis_domain import InvariantMap, MapDomain
-from tac_analysis_constant import ConstLattice, Constant
+import analysis_domain as domain
+from analysis_dirty import DirtyLattice, Dirty
+from analysis_domain import InvariantMap, MapDomain
+from analysis_constant import ConstLattice, Constant
 
-from tac_analysis_liveness import LivenessVarLattice, Liveness
-from tac_analysis_pointer import PointerLattice, pretty_print_pointers, find_reachable, Graph
-from tac_analysis_types import TypeLattice, AllocationChecker, AllocationType
+from analysis_liveness import LivenessVarLattice, Liveness
+from analysis_pointer import PointerLattice, pretty_print_pointers, find_reachable, Graph
+from analysis_types import TypeLattice, AllocationChecker, AllocationType
 import type_system as ts
 
 

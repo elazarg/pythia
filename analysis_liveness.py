@@ -30,7 +30,7 @@ from graph_utils import Location
 
 import tac
 from tac import Var
-from tac_analysis_domain import Top, Bottom, TOP, BOTTOM, \
+from analysis_domain import Top, Bottom, TOP, BOTTOM, \
     MapDomain, Lattice, Map, normalize, InstructionLattice
 
 T = TypeVar('T')
