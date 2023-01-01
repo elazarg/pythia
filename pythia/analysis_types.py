@@ -213,9 +213,16 @@ def make_rows(*types) -> ts.Intersection:
                          for index, t in enumerate(types)])
 
 def from_function(function: ts.TypeExpr, returns: ts.TypeExpr) -> Allocation:
+    if ts.is_immutable(returns):
+        return Allocation.NONE
     if isinstance(function, ts.FunctionType):
-        if function.new and not ts.is_immutable(returns):
+        if function.new:
             return AllocationType.STACK
         else:
             return AllocationType.NONE
+    if isinstance(function, ts.Intersection):
+        result = AllocationType.NONE
+        for t in function.types:
+            result |= from_function(t, returns)
+        return result
     return AllocationType.UNKNOWN

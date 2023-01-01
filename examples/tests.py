@@ -4,6 +4,10 @@ def iterate(x: int):
     for i in range(x): pass
 
 
+def cmp(a: float, b: float) -> bool:
+    return a > b
+
+
 def negative(b: bool) -> bool:
     return not b
 
