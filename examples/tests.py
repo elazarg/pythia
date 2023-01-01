@@ -4,6 +4,10 @@ def iterate(x: int):
     for i in range(x): pass
 
 
+def negative(b: bool) -> bool:
+    return not b
+
+
 def access(x: np.ndarray):
     y = x[0]
     z = x[1:]

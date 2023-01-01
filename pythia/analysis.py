@@ -153,12 +153,13 @@ def analyze_function(filename: str, function_name: str) -> None:
     functions, imports = disassemble.read_file(filename)
     module_type = ts.parse_file(filename)
     run(functions[function_name], module_type=module_type,
-        simplify=True)
+        simplify=False)
+
 
 
 def main() -> None:
     example_dir = '../examples'
-    # analyze_function(f'{example_dir}/tests.py', 'access')
+    # analyze_function(f'{example_dir}/tests.py', 'negative')
     # analyze_function(f'{example_dir}/tests.py', 'iterate')
     # analyze_function(f'{example_dir}/tests.py', 'tup')
     # analyze_function(f'{example_dir}/tests.py', 'destruct')

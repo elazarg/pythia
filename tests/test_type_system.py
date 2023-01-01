@@ -46,24 +46,6 @@ def test_overload():
     assert ts.call(overload, args) == STR
 
 
-def test_function_call():
-    f = make_function(INT, make_rows())
-    arg = make_rows()
-    assert ts.call(f, arg) == INT
-
-    f = make_function(INT, make_rows(INT, FLOAT))
-    arg = make_rows(INT, FLOAT)
-    assert ts.call(f, arg) == INT
-
-    f = make_function(INT, make_rows(INT, FLOAT))
-    arg = make_rows(INT, INT)
-    assert ts.call(f, arg) == ts.BOTTOM
-
-    f = make_function(INT, make_rows())
-    arg = ts.BOTTOM
-    assert ts.call(f, arg) == INT
-
-
 def test_unification():
     assert ts.unify(
         type_params=(T,),
@@ -86,6 +68,24 @@ def test_unification():
         type_params=(T, Args),
         params=make_rows(T, Args, T),
         args=args) == {T: FLOAT, Args: make_rows(INT)}
+
+
+def test_function_call():
+    f = make_function(INT, make_rows())
+    arg = make_rows()
+    assert ts.call(f, arg) == INT
+
+    f = make_function(INT, make_rows(INT, FLOAT))
+    arg = make_rows(INT, FLOAT)
+    assert ts.call(f, arg) == INT
+
+    f = make_function(INT, make_rows(INT, FLOAT))
+    arg = make_rows(INT, INT)
+    assert ts.call(f, arg) == ts.BOTTOM
+
+    f = make_function(INT, make_rows())
+    arg = ts.BOTTOM
+    assert ts.call(f, arg) == INT
 
 
 def test_function_call_generic_project():

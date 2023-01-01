@@ -915,7 +915,10 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                 )
                 returns = expr_to_type(fdef.returns)
                 name_decorators = [decorator.id for decorator in fdef.decorator_list if isinstance(decorator, ast.Name)]
-                new = returns not in [Ref(f'buitlins.{x}') for x in ['int', 'float', 'bool', 'None']]
+                if isinstance(returns, Intersection):
+                    new = not any(isinstance(x, Literal) for x in returns.items)
+                else:
+                    new = returns not in [Ref(f'builtins.{x}') for x in ['int', 'float', 'bool', 'None']]
                 property = 'property' in name_decorators
                 type_params = tuple(TypeVar(x) for x in freevars if x in generic_vars)
                 f = FunctionType(params, returns, new=new, property=property, type_params=type_params)
