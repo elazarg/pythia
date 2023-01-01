@@ -183,11 +183,13 @@ class AllocationChecker:
                     var_type = self.type_lattice.transformer_expr(type_invariant, var)
                     function = self.type_lattice.lattice.attribute(var_type, field)
                     if isinstance(function, ts.FunctionType) and function.property:
-                        return self.from_function(function)
+                        return from_function(function, ts.BOTTOM)
                     return AllocationType.NONE
                 case tac.Call(func, args):
                     function = self.type_lattice.transformer_expr(type_invariant, func)
-                    return self.from_function(function)
+                    returns = ts.call(function, make_rows(*[self.type_lattice.transformer_expr(type_invariant, arg)
+                                                            for index, arg in enumerate(args)]))
+                    return from_function(function, returns)
                 case tac.Subscript(var=tac.Var() as var, index=tac.Var() as index):
                     var_type = self.type_lattice.transformer_expr(type_invariant, var)
                     index_type = self.type_lattice.transformer_expr(type_invariant, index)
@@ -197,18 +199,23 @@ class AllocationChecker:
                     lattice = self.type_lattice.lattice
                     assert isinstance(lattice, TypeLattice)
                     function = lattice.get_unary_attribute(value, op)
-                    return self.from_function(function)
+                    return from_function(function, make_rows(value))
                 case tac.Binary(left=tac.Var() as left, right=tac.Var() as right, op=str() as op):
                     left_type: ts.TypeExpr = self.type_lattice.transformer_expr(type_invariant, left)
                     right_type: ts.TypeExpr = self.type_lattice.transformer_expr(type_invariant, right)
                     function = ts.get_binop(left_type, right_type, op)
-                    return self.from_function(function)
+                    return from_function(function, make_rows(left_type, right_type))
         return AllocationType.NONE
 
-    def from_function(self, function: ts.TypeExpr) -> Allocation:
-        if isinstance(function, ts.FunctionType):
-            if function.new:
-                return AllocationType.STACK
-            else:
-                return AllocationType.NONE
-        return AllocationType.UNKNOWN
+
+def make_rows(*types) -> ts.Intersection:
+    return ts.intersect([ts.make_row(index, None, t)
+                         for index, t in enumerate(types)])
+
+def from_function(function: ts.TypeExpr, returns: ts.TypeExpr) -> Allocation:
+    if isinstance(function, ts.FunctionType):
+        if function.new and not ts.is_immutable(returns):
+            return AllocationType.STACK
+        else:
+            return AllocationType.NONE
+    return AllocationType.UNKNOWN

@@ -672,7 +672,7 @@ def make_constructor(t: TypeExpr) -> TypeExpr:
     return_type = intersect([args, Instantiation(t, (args,))])
     return FunctionType(params=intersect([make_row(None, None, args)]),
                         return_type=return_type,
-                        new=True,
+                        new=not is_immutable(return_type),
                         property=False,
                         type_params=(args,))
 
@@ -915,10 +915,7 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                 )
                 returns = expr_to_type(fdef.returns)
                 name_decorators = [decorator.id for decorator in fdef.decorator_list if isinstance(decorator, ast.Name)]
-                if isinstance(returns, Intersection):
-                    new = not any(isinstance(x, Literal) for x in returns.items)
-                else:
-                    new = returns not in [Ref(f'builtins.{x}') for x in ['int', 'float', 'bool', 'None']]
+                new = not is_immutable(returns)
                 property = 'property' in name_decorators
                 type_params = tuple(TypeVar(x) for x in freevars if x in generic_vars)
                 f = FunctionType(params, returns, new=new, property=property, type_params=type_params)
@@ -942,6 +939,23 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                             if not isinstance(stmt, ast.Assign)
                             for row in stmt_to_rows(stmt, index)])
     return Module(name, class_dict)
+
+
+def is_immutable(value: TypeExpr) -> bool:
+    match value:
+        case Intersection(items):
+            return all(is_immutable(x) for x in items)
+        case Instantiation(generic, items):
+            return is_immutable(generic) and all(is_immutable(x) for x in items)
+        case Literal():
+            return True
+        case Row(name, value):
+            return is_immutable(value)
+        case Ref(name):
+            return name in ('builtins.int', 'builtins.float', 'builtins.bool', 'builtins.str', 'builtins.bytes', 'builtins.tuple')
+        case _:
+            print(f'Not sure if {value!r} is immutable')
+            return False
 
 
 def parse_file(path: str) -> Module:
