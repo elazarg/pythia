@@ -3,15 +3,20 @@ import numpy as np
 
 
 def main():
-    res = np.zeros((10, 10))
+    res = np.zeros((3, 3))
 
-    locals().update(persist.load('toy-instrumented.pkl'))
-    for i in persist.persistent_iteration(range(1000)):
-        res = persist.start(i)
+    transaction = persist.Loader(__file__)
+    with transaction as restored_state:
+        if restored_state:
+            [res] = restored_state
 
-        temp = np.random.rand(10, 10)
-        res = res + temp
+        for i in transaction.iterate(range(10000)):
+            temp = np.ones((3, 3))
+            res = res + temp
 
-        persist.commit(res=res)
+            transaction.commit(res)
 
     return res
+
+if __name__ == '__main__':
+    print(main())
