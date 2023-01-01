@@ -56,6 +56,8 @@ class DirtyLattice(InstructionLattice[Dirty]):
             return self.bottom()
         values = values.copy()
         match ins:
+            case tac.For():
+                values.clear()
             case tac.Assign(lhs=tac.Attribute(var=tac.Var() as var) | tac.Subscript(var=tac.Var() as var)):
                 values.update(self.pointer_map[location][LOCALS][var])
         return values

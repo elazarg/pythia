@@ -949,13 +949,17 @@ def is_immutable(value: TypeExpr) -> bool:
             return is_immutable(generic) and all(is_immutable(x) for x in items)
         case Literal():
             return True
-        case Row(name, value):
+        case Row(type=value):
             return is_immutable(value)
         case Ref(name):
             module, name = name.split('.')
-            if module == 'builtins':
-                return name not in ['list', 'dict', 'set']
-            return False
+            if module != 'builtins':
+                return False
+            if name in ['list', 'dict', 'set']:
+                return False
+            if name[0].isupper():
+                return name == 'NoneType'
+            return True
         case _:
             return False
 

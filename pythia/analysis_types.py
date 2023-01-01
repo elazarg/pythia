@@ -163,6 +163,7 @@ class AllocationType(enum.StrEnum):
 Allocation: typing.TypeAlias = AllocationType
 
 
+
 class AllocationChecker:
     type_invariant_map: InvariantMap[MapDomain[ts.TypeExpr]]
     type_lattice: VarLattice[ts.TypeExpr]
@@ -208,21 +209,36 @@ class AllocationChecker:
         return AllocationType.NONE
 
 
-def make_rows(*types) -> ts.Intersection:
+def make_rows(*types: ts.TypeExpr) -> ts.Intersection:
     return ts.intersect([ts.make_row(index, None, t)
                          for index, t in enumerate(types)])
+
+
+def join(left: Allocation, right: Allocation) -> Allocation:
+    if left == Allocation.NONE:
+        return right
+    if right == Allocation.NONE:
+        return left
+    if left == right:
+        return left
+    return Allocation.UNKNOWN
+
 
 def from_function(function: ts.TypeExpr, returns: ts.TypeExpr) -> Allocation:
     if ts.is_immutable(returns):
         return Allocation.NONE
-    if isinstance(function, ts.FunctionType):
-        if function.new:
-            return AllocationType.STACK
-        else:
-            return AllocationType.NONE
-    if isinstance(function, ts.Intersection):
-        result = AllocationType.NONE
-        for t in function.types:
-            result |= from_function(t, returns)
-        return result
-    return AllocationType.UNKNOWN
+
+    def from_function(function: ts.TypeExpr) -> Allocation:
+        if isinstance(function, ts.FunctionType):
+            if function.new:
+                return AllocationType.STACK
+            else:
+                return AllocationType.NONE
+        if isinstance(function, ts.Intersection):
+            result = AllocationType.NONE
+            for t in function.items:
+                result = join(result, from_function(t))
+            return result
+        return AllocationType.UNKNOWN
+
+    return from_function(function)

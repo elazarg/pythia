@@ -153,7 +153,7 @@ def analyze_function(filename: str, function_name: str) -> None:
     functions, imports = disassemble.read_file(filename)
     module_type = ts.parse_file(filename)
     run(functions[function_name], module_type=module_type,
-        simplify=False)
+        simplify=True)
 
 
 
@@ -165,7 +165,7 @@ def main() -> None:
     # analyze_function(f'{example_dir}/tests.py', 'destruct')
     analyze_function(f'{example_dir}/feature_selection.py', 'do_work')
     # analyze_function(f'{example_dir}/toy.py', 'minimal')
-    # analyze_function(f'{example_dir}/toy.py', 'not_so_minimal')
+    analyze_function(f'{example_dir}/toy.py', 'not_so_minimal')
     # analyze_function(f'{example_dir}/feature_selection.py', 'run')
 
 

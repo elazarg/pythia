@@ -20,6 +20,7 @@ def make_a() -> A:
 
 def not_so_minimal():
     a = make_a()
+    b = make_a()
     a.vector = np.zeros((5, 7))
     a.score = 0.0
     for i in range(1000):

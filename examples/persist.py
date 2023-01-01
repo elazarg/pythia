@@ -1,12 +1,29 @@
 import pickle
-
+import pathlib
+import builtins
 
 def start(idx):
     pass
 
 
-def commit():
-    pass
+def persistent_iteration(iterable):
+    global iterator
+    if _now_recovering(filename):
+        return load(filename)["iterator"]
+    iterator = iter(iterable)
+    for v in iterator:
+        yield v
+
+
+def load(filename):
+    global iterator
+    if _now_recovering(filename):
+        with open(filename, "rb") as snapshot:
+            dict_res = pickle.load(snapshot)
+            iterator = dict_res.pop("@")
+            assert isinstance(dict_res, dict)
+            return dict_res
+    return {}
 
 
 def _recover(snapshot):
@@ -14,9 +31,10 @@ def _recover(snapshot):
         return pickle.load(snapshot)
 
 
-def _commit(*args):
+def commit(**kwargs):
     with open("snapshot.pkl", "wb") as snapshot:
-        pickle.dump(args, snapshot)
+        kwargs = {"@": iterator, **kwargs}
+        pickle.dump(kwargs, snapshot)
 
 
 def _mark(S):
@@ -27,8 +45,8 @@ def _mark_shallow(S):
     pass
 
 
-def _now_recovering():
-    pass
+def _now_recovering(filename):
+    return pathlib.Path(filename).exists()
 
 
 def _unmark(S):
