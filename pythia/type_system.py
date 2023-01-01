@@ -952,9 +952,11 @@ def is_immutable(value: TypeExpr) -> bool:
         case Row(name, value):
             return is_immutable(value)
         case Ref(name):
-            return name in ('builtins.int', 'builtins.float', 'builtins.bool', 'builtins.str', 'builtins.bytes', 'builtins.tuple')
+            module, name = name.split('.')
+            if module == 'builtins':
+                return name not in ['list', 'dict', 'set']
+            return False
         case _:
-            print(f'Not sure if {value!r} is immutable')
             return False
 
 
