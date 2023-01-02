@@ -11,7 +11,6 @@ class DirtyTransformer(ast.NodeTransformer):
         self.dirty = dirty
 
     def parse_expression(self, source: str) -> ast.expr:
-        print(source)
         stmt = ast.parse(source, type_comments=True, filename=self.filename, feature_version=(3, 11)).body[0]
         assert isinstance(stmt, ast.Expr)
         return stmt.value

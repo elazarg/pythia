@@ -170,12 +170,13 @@ def allocation_to_str(t: AllocationType) -> str:
 
 
 def find_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, object],
-                   sources: typing.Optional[set[Object]] = None) -> typing.Iterator[Location]:
-    worklist = sources if sources is not None else {LOCALS}
+                   sources: typing.Optional[frozenset[Object]] = None) -> typing.Iterator[Location]:
+    worklist = set(sources) if sources is not None else {LOCALS}
     while worklist:
         root = worklist.pop()
         for edge, locs in ptr.get(root, {}).items():
             if root == LOCALS and edge not in alive:
+                # We did not remove non-stack variables from the pointer lattice, so we need to filter them out here.
                 continue
             if edge in annotations:
                 continue
@@ -186,14 +187,7 @@ def find_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, o
                 label, index = [int(x) for x in str(loc)[1:].split('.')]
                 yield (label, index)
 
-def find_reaching_locals(ptr: Graph, sources: set[Object]) -> typing.Iterator[tac.Var]:
-    inverse = invert_graph(ptr)
-    pretty_print_pointers(inverse)
-    worklist = sources
-    while worklist:
-        print(worklist)
-        root = worklist.pop()
-        for edge, locs in inverse.get(root, {}).items():
-            if not edge.is_stackvar:
-                yield edge
-                worklist.update(locs)
+def find_reaching_locals(ptr: Graph, alive: set[tac.Var], dirty: set[Object]) -> typing.Iterator[tac.Var]:
+    for k, v in ptr[LOCALS].items():
+        if k in alive and v & dirty:
+            yield k

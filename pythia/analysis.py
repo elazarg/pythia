@@ -106,6 +106,17 @@ def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], property_map:
             print()
 
 
+def find_first_for_loop(cfg: Cfg) -> tuple[Location, Location]:
+    for label, block in cfg.items():
+        if not block:
+            continue
+        if isinstance(block[0], tac.For):
+            assert len(block) == 1
+            prev, after = cfg.predecessors(label)
+            return ((label, 0), (after, cfg[after].last_index()))
+    raise ValueError('No for loop found')
+
+
 def run(f: typing.Any, module_type: ts.Module, simplify: bool = True) -> set[str]:
     cfg: Cfg = make_tac_cfg(f, simplify=simplify)
 
@@ -125,18 +136,22 @@ def run(f: typing.Any, module_type: ts.Module, simplify: bool = True) -> set[str
     dirty_analysis = DirtyLattice(pointer_invariants.post, allocation_invariants)
     dirty_invariants: InvariantPair[Dirty] = analyze(cfg, dirty_analysis, annotations)
 
-    for label, block in cfg.items():
-        if not block:
-            continue
-        if isinstance(block[0], tac.For):
-            assert len(block) == 1
-            ptr = pointer_invariants.post[(label, 0)]
-            liveness_post = liveness_invariants.post[(label, 0)]
-            assert not isinstance(liveness_post, domain.Bottom)
-            alive = set(liveness_post.keys())
-            for location in find_reachable(ptr, alive, annotations):
-                allocation_invariants[location] = AllocationType.HEAP
-            break
+    for_location, loop_end = find_first_for_loop(cfg)
+
+    ptr = pointer_invariants.post[for_location]
+    liveness_post = liveness_invariants.post[for_location]
+    assert not isinstance(liveness_post, domain.Bottom)
+    alive = set(liveness_post.keys())
+    for location in find_reachable(ptr, alive, annotations):
+        allocation_invariants[location] = AllocationType.HEAP
+
+    location = loop_end
+    dirty_objects = dirty_invariants.post[location]
+    liveness_post = liveness_invariants.post[location]
+    assert not isinstance(liveness_post, domain.Bottom)
+    alive = set(liveness_post.keys())
+    assert not isinstance(dirty_objects, domain.Bottom)
+    dirty_locals = find_reaching_locals(pointer_invariants.post[location], alive, dirty_objects)
 
     invariant_pairs: dict[str, InvariantPair] = {
         "Liveness": liveness_invariants,
@@ -148,11 +163,7 @@ def run(f: typing.Any, module_type: ts.Module, simplify: bool = True) -> set[str
 
     print_analysis(cfg, invariant_pairs, allocation_invariants)
 
-    dirty_vars = dirty_invariants.post[(cfg.exit_label, 0)]
-    assert not isinstance(dirty_vars, domain.Bottom)
-    return {x.name for x in find_reaching_locals(pointer_invariants.post[(cfg.exit_label, 0)],
-                                                 dirty_vars)
-            if x.name != 'return'}
+    return {x.name for x in dirty_locals if x.name != 'return'}
 
 
 def analyze_function(filename: str, function_name: str) -> None:
