@@ -66,7 +66,7 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     # define new solution
     S = np.array([], int)
 
-    for idx in range(k):
+    for idx in range(k):  # type: int
         # define and train model
         # preprocess current solution
         grad = linear_regression(features, target, np.unique(S[S >= 0]))

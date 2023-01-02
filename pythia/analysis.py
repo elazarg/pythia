@@ -12,12 +12,13 @@ import pythia.graph_utils as gu
 import pythia.type_system as ts
 from pythia import disassemble, ast_transform
 from pythia import tac
-from pythia.analysis_constant import ConstLattice, Constant
-from pythia.analysis_dirty import DirtyLattice, Dirty
-from pythia.analysis_domain import InvariantMap, MapDomain
-from pythia.analysis_liveness import LivenessVarLattice, Liveness
-from pythia.analysis_pointer import PointerLattice, pretty_print_pointers, find_reachable, Graph, find_reaching_locals
-from pythia.analysis_types import TypeLattice, AllocationChecker, AllocationType
+from pythia.analysis_constant import ConstLattice
+from pythia.analysis_dirty import DirtyLattice, find_reaching_locals
+from pythia.analysis_domain import InvariantMap
+from pythia.analysis_liveness import LivenessVarLattice
+from pythia.analysis_pointer import PointerLattice, pretty_print_pointers, update_allocation_invariants
+from pythia.analysis_types import TypeLattice
+from pythia.analysis_allocation import AllocationType, AllocationChecker
 from pythia.graph_utils import Location
 
 T = TypeVar('T')
@@ -117,41 +118,32 @@ def find_first_for_loop(cfg: Cfg) -> tuple[Location, Location]:
     raise ValueError('No for loop found')
 
 
-def run(f: typing.Any, module_type: ts.Module, simplify: bool = True) -> set[str]:
-    cfg: Cfg = make_tac_cfg(f, simplify=simplify)
+def run(cfg: Cfg, annotations: dict[tac.Var, str], module_type: ts.Module, function_name: str) -> tuple[InvariantMap[AllocationType], set[str], dict[str, InvariantPair]]:
 
-    annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
+    liveness_invariants = analyze(cfg, LivenessVarLattice(), annotations)
+    constant_invariants = analyze(cfg, domain.VarLattice(ConstLattice(), liveness_invariants.post), annotations)
 
-    liveness_invariants: InvariantPair[MapDomain[Liveness]] = analyze(cfg, LivenessVarLattice(), annotations)
-    constant_invariants: InvariantPair[MapDomain[Constant]] = analyze(cfg, domain.VarLattice(ConstLattice(), liveness_invariants.post), annotations)
-
-    type_analysis: domain.VarLattice[ts.TypeExpr] = domain.VarLattice[ts.TypeExpr](TypeLattice(f.__name__, module_type),
+    type_analysis: domain.VarLattice[ts.TypeExpr] = domain.VarLattice[ts.TypeExpr](TypeLattice(function_name, module_type),
                                                                                    liveness_invariants.post)
-    type_invariants: InvariantPair[MapDomain[ts.TypeExpr]] = analyze(cfg, type_analysis, annotations)
+    type_invariants = analyze(cfg, type_analysis, annotations)
     allocation_invariants: InvariantMap[AllocationType] = analyze_single(cfg, AllocationChecker(type_invariants.pre, type_analysis))
 
     pointer_analysis = PointerLattice(allocation_invariants, liveness_invariants.post)
-    pointer_invariants: InvariantPair[Graph] = analyze(cfg, pointer_analysis, annotations)
+    pointer_invariants = analyze(cfg, pointer_analysis, annotations)
 
     dirty_analysis = DirtyLattice(pointer_invariants.post, allocation_invariants)
-    dirty_invariants: InvariantPair[Dirty] = analyze(cfg, dirty_analysis, annotations)
+    dirty_invariants = analyze(cfg, dirty_analysis, annotations)
 
     for_location, loop_end = find_first_for_loop(cfg)
 
-    ptr = pointer_invariants.post[for_location]
-    liveness_post = liveness_invariants.post[for_location]
-    assert not isinstance(liveness_post, domain.Bottom)
-    alive = set(liveness_post.keys())
-    for location in find_reachable(ptr, alive, annotations):
-        allocation_invariants[location] = AllocationType.HEAP
+    update_allocation_invariants(allocation_invariants,
+                                 pointer_invariants.post[for_location],
+                                 liveness_invariants.post[for_location],
+                                 annotations)
 
-    location = loop_end
-    dirty_objects = dirty_invariants.post[location]
-    liveness_post = liveness_invariants.post[location]
-    assert not isinstance(liveness_post, domain.Bottom)
-    alive = set(liveness_post.keys())
-    assert not isinstance(dirty_objects, domain.Bottom)
-    dirty_locals = find_reaching_locals(pointer_invariants.post[location], alive, dirty_objects)
+    dirty_locals = set(find_reaching_locals(pointer_invariants.post[loop_end],
+                                            liveness_invariants.post[loop_end],
+                                            dirty_invariants.post[loop_end]))
 
     invariant_pairs: dict[str, InvariantPair] = {
         "Liveness": liveness_invariants,
@@ -161,17 +153,27 @@ def run(f: typing.Any, module_type: ts.Module, simplify: bool = True) -> set[str
         "Dirty": dirty_invariants,
     }
 
-    print_analysis(cfg, invariant_pairs, allocation_invariants)
-
-    return {x.name for x in dirty_locals if x.name != 'return'}
+    return allocation_invariants, dirty_locals, invariant_pairs
 
 
-def analyze_function(filename: str, function_name: str) -> None:
+def analyze_function(filename: str, *function_names: str) -> None:
     functions, imports = disassemble.read_file(filename)
     module_type = ts.parse_file(filename)
-    vars = run(functions[function_name], module_type=module_type,
-               simplify=True)
-    output = ast_transform.transform(filename, function_name, vars)
+
+    dirty_map = {}
+    for function_name in function_names:
+        f = functions[function_name]
+        cfg: Cfg = make_tac_cfg(f, simplify=True)
+        annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
+        allocation_invariants, dirty_locals, invariant_pairs = run(cfg, annotations,
+                                                                   module_type=module_type,
+                                                                   function_name=function_name)
+
+        print_analysis(cfg, invariant_pairs, allocation_invariants)
+
+        dirty_map[function_name] = dirty_locals
+
+    output = ast_transform.transform(filename, dirty_map)
     print(output)
 
 
@@ -181,9 +183,14 @@ def main() -> None:
     # analyze_function(f'{example_dir}/tests.py', 'iterate')
     # analyze_function(f'{example_dir}/tests.py', 'tup')
     # analyze_function(f'{example_dir}/tests.py', 'destruct')
-    # analyze_function(f'{example_dir}/feature_selection.py', 'do_work')
-    analyze_function(f'{example_dir}/toy.py', 'minimal')
-    # analyze_function(f'{example_dir}/toy.py', 'not_so_minimal')
+
+    analyze_function(f'{example_dir}/feature_selection.py',
+                     'do_work')
+
+    analyze_function(f'{example_dir}/toy.py',
+                     'minimal',
+                     'not_so_minimal',
+                     )
     # analyze_function(f'{example_dir}/feature_selection.py', 'run')
 
 

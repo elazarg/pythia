@@ -1,6 +1,6 @@
 # Data flow analysis and stuff.
 
-from __future__ import annotations as _
+from __future__ import annotations as _, annotations
 
 import typing
 from dataclasses import dataclass
@@ -12,7 +12,8 @@ from pythia.graph_utils import Location
 from . import analysis_domain as domain
 from . import analysis_liveness
 from .analysis_domain import InstructionLattice, InvariantMap, BOTTOM, MapDomain
-from .analysis_types import AllocationType
+from .analysis_allocation import AllocationType
+from .analysis_liveness import Liveness
 
 
 @dataclass(frozen=True)
@@ -42,14 +43,6 @@ def pretty_print_pointers(pointers: Graph) -> str:
                      for field, target_obj in pointers[source_obj].items()
                      if pointers[source_obj][field]
                      )
-
-def invert_graph(graph: Graph) -> Graph:
-    result = {}
-    for obj, obj_fields in graph.items():
-        for field, target_obj in obj_fields.items():
-            for target in target_obj:
-                result.setdefault(target, {}).setdefault(field, set()).add(obj)
-    return result
 
 
 def copy_graph(graph: Graph) -> Graph:
@@ -163,31 +156,43 @@ class PointerLattice(InstructionLattice[Graph]):
 
         return values
 
+
 def allocation_to_str(t: AllocationType) -> str:
     if t is not AllocationType.NONE:
         return f' #  ' + t.name
     return ''
 
 
-def find_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, object],
+def object_to_location(obj: Object) -> Location:
+    label, index = obj.location.split('.')
+    return (int(label), int(index))
+
+
+def find_reachable(ptr: Graph, alive: set[tac.Var], params: set[tac.Var],
                    sources: typing.Optional[frozenset[Object]] = None) -> typing.Iterator[Location]:
     worklist = set(sources) if sources is not None else {LOCALS}
     while worklist:
         root = worklist.pop()
-        for edge, locs in ptr.get(root, {}).items():
+        if '.' in root.location:
+            yield object_to_location(root)
+        for edge, objects in ptr.get(root, {}).items():
             if root == LOCALS and edge not in alive:
                 # We did not remove non-stack variables from the pointer lattice, so we need to filter them out here.
                 continue
-            if edge in annotations:
+            if edge in params:
                 continue
-            for loc in locs:
-                if repr(loc).startswith('@param'):
+            for obj in objects:
+                if repr(obj).startswith('@param'):
                     continue
-                worklist.add(loc)
-                label, index = [int(x) for x in str(loc)[1:].split('.')]
-                yield (label, index)
+                worklist.add(obj)
 
-def find_reaching_locals(ptr: Graph, alive: set[tac.Var], dirty: set[Object]) -> typing.Iterator[tac.Var]:
-    for k, v in ptr[LOCALS].items():
-        if k in alive and v & dirty:
-            yield k
+
+def update_allocation_invariants(allocation_invariants: InvariantMap[AllocationType],
+                                 ptr: Graph,
+                                 liveness: MapDomain[Liveness],
+                                 annotations: dict[tac.Var, str]) -> None:
+    assert not isinstance(liveness, domain.Bottom)
+
+    alive = set(liveness.keys())
+    for location in find_reachable(ptr, alive, set(annotations)):
+        allocation_invariants[location] = AllocationType.HEAP

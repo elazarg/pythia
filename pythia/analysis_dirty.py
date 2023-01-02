@@ -1,12 +1,14 @@
-from __future__ import annotations as _
+from __future__ import annotations as _, annotations
 
+import typing
 from typing import TypeAlias
 
-from pythia import tac
+from pythia import tac, analysis_domain as domain
 from pythia.graph_utils import Location
-from .analysis_domain import InvariantMap, InstructionLattice, Bottom, BOTTOM
-from .analysis_pointer import Graph, Object, LOCALS
-from .analysis_types import AllocationType
+from .analysis_domain import InvariantMap, InstructionLattice, Bottom, BOTTOM, MapDomain
+from .analysis_liveness import Liveness
+from .analysis_pointer import Graph, Object, LOCALS, object_to_location, find_reachable
+from .analysis_allocation import AllocationType
 
 Dirty: TypeAlias = set[Object] | Bottom
 
@@ -14,15 +16,15 @@ Dirty: TypeAlias = set[Object] | Bottom
 class DirtyLattice(InstructionLattice[Dirty]):
     backward: bool = False
     pointer_map: InvariantMap[Graph]
-    alloc: InvariantMap[AllocationType]
+    allocation_invariant_map: InvariantMap[AllocationType]
 
 
     def name(self) -> str:
         return "Dirty"
 
-    def __init__(self, pointer_map: InvariantMap[Graph], alloc: InvariantMap[AllocationType]) -> None:
+    def __init__(self, pointer_map: InvariantMap[Graph], allocation_invariant_map: InvariantMap[AllocationType]) -> None:
         self.pointer_map = pointer_map
-        self.alloc = alloc
+        self.allocation_invariant_map = allocation_invariant_map
 
     def copy(self, values: Dirty) -> Dirty:
         return values.copy()
@@ -65,7 +67,20 @@ class DirtyLattice(InstructionLattice[Dirty]):
             case tac.Assign(lhs=tac.Attribute(var=tac.Var() as var) | tac.Subscript(var=tac.Var() as var)):
                 values.update(self.pointer_map[location][LOCALS].get(var, set()))
             case tac.Assign(lhs=tac.Var() as var):
-                is_alloc = self.alloc[location] != AllocationType.NONE
-                if is_alloc:
+                if self.allocation_invariant_map[location] != AllocationType.NONE:
                     values.update(self.pointer_map[location][LOCALS].get(var, set()))
         return values
+
+
+def find_reaching_locals(ptr: Graph, liveness: MapDomain[Liveness], dirty_objects: Dirty) -> typing.Iterator[str]:
+    assert not isinstance(liveness, domain.Bottom)
+    assert not isinstance(dirty_objects, domain.Bottom)
+
+    alive = {k for k, v in liveness.items() if isinstance(v, domain.Top)}
+    dirty = {object_to_location(obj) for obj in dirty_objects}
+    for k, v in ptr[LOCALS].items():
+        if k.name == 'return':
+            continue
+        reachable = set(find_reachable(ptr, alive, set(), v))
+        if k in alive and reachable & dirty:
+            yield k.name
