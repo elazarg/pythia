@@ -4,12 +4,28 @@ import ast
 import typing
 
 
-def make_for(for_loop: ast.For, filename: str, dirty: set[str]) -> ast.With:
-    def parse_expression(source: str) -> ast.expr:
-        stmt = ast.parse(source, type_comments=True, filename=filename, feature_version=(3, 11)).body[0]
+
+class Parser:
+    filename: str
+    def __init__(self, filename: str) -> None:
+        self.filename = filename
+
+    def parse(self, source: str) -> ast.Module:
+        return ast.parse(source, type_comments=True, filename=self.filename, feature_version=(3, 11))
+
+    def parse_statement(self, source: str) -> ast.stmt:
+        stmt = self.parse(source).body[0]
+        assert isinstance(stmt, ast.stmt)
+        return stmt
+
+    def parse_expression(self, source: str) -> ast.expr:
+        stmt = self.parse(source).body[0]
         assert isinstance(stmt, ast.Expr)
         return stmt.value
 
+
+def make_for(for_loop: ast.For, filename: str, dirty: set[str]) -> ast.With:
+    parse_expression = Parser(filename).parse_expression
     iter = ast.Call(
         func=ast.Attribute(
             value=ast.Name(id='transaction', ctx=ast.Load()),
@@ -54,6 +70,8 @@ def make_for(for_loop: ast.For, filename: str, dirty: set[str]) -> ast.With:
 
 
 def transform(filename: str, dirty_map: dict[str, set[str]]) -> str:
+    parser = Parser(filename)
+
     class DirtyTransformer(ast.NodeTransformer):
         def __init__(self, dirty: set[str]) -> None:
             self.dirty = dirty
@@ -66,6 +84,12 @@ def transform(filename: str, dirty_map: dict[str, set[str]]) -> str:
             return make_for(for_loop, filename, self.dirty)
 
     class Compiler(ast.NodeTransformer):
+        def visit_Module(self, node: ast.Module) -> ast.Module:
+            tree = typing.cast(ast.Module, self.generic_visit(node))
+            import_stmt = parser.parse_statement('import persist')
+            res = ast.Module(body=[import_stmt, *tree.body], type_ignores=tree.type_ignores)
+            return res
+
         def visit_FunctionDef(self, function: ast.FunctionDef) -> ast.FunctionDef:
             if function.name not in dirty_map:
                 return function
@@ -75,7 +99,7 @@ def transform(filename: str, dirty_map: dict[str, set[str]]) -> str:
 
     with open(filename, encoding='utf-8') as f:
         source = f.read()
-    tree = ast.parse(source, type_comments=True, filename=filename, feature_version=(3, 11))
+    tree = parser.parse(source)
     tree = Compiler().visit(tree)
     tree = ast.fix_missing_locations(tree)
     return ast.unparse(tree)
