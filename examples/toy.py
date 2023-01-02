@@ -7,7 +7,7 @@ def minimal():
     # comment
     i: Persist
     for i in range(10000):  # type: int
-        temp = np.random.rand((5, 7))
+        temp = np.random.rand(5, 7)
         res += temp
     return res
 
@@ -27,7 +27,7 @@ def not_so_minimal():
     a.vector = np.zeros((5, 7))
     a.score = 0.0
     for i in range(1000):  # type: int
-        temp = np.random.rand((5, 7))
+        temp = np.random.rand(5, 7)
         norm = np.sum(temp)
         if a.score < norm:
             a.vector = temp
