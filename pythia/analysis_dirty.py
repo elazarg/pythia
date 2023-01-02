@@ -6,6 +6,7 @@ from pythia import tac
 from pythia.graph_utils import Location
 from .analysis_domain import InvariantMap, InstructionLattice, Bottom, BOTTOM
 from .analysis_pointer import Graph, Object, LOCALS
+from .analysis_types import AllocationType
 
 Dirty: TypeAlias = set[Object] | Bottom
 
@@ -13,12 +14,15 @@ Dirty: TypeAlias = set[Object] | Bottom
 class DirtyLattice(InstructionLattice[Dirty]):
     backward: bool = False
     pointer_map: InvariantMap[Graph]
+    alloc: InvariantMap[AllocationType]
+
 
     def name(self) -> str:
         return "Dirty"
 
-    def __init__(self, pointer_map: InvariantMap[Graph]) -> None:
+    def __init__(self, pointer_map: InvariantMap[Graph], alloc: InvariantMap[AllocationType]) -> None:
         self.pointer_map = pointer_map
+        self.alloc = alloc
 
     def copy(self, values: Dirty) -> Dirty:
         return values.copy()
@@ -59,5 +63,9 @@ class DirtyLattice(InstructionLattice[Dirty]):
             case tac.For():
                 values.clear()
             case tac.Assign(lhs=tac.Attribute(var=tac.Var() as var) | tac.Subscript(var=tac.Var() as var)):
-                values.update(self.pointer_map[location][LOCALS][var])
+                values.update(self.pointer_map[location][LOCALS].get(var, set()))
+            case tac.Assign(lhs=tac.Var() as var):
+                is_alloc = self.alloc[location] != AllocationType.NONE
+                if is_alloc:
+                    values.update(self.pointer_map[location][LOCALS].get(var, set()))
         return values

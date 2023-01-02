@@ -10,13 +10,13 @@ from typing import TypeVar, TypeAlias
 import pythia.analysis_domain as domain
 import pythia.graph_utils as gu
 import pythia.type_system as ts
-from pythia import disassemble
+from pythia import disassemble, ast_transform
 from pythia import tac
 from pythia.analysis_constant import ConstLattice, Constant
 from pythia.analysis_dirty import DirtyLattice, Dirty
 from pythia.analysis_domain import InvariantMap, MapDomain
 from pythia.analysis_liveness import LivenessVarLattice, Liveness
-from pythia.analysis_pointer import PointerLattice, pretty_print_pointers, find_reachable, Graph
+from pythia.analysis_pointer import PointerLattice, pretty_print_pointers, find_reachable, Graph, find_reaching_locals
 from pythia.analysis_types import TypeLattice, AllocationChecker, AllocationType
 from pythia.graph_utils import Location
 
@@ -106,7 +106,7 @@ def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], property_map:
             print()
 
 
-def run(f: typing.Any, module_type: ts.Module, simplify: bool = True) -> None:
+def run(f: typing.Any, module_type: ts.Module, simplify: bool = True) -> set[str]:
     cfg: Cfg = make_tac_cfg(f, simplify=simplify)
 
     annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
@@ -122,7 +122,7 @@ def run(f: typing.Any, module_type: ts.Module, simplify: bool = True) -> None:
     pointer_analysis = PointerLattice(allocation_invariants, liveness_invariants.post)
     pointer_invariants: InvariantPair[Graph] = analyze(cfg, pointer_analysis, annotations)
 
-    dirty_analysis = DirtyLattice(pointer_invariants.pre)
+    dirty_analysis = DirtyLattice(pointer_invariants.post, allocation_invariants)
     dirty_invariants: InvariantPair[Dirty] = analyze(cfg, dirty_analysis, annotations)
 
     for label, block in cfg.items():
@@ -148,13 +148,20 @@ def run(f: typing.Any, module_type: ts.Module, simplify: bool = True) -> None:
 
     print_analysis(cfg, invariant_pairs, allocation_invariants)
 
+    dirty_vars = dirty_invariants.post[(cfg.exit_label, 0)]
+    assert not isinstance(dirty_vars, domain.Bottom)
+    return {x.name for x in find_reaching_locals(pointer_invariants.post[(cfg.exit_label, 0)],
+                                                 dirty_vars)
+            if x.name != 'return'}
+
 
 def analyze_function(filename: str, function_name: str) -> None:
     functions, imports = disassemble.read_file(filename)
     module_type = ts.parse_file(filename)
-    run(functions[function_name], module_type=module_type,
-        simplify=True)
-
+    vars = run(functions[function_name], module_type=module_type,
+               simplify=True)
+    output = ast_transform.transform(filename, function_name, vars)
+    print(output)
 
 
 def main() -> None:
@@ -163,9 +170,9 @@ def main() -> None:
     # analyze_function(f'{example_dir}/tests.py', 'iterate')
     # analyze_function(f'{example_dir}/tests.py', 'tup')
     # analyze_function(f'{example_dir}/tests.py', 'destruct')
-    analyze_function(f'{example_dir}/feature_selection.py', 'do_work')
-    # analyze_function(f'{example_dir}/toy.py', 'minimal')
-    analyze_function(f'{example_dir}/toy.py', 'not_so_minimal')
+    # analyze_function(f'{example_dir}/feature_selection.py', 'do_work')
+    analyze_function(f'{example_dir}/toy.py', 'minimal')
+    # analyze_function(f'{example_dir}/toy.py', 'not_so_minimal')
     # analyze_function(f'{example_dir}/feature_selection.py', 'run')
 
 

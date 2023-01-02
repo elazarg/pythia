@@ -1,3 +1,7 @@
+from __future__ import annotations as _
+
+from typing import Any
+
 import pickle
 import pathlib
 import hashlib
@@ -12,6 +16,8 @@ class Iter:
 
 
 class Loader:
+    restored_state: tuple[Any, ...]
+
     def __init__(self, module_filename):
 
         with open(module_filename, 'rb') as f:
@@ -23,15 +29,15 @@ class Loader:
         self.filename = f'{name}-{h}.pickle'
         self.iterator = None
         self.version = 0
+        self.restored_state = ()
 
-    def __enter__(self) -> tuple[object, ...]:
+    def __enter__(self) -> Loader:
         if self._now_recovering():
             print("Recovering from snapshot")
             with open(self.filename, "rb") as snapshot:
-                version, values, self.iterator = pickle.load(snapshot)
-                print(f'Loaded {version=}: {values}')
-                return values
-        return ()
+                version, self.restored_state, self.iterator = pickle.load(snapshot)
+            print(f'Loaded {version=}: {self.restored_state}')
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
@@ -48,7 +54,6 @@ class Loader:
 
         temp_filename = f'{self.filename}.tmp'
         with open(temp_filename, "wb") as snapshot:
-            # fix: do this transactionally
             pickle.dump((self.version, args, self.iterator), snapshot)
 
         pathlib.Path(self.filename).unlink(missing_ok=True)

@@ -43,6 +43,14 @@ def pretty_print_pointers(pointers: Graph) -> str:
                      if pointers[source_obj][field]
                      )
 
+def invert_graph(graph: Graph) -> Graph:
+    result = {}
+    for obj, obj_fields in graph.items():
+        for field, target_obj in obj_fields.items():
+            for target in target_obj:
+                result.setdefault(target, {}).setdefault(field, set()).add(obj)
+    return result
+
 
 def copy_graph(graph: Graph) -> Graph:
     return {obj: {field: target_obj.copy() for field, target_obj in obj_fields.items()}
@@ -161,8 +169,9 @@ def allocation_to_str(t: AllocationType) -> str:
     return ''
 
 
-def find_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, object]) -> typing.Iterator[Location]:
-    worklist = {LOCALS}
+def find_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, object],
+                   sources: typing.Optional[set[Object]] = None) -> typing.Iterator[Location]:
+    worklist = sources if sources is not None else {LOCALS}
     while worklist:
         root = worklist.pop()
         for edge, locs in ptr.get(root, {}).items():
@@ -176,3 +185,15 @@ def find_reachable(ptr: Graph, alive: set[tac.Var], annotations: dict[tac.Var, o
                 worklist.add(loc)
                 label, index = [int(x) for x in str(loc)[1:].split('.')]
                 yield (label, index)
+
+def find_reaching_locals(ptr: Graph, sources: set[Object]) -> typing.Iterator[tac.Var]:
+    inverse = invert_graph(ptr)
+    pretty_print_pointers(inverse)
+    worklist = sources
+    while worklist:
+        print(worklist)
+        root = worklist.pop()
+        for edge, locs in inverse.get(root, {}).items():
+            if not edge.is_stackvar:
+                yield edge
+                worklist.update(locs)

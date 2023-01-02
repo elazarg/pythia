@@ -951,6 +951,8 @@ def is_immutable(value: TypeExpr) -> bool:
             return True
         case Row(type=value):
             return is_immutable(value)
+        case FunctionType():
+            return True
         case Ref(name):
             module, name = name.split('.')
             if module != 'builtins':
