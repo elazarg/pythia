@@ -1,1 +1,4 @@
 .idea
+.pytest_cache
+.mypy_cache
+__pycache__
