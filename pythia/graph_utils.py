@@ -9,6 +9,8 @@ from typing import TypeVar, Generic, Callable, Iterator, TypeAlias, Optional
 import networkx as nx  # type: ignore
 from networkx.classes.reportviews import NodeView  # type: ignore
 
+BLOCK_NAME = 'block'
+
 T = TypeVar('T')
 Q = TypeVar('Q')
 
@@ -108,7 +110,7 @@ class Cfg(Generic[T]):
 
         if blocks is not None:
             self.graph.add_nodes_from(blocks.keys())
-            nx.set_node_attributes(self.graph, name='block', values={k: ForwardBlock(block) for k, block in blocks.items()})
+            nx.set_node_attributes(self.graph, name=BLOCK_NAME, values={k: ForwardBlock(block) for k, block in blocks.items()})
 
         if add_sink:
             # Connect all sink nodes to exit:
@@ -146,10 +148,10 @@ class Cfg(Generic[T]):
         yield from ((label, self[label]) for label in self.labels)
 
     def __getitem__(self, label: Label) -> ForwardBlock[T]:
-        return self.graph.nodes[label]['block']
+        return self.graph.nodes[label][BLOCK_NAME]
 
     def __setitem__(self, label: Label, block: ForwardBlock[T]) -> None:
-        self.graph.nodes[label]['block'] = block
+        self.graph.nodes[label][BLOCK_NAME] = block
 
     def reverse(self: Cfg[T], copy: bool) -> Cfg[T]:
         return Cfg(self.graph.reverse(copy=copy), add_sink=False)
@@ -189,7 +191,6 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
          into  >[---]<
     The label of the chain is the label of its first element.
     """
-    blockname = 'block'
     g = cfg.graph
     starts = set(chain((n for n in g if g.in_degree(n) != 1),
                        chain.from_iterable(g.successors(n) for n in g
@@ -201,7 +202,7 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
         n = label
         instructions = []
         while True:
-            instructions += g.nodes[n][blockname]
+            instructions += g.nodes[n][BLOCK_NAME]
             if g.out_degree(n) != 1:
                 break
             next_n = next(iter(g.successors(n)))
@@ -243,7 +244,7 @@ def refine_to_chain(g: nx.Digraph, from_attr: str, to_attr: str) -> nx.DiGraph:
 def node_data_map(cfg: Cfg[T], f: Callable[[Label, Block[T]], Block[Q]]) -> Cfg[Q]:
     cfg = cfg.copy()
     for n, data in cfg.nodes.items():
-        data['block'] = f(n, data['block'])
+        data[BLOCK_NAME] = f(n, data[BLOCK_NAME])
     return typing.cast(Cfg[Q], cfg)
 
 
