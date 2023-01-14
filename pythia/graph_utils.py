@@ -20,7 +20,7 @@ Location: TypeAlias = tuple[Label, int]
 
 
 @dataclass
-class ForwardBlock(Generic[T]):
+class Block(Generic[T]):
     _instructions: list[T]
 
     def __init__(self, instructions: list[T]):
@@ -53,13 +53,13 @@ class ForwardBlock(Generic[T]):
     def __delitem__(self, index: int) -> None:
         del self._instructions[index]
 
-    def __reversed__(self) -> Block[T]:
+    def __reversed__(self) -> BackwardBlock[T]:
         return BackwardBlock(self)
 
 
 @dataclass
 class BackwardBlock(Generic[T]):
-    block: ForwardBlock[T]
+    block: Block[T]
 
     def __iter__(self) -> Iterator[T]:
         return iter(reversed(self.block._instructions))
@@ -86,9 +86,6 @@ class BackwardBlock(Generic[T]):
         return self.block
 
 
-Block: TypeAlias = ForwardBlock[T] | BackwardBlock[T]
-
-
 class Cfg(Generic[T]):
     graph: nx.DiGraph
     _annotator: Callable[[Location, T], str]
@@ -110,12 +107,12 @@ class Cfg(Generic[T]):
 
         if blocks is not None:
             self.graph.add_nodes_from(blocks.keys())
-            nx.set_node_attributes(self.graph, name=BLOCK_NAME, values={k: ForwardBlock(block) for k, block in blocks.items()})
+            nx.set_node_attributes(self.graph, name=BLOCK_NAME, values={k: Block(block) for k, block in blocks.items()})
 
         if add_sink:
             # Connect all sink nodes to exit:
             sinks = {label for label in self.labels if self.graph.out_degree(label) == 0}
-            self.graph.add_node(self.exit_label, block=ForwardBlock([]))
+            self.graph.add_node(self.exit_label, block=Block([]))
             for label in sinks:
                 self.graph.add_edge(label, self.exit_label)
 
@@ -133,7 +130,7 @@ class Cfg(Generic[T]):
         return math.inf
 
     @property
-    def entry(self) -> ForwardBlock:
+    def entry(self) -> Block:
         return self.graph.nodes[self.entry_label]
 
     @property
@@ -144,13 +141,13 @@ class Cfg(Generic[T]):
     def labels(self) -> set[Label]:
         return set(self.graph.nodes.keys())
 
-    def items(self) -> Iterator[tuple[Label, ForwardBlock[T]]]:
+    def items(self) -> Iterator[tuple[Label, Block[T]]]:
         yield from ((label, self[label]) for label in self.labels)
 
-    def __getitem__(self, label: Label) -> ForwardBlock[T]:
+    def __getitem__(self, label: Label) -> Block[T]:
         return self.graph.nodes[label][BLOCK_NAME]
 
-    def __setitem__(self, label: Label, block: ForwardBlock[T]) -> None:
+    def __setitem__(self, label: Label, block: Block[T]) -> None:
         self.graph.nodes[label][BLOCK_NAME] = block
 
     def reverse(self: Cfg[T], copy: bool) -> Cfg[T]:

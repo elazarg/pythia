@@ -23,7 +23,7 @@ class ForwardIterationStrategy(typing.Generic[T]):
     def successors(self, label: Label) -> typing.Iterator[Label]:
         return self.cfg.successors(label)
 
-    def __getitem__(self, label: Label) -> gu.ForwardBlock:
+    def __getitem__(self, label: Label) -> gu.Block:
         return self.cfg[label]
 
     def order(self, pair: tuple[K, Q]) -> tuple[K ,Q]:
@@ -41,8 +41,8 @@ class BackwardIterationStrategy(typing.Generic[T]):
     def successors(self, label: Label) -> typing.Iterator[Label]:
         return self.cfg.predecessors(label)
 
-    def __getitem__(self, label: Label) -> gu.Block:
-        return gu.BackwardBlock(self.cfg[label])
+    def __getitem__(self, label: Label) -> gu.BackwardBlock:
+        return typing.cast(gu.BackwardBlock, reversed(self.cfg[label]))
 
     def order(self, pair: tuple[K, Q]) -> tuple[Q, K]:
         return pair[1], pair[0]
@@ -207,14 +207,14 @@ def normalize(values: MapDomain[T]) -> MapDomain[T]:
     return values
 
 
-class InstructionLattice(Lattice[T], typing.Generic[T]):
+class InstructionLattice(Lattice[T], typing.Protocol[T]):
     backward: bool
 
     def transfer(self, values: T, ins: tac.Tac, location: Location) -> T:
         raise NotImplementedError
 
 
-class ValueLattice(Lattice[T], typing.Generic[T]):
+class ValueLattice(Lattice[T], typing.Protocol[T]):
     def const(self, value: object) -> T:
         return self.top()
 

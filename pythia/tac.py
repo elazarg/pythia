@@ -458,7 +458,7 @@ def make_tac_cfg(f: typing.Any) -> gu.Cfg[Tac]:
     trace_origin: dict[int, instruction_cfg.Instruction] = {}
 
     def instruction_block_to_tac_block(n: Label, block: gu.Block[instruction_cfg.Instruction]) -> gu.Block[Tac]:
-        return gu.ForwardBlock(list(it.chain.from_iterable(make_tac(ins, depths[ins.offset], trace_origin)
+        return gu.Block(list(it.chain.from_iterable(make_tac(ins, depths[ins.offset], trace_origin)
                                                            for ins in block)))
 
     def annotator(location: Location, n: Tac) -> str:
