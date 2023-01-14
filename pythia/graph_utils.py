@@ -263,5 +263,5 @@ def pretty_print_cfg(cfg: Cfg[T]) -> None:
         print()
 
 
-def single_source_dijkstra_path_length(cfg: Cfg, source: int, weight: str = 'weight') -> dict[Label, int]:
+def single_source_dijkstra_path_length(cfg: Cfg, source: int, weight: str) -> dict[Label, int]:
     return nx.single_source_dijkstra_path_length(cfg.graph, source, weight=weight)

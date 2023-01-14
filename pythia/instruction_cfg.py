@@ -74,7 +74,7 @@ def calculate_stack_depth(cfg: Cfg) -> dict[gu.Label, int]:
     We do it bidirectionally because we want to work with unreachable code too.
     """
     res: dict[gu.Label, int] = {}
-    backwards_cfg = cfg.reverse(copy=True)
+    backwards_cfg = cfg.reverse(copy=False)
     for label in cfg.nodes:
         if cfg[label] and is_return(cfg[label][-1]):
             # add 1 since return also pops
