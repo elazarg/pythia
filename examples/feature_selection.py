@@ -90,7 +90,7 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
             S = np.unique(np.append(S, a))
         else:
             break
-
+    print(idx)
     return S
 
 
@@ -98,7 +98,7 @@ def main() -> None:
     dataset_name = "dataset_20KB"
     features = np.load(dataset_name + "_features.npy")
     target = np.load(dataset_name + "_target.npy")
-    S = do_work(features, target, 10)
+    S = do_work(features, target, 100000)
     print(S)
 
 if __name__ == '__main__':

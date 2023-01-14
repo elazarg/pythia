@@ -4,8 +4,6 @@ import numpy as np
 def minimal():
     res = np.zeros((5, 7))
 
-    # comment
-    i: Persist
     for i in range(10000):  # type: int
         temp = np.random.rand(5, 7)
         res += temp

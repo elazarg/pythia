@@ -195,4 +195,7 @@ def main() -> None:
 
 
 if __name__ == '__main__':
+    import sys
+
     main()
+    # analyze_function(*sys.argv[1:])
