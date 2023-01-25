@@ -4,7 +4,6 @@ import ast
 import typing
 
 
-
 class Parser:
     filename: str
     def __init__(self, filename: str) -> None:

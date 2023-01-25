@@ -12,13 +12,13 @@ import pythia.graph_utils as gu
 import pythia.type_system as ts
 from pythia import disassemble, ast_transform
 from pythia import tac
+from pythia.analysis_allocation import AllocationType, AllocationChecker
 from pythia.analysis_constant import ConstLattice
 from pythia.analysis_dirty import DirtyLattice, find_reaching_locals
 from pythia.analysis_domain import InvariantMap
 from pythia.analysis_liveness import LivenessVarLattice
 from pythia.analysis_pointer import PointerLattice, pretty_print_pointers, update_allocation_invariants
 from pythia.analysis_types import TypeLattice
-from pythia.analysis_allocation import AllocationType, AllocationChecker
 from pythia.graph_utils import Location
 
 T = TypeVar('T')
@@ -195,7 +195,5 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    import sys
-
     main()
     # analyze_function(*sys.argv[1:])
