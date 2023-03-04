@@ -1,4 +1,5 @@
 import numpy as np
+import argparse
 
 
 def cost_function(X: np.ndarray, y: np.ndarray, theta: np.ndarray) -> tuple[float, np.ndarray]:
@@ -92,13 +93,17 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
             break
     return S
 
-def main(dataset: str) -> None:
+def main(dataset: str, k) -> None:
     features = np.load(f'data/{dataset}_features.npy')
     target = np.load(f'data/{dataset}_target.npy')
-    S = do_work(features, target, 100000)
+    S = do_work(features, target, k)
     print(S)
 
+
 if __name__ == '__main__':
-    # main('dataset_20KB')
-    # main('dataset_large')
-    main('healthstudy')
+    # parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dataset', choices=['dataset_20KB', 'dataset_large', 'healthstudy'], help='dataset to use')
+    parser.add_argument('--k', type=int, default=100000, help='number of features to select')
+    args = parser.parse_args()
+    main(args.dataset, args.k)
