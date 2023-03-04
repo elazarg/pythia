@@ -63,11 +63,16 @@ def get_float(array: np.ndarray, idx: float) -> float:
     return array[idx]
 
 
+def log(idx, k):
+    print(f'{idx} / {k}', end='\r', flush=True)
+
+
 def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     # define new solution
     S = np.array([], int)
 
     for idx in range(k):  # type: int
+        log(idx, k)
         # define and train model
         # preprocess current solution
         grad = linear_regression(features, target, np.unique(S[S >= 0]))
