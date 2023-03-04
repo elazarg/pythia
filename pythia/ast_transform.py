@@ -23,7 +23,8 @@ class Parser:
         return stmt.value
 
 
-def make_for(for_loop: ast.For, filename: str, dirty: set[str]) -> ast.With:
+def make_for(for_loop: ast.For, filename: str, _dirty: set[str]) -> ast.With:
+    dirty = tuple(sorted(_dirty))
     parse_expression = Parser(filename).parse_expression
     iter = ast.Call(
         func=ast.Attribute(
@@ -68,8 +69,28 @@ def make_for(for_loop: ast.For, filename: str, dirty: set[str]) -> ast.With:
     return res
 
 
-def transform(filename: str, dirty_map: dict[str, set[str]]) -> str:
+def transform(filename: str, dirty_map: typing.Optional[dict[str, set[str]]] = None) -> str:
     parser = Parser(filename)
+
+    class VariableFinder(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.dirty: dict[str, set[str]] = {}
+
+        def visit_FunctionDef(self, func: ast.FunctionDef) -> None:
+            dirty = {node.arg for node in ast.walk(func.args)
+                     if isinstance(node, ast.arg)}
+            dirty |= {node.id for node in ast.walk(func)
+                      if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)}
+            self.dirty[func.name] = dirty
+
+    with open(filename, encoding='utf-8') as f:
+        source = f.read()
+    tree = parser.parse(source)
+
+    if dirty_map is None:
+        finder = VariableFinder()
+        finder.visit(tree)
+        dirty_map = finder.dirty
 
     class DirtyTransformer(ast.NodeTransformer):
         def __init__(self, dirty: set[str]) -> None:
@@ -96,13 +117,10 @@ def transform(filename: str, dirty_map: dict[str, set[str]]) -> str:
             assert isinstance(res, ast.FunctionDef)
             return res
 
-    with open(filename, encoding='utf-8') as f:
-        source = f.read()
-    tree = parser.parse(source)
     tree = Compiler().visit(tree)
     tree = ast.fix_missing_locations(tree)
     return ast.unparse(tree)
 
 
 if __name__ == '__main__':
-    print(transform('examples/toy.py', {"minimal": {'res'}}))
+    print(transform('examples/feature_selection.py'))

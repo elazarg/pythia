@@ -24,9 +24,9 @@ class Loader:
             m = hashlib.md5()
             m.update(f.read())
             h = m.hexdigest()[:6]
-            name = module_filename.split('.')[-2]
-
-        self.filename = f'{name}-{h}.pickle'
+            name = pathlib.Path(module_filename).stem
+            print(name)
+        self.filename = f'cache/{name}-{h}.pickle'
         self.iterator = None
         self.version = 0
         self.restored_state = ()
@@ -42,7 +42,7 @@ class Loader:
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
             print('Finished successfully')
-            pathlib.Path(self.filename).unlink()
+            # pathlib.Path(self.filename).unlink()
 
     def iterate(self, iterable):
         if self.iterator is None:
@@ -61,3 +61,17 @@ class Loader:
 
     def _now_recovering(self):
         return pathlib.Path(self.filename).exists()
+
+
+class PseudoLoader(Loader):
+    def commit(self, *args):
+        size = pickle.dumps((self.version, args, self.iterator)).__sizeof__()
+        print(self.version, size, end='\n', flush=True)
+        self.version += 1
+
+    def __enter__(self) -> Loader:
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            print('Finished successfully')
