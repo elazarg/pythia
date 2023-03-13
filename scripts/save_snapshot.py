@@ -1,6 +1,7 @@
 import asyncio
 import os
 import pathlib
+import subprocess
 import sys
 from typing import Optional, Mapping
 
@@ -14,9 +15,15 @@ async def qmp_execute(qmp: QMPClient, cmd: str, args: Optional[Mapping[str, obje
     return res
 
 
-async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
+def run_count_diff(file1, file2):
+    # Run in a detached process and write the output to a file
+    cmd = f"./count_diff {file1} {file2} {64}"
+    subprocess.call(cmd, shell=True)
+
+
+async def main(port: int, iterations: int, epoch_ms: int, subdir: str) -> None:
     cwd = pathlib.Path.cwd()
-    folder = cwd / 'dumps' / tag
+    folder = cwd / 'dumps' / subdir
     os.makedirs(folder, exist_ok=True)
 
     qmp = QMPClient('nvram')
@@ -28,19 +35,25 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
         sys.exit(1)
     res = await qmp_execute(qmp, 'query-status')
     status = res['status']
-    print(f"VM status: {status}")
+    print(f"VM status: {status}", file=sys.stderr)
 
+    prev_filename = "/dev/null"
     for i in range(iterations):
-        filename = folder / f'{i}.dump'
-        print(f"Saving snapshot {i} to {filename}...")
+        filename = (folder / f'{i}.dump').as_posix()
+        print(f"Saving snapshot {i} to {filename}...", file=sys.stderr)
         res = await qmp_execute(qmp, 'dump-guest-memory', {'paging': False, 'protocol': f'file:{filename}'})
         if res:
             raise RuntimeError("Failed to dump memory", res)
         if status != 'running':
-            print("VM is not running, stopping.")
+            print("VM is not running, stopping.", file=sys.stderr)
             break
+        if i > 0:
+            outfile = (folder / f'{i}.diff').as_posix()
+            os.system(f"./count_diff {prev_filename} {filename} {64} > {outfile} && rm {prev_filename} &")
         await asyncio.sleep(epoch_ms / 1000)
-    print("Done.")
+        prev_filename = filename
+    os.system(f"rm {prev_filename}")
+    print("Done.", file=sys.stderr)
     await qmp.disconnect()
 
 
@@ -51,11 +64,11 @@ if __name__ == '__main__':
     parser.add_argument('port', type=str, default='4444', help='The port to connect to.')
     parser.add_argument('iterations', type=int, help='The number of iterations to run.')
     parser.add_argument('epoch_ms', type=int, help='The number of milliseconds between snapshots.')
-    parser.add_argument('tag', type=str, help='The name of the snapshot to save.')
+    parser.add_argument('subdir', type=str, help='Subdir of ./dumps to save.')
     args = parser.parse_args()
     asyncio.run(main(
         port=args.port,
         iterations=args.iterations,
         epoch_ms=args.epoch_ms,
-        tag=args.tag)
+        subdir=args.subdir)
     )
