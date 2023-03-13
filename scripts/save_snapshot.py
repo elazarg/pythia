@@ -23,8 +23,8 @@ def system(cmd):
 
 
 async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
-    cwd = pathlib.Path.cwd()
-    folder = cwd / 'dumps' / tag
+    cwd = pathlib.Path.cwd().as_posix()
+    folder = f'{cwd}/dumps/{tag}'
     os.makedirs(folder, exist_ok=True)
 
     qmp = QMPClient('nvram')
@@ -39,11 +39,12 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
     print(f"VM status: {status}", file=sys.stderr)
 
     prev_filename = "/dev/null"
-    outfiles = []
+    filenames = [(f'{folder}/{i}.dump', f'{folder}/{i}.diff', f'{folder}/{i}.diff.tmp', f'{folder}/{i}.link')
+                 for i in range(iterations)]
     for i in range(iterations):
-        filename = (folder / f'{i}.dump').as_posix()
-        print(f"Saving snapshot {i} to {filename}...", file=sys.stderr)
-        res = await qmp_execute(qmp, 'dump-guest-memory', {'paging': False, 'protocol': f'file:{filename}'})
+        filename, outfile, temp_diff, myfilename = filenames[i]
+        # print(f"Saving snapshot {i} to {filenames}...", file=sys.stderr)
+        res = await qmp_execute(qmp, 'dump-guest-memory', {'paging': False, 'protocol': f'file:{filenames}'})
         save_time = datetime.datetime.now()
         if res:
             raise RuntimeError("Failed to dump memory", res)
@@ -51,28 +52,21 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
             print("VM is not running, stopping.", file=sys.stderr)
             break
         if i > 0:
-            outfile = (folder / f'{i}.diff').as_posix()
-            outfiles.append(outfile)
-
             # Link to a new file, so it doesn't get deleted by the next iteration
-            myfilename = (folder / f'{i}.link').as_posix()
-            temp_diff = (folder / f'{i}.diff.tmp').as_posix()
-
-            system(f"ln {filename} {myfilename} && "
-                   f"printf '{i},' > {temp_diff} && "
-                   f"./count_diff {prev_filename} {myfilename} {64} >> {temp_diff} && "
-                   f"rm -f {prev_filename} {myfilename} && "
-                   f"mv {temp_diff} {outfile} &")
+            os.system(f"ln {filename} {myfilename} && "
+                      f"printf '{i},' > {temp_diff} && "
+                      f"./count_diff {prev_filename} {myfilename} {64} >> {temp_diff} && "
+                      f"rm -f {prev_filename} {myfilename} && "
+                      f"mv {temp_diff} {outfile} &")
+        prev_filename = filename
         passed = datetime.datetime.now() - save_time
         print("time passed:", passed.microseconds)
         await asyncio.sleep((epoch_ms - passed.microseconds) / 1000)
-        prev_filename = filename
-    for outfile in outfiles:
+    for _, outfile, _, _ in filenames:
         system(f"until [ -f {outfile} ]; do sleep 1; done")
-    tag = folder.as_posix()
     system(f"rm -f {prev_filename}")
-    system(f"sort -t, -g {tag}/*.diff > {tag}.csv && "
-           f"rm -f {tag}/*.diff && "
+    system(f"sort -t, -g {folder}/*.diff > {folder}.csv && "
+           f"rm -f {folder}/*.diff && "
            f"rmdir {folder}")
     # TODO: wait for all subprocesses to finish
     print("Done.", file=sys.stderr)
