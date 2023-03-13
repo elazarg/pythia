@@ -82,5 +82,5 @@ if __name__ == '__main__':
         port=args.port,
         iterations=args.iterations,
         epoch_ms=args.epoch_ms,
-        subdir=args.tag)
+        tag=args.tag)
     )
