@@ -44,7 +44,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    std::cout << count * chunk_size << " bytes (" << count << " chunks of size " << chunk_size << ")\n";
+    std::cout << count * chunk_size  << "\n";  // << " bytes (" << count << " chunks of size " << chunk_size << ")\n";
 
     return 0;
 }

@@ -21,9 +21,14 @@ def run_count_diff(file1, file2):
     subprocess.call(cmd, shell=True)
 
 
-async def main(port: int, iterations: int, epoch_ms: int, subdir: str) -> None:
+def system(cmd):
+    print(cmd, file=sys.stderr)
+    os.system(cmd)
+
+
+async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
     cwd = pathlib.Path.cwd()
-    folder = cwd / 'dumps' / subdir
+    folder = cwd / 'dumps' / tag
     os.makedirs(folder, exist_ok=True)
 
     qmp = QMPClient('nvram')
@@ -49,10 +54,17 @@ async def main(port: int, iterations: int, epoch_ms: int, subdir: str) -> None:
             break
         if i > 0:
             outfile = (folder / f'{i}.diff').as_posix()
-            os.system(f"./count_diff {prev_filename} {filename} {64} > {outfile} && rm {prev_filename} &")
+            system(f"printf '{i},' > {outfile} && "
+                   f"./count_diff {prev_filename} {filename} {64} >> {outfile} && "
+                   f"rm -f {prev_filename} &")
         await asyncio.sleep(epoch_ms / 1000)
         prev_filename = filename
-    os.system(f"rm {prev_filename}")
+    tag = folder.as_posix()
+    system(f"rm -f {prev_filename}")
+    system(f"sort -t=',' -g {tag}/*.diff > {tag}.csv && "
+           f"rm -f {tag}/* && "
+           f"rmdir {folder}")
+    # TODO: wait for all subprocesses to finish
     print("Done.", file=sys.stderr)
     await qmp.disconnect()
 
@@ -64,11 +76,11 @@ if __name__ == '__main__':
     parser.add_argument('port', type=str, default='4444', help='The port to connect to.')
     parser.add_argument('iterations', type=int, help='The number of iterations to run.')
     parser.add_argument('epoch_ms', type=int, help='The number of milliseconds between snapshots.')
-    parser.add_argument('subdir', type=str, help='Subdir of ./dumps to save.')
+    parser.add_argument('tag', type=str, help='Save as ./dumps/[tag].csv.')
     args = parser.parse_args()
     asyncio.run(main(
         port=args.port,
         iterations=args.iterations,
         epoch_ms=args.epoch_ms,
-        subdir=args.subdir)
+        subdir=args.tag)
     )
