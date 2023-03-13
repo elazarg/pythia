@@ -54,9 +54,11 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
             break
         if i > 0:
             outfile = (folder / f'{i}.diff').as_posix()
-            myfilename = (folder / f'{i}.link').as_posix()
+
             # Link to a new file, so it doesn't get deleted by the next iteration
+            myfilename = (folder / f'{i}.link').as_posix()
             system(f"ln {filename} {myfilename}")
+
             system(f"printf '{i},' > {outfile} && "
                    f"./count_diff {prev_filename} {myfilename} {64} >> {outfile} && "
                    f"rm -f {prev_filename} {myfilename} &")
@@ -66,7 +68,7 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
     system(f"until [ -f {prev_filename} ]; do sleep 1; done")
     system(f"rm -f {prev_filename}")
     system(f"sort -t, -g {tag}/*.diff > {tag}.csv && "
-           f"rm -f {tag}/* && "
+           f"rm -f {tag}/*.diff && "
            f"rmdir {folder}")
     # TODO: wait for all subprocesses to finish
     print("Done.", file=sys.stderr)
