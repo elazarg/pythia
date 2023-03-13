@@ -17,14 +17,8 @@ async def qmp_execute(qmp: QMPClient, cmd: str, args: Optional[Mapping[str, obje
     return res
 
 
-def run_count_diff(file1, file2):
-    # Run in a detached process and write the output to a file
-    cmd = f"./count_diff {file1} {file2} {64}"
-    subprocess.call(cmd, shell=True)
-
-
 def system(cmd):
-    print(cmd, file=sys.stderr)
+    # print(cmd, file=sys.stderr)
     os.system(cmd)
 
 
@@ -62,16 +56,15 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
 
             # Link to a new file, so it doesn't get deleted by the next iteration
             myfilename = (folder / f'{i}.link').as_posix()
-            system(f"ln {filename} {myfilename}")
-
             temp_diff = (folder / f'{i}.diff.tmp').as_posix()
 
-            system(f"printf '{i},' > {temp_diff} && "
+            system(f"ln {filename} {myfilename} && "
+                   f"printf '{i},' > {temp_diff} && "
                    f"./count_diff {prev_filename} {myfilename} {64} >> {temp_diff} && "
                    f"rm -f {prev_filename} {myfilename} && "
                    f"mv {temp_diff} {outfile} &")
         passed = datetime.datetime.now() - save_time
-        print(passed.microseconds)
+        print("time passed:", passed.microseconds)
         await asyncio.sleep((epoch_ms - passed.microseconds) / 1000)
         prev_filename = filename
     for outfile in outfiles:
