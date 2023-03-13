@@ -1,8 +1,11 @@
 import asyncio
 import os
+import pathlib
+import sys
 from typing import Optional, Mapping
 
 from qemu.qmp import QMPClient
+from qemu.qmp.protocol import ConnectError
 
 
 async def qmp_execute(qmp: QMPClient, cmd: str, args: Optional[Mapping[str, object]] = None) -> dict:
@@ -12,16 +15,23 @@ async def qmp_execute(qmp: QMPClient, cmd: str, args: Optional[Mapping[str, obje
 
 
 async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
-    qmp = QMPClient('nvram')
-    await qmp.connect(('localhost', port))
+    cwd = pathlib.Path.cwd()
+    folder = cwd / 'dumps' / tag
+    os.makedirs(folder, exist_ok=True)
 
+    qmp = QMPClient('nvram')
+    try:
+        await qmp.connect(('localhost', port))
+    except ConnectError:
+        print(f"Failed to connect to QMP server.", file=sys.stderr)
+        print(f"Check that the VM is running and listens at port {port}.", file=sys.stderr)
+        sys.exit(1)
     res = await qmp_execute(qmp, 'query-status')
     status = res['status']
     print(f"VM status: {status}")
 
     for i in range(iterations):
-        cwd = os.getcwd()
-        filename = f'{cwd}/{tag}-{i}.dump'
+        filename = folder / f'{i}.dump'
         print(f"Saving snapshot {i} to {filename}...")
         res = await qmp_execute(qmp, 'dump-guest-memory', {'paging': False, 'protocol': f'file:{filename}'})
         if res:
@@ -35,8 +45,6 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
 
 
 if __name__ == '__main__':
-    # parse command line arguments
-    # <port> <run-seconds> <epoch-ms> <tag>
     import argparse
 
     parser = argparse.ArgumentParser(description="Save a snapshot of the VM's memory.")
