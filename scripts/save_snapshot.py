@@ -38,17 +38,16 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
     status = res['status']
     print(f"VM status: {status}", file=sys.stderr)
 
-    prev_filename = "/dev/null"
-    paths = [(f'{folder}/{i}.dump', f'{folder}/{i}.diff', f'{folder}/{i}.diff.tmp', f'{folder}/{i}.link')
+    paths = [(f'{folder}/{i}.dump', f'{folder}/{i}.diff')
              for i in range(iterations)]
-    cmds = [f"ln {filename} {myfilename} && "
-            f"printf '{i},' > {temp_diff} && "
-            f"./count_diff {prev_filename} {myfilename} {64} >> {temp_diff} && "
-            f"rm -f {prev_filename} {myfilename} && "
-            f"mv {temp_diff} {diff_file} &"
-            for i, (filename, diff_file, temp_diff, myfilename) in enumerate(paths)]
+    cmds = [(f"ln {folder}/{i}.dump {folder}/{i}.link && "
+             f"printf '{i},' > {folder}/{i}.diff.tmp && "
+             f"./count_diff {folder}/{i-1}.dump {folder}/{i}.link {64} >> {folder}/{i}.diff.tmp && "
+             f"rm -f {folder}/{i-1}.dump {folder}/{i}.link && "
+             f"mv {folder}/{i}.diff.tmp {folder}/{i}.diff &")
+            for i in range(iterations)]
     for i in range(iterations):
-        filename, diff_file, temp_diff, myfilename = paths[i]
+        filename, _ = paths[i]
         # print(f"Saving snapshot {i} to {filenames}...", file=sys.stderr)
         res = await qmp_execute(qmp, 'dump-guest-memory', {'paging': False, 'protocol': f'file:{filename}'})
         save_time = datetime.datetime.now()
@@ -59,13 +58,12 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
             break
         if i > 0:
             os.system(cmds[i])
-        prev_filename = filename
         passed = datetime.datetime.now() - save_time
         print("time passed:", passed.microseconds)
         await asyncio.sleep((epoch_ms - passed.microseconds) / 1000)
-    for _, diff_file, _, _ in paths[1:]:
+    for _, diff_file in paths[1:]:
         system(f"until [ -f {diff_file} ]; do sleep 1; done")
-    system(f"rm -f {prev_filename}")
+    system(f"rm -f {paths[-1][0]}")
     system(f"sort -t, -g {folder}/*.diff > {folder}.csv && "
            f"rm -f {folder}/*.diff && "
            f"rmdir {folder}")
