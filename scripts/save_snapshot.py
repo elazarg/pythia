@@ -8,6 +8,8 @@ from typing import Optional, Mapping
 from qemu.qmp import QMPClient
 from qemu.qmp.protocol import ConnectError
 
+import datetime
+
 
 async def qmp_execute(qmp: QMPClient, cmd: str, args: Optional[Mapping[str, object]] = None) -> dict:
     res = await qmp.execute(cmd, args)
@@ -48,6 +50,7 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
         filename = (folder / f'{i}.dump').as_posix()
         print(f"Saving snapshot {i} to {filename}...", file=sys.stderr)
         res = await qmp_execute(qmp, 'dump-guest-memory', {'paging': False, 'protocol': f'file:{filename}'})
+        save_time = datetime.datetime.now()
         if res:
             raise RuntimeError("Failed to dump memory", res)
         if status != 'running':
@@ -67,7 +70,9 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
                    f"./count_diff {prev_filename} {myfilename} {64} >> {temp_diff} && "
                    f"rm -f {prev_filename} {myfilename} && "
                    f"mv {temp_diff} {outfile} &")
-        await asyncio.sleep(epoch_ms / 1000)
+        passed = datetime.datetime.now() - save_time
+        print(passed.microseconds)
+        await asyncio.sleep((epoch_ms - passed.microseconds) / 1000)
         prev_filename = filename
     for outfile in outfiles:
         system(f"until [ -f {outfile} ]; do sleep 1; done")
