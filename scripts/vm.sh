@@ -36,16 +36,16 @@ args=(
   -enable-kvm
   -m 2G
   -netdev user,id=net0
-  # -serial mon:stdio  # use console for monitor
+   -serial mon:stdio  # use console for monitor
   # -chardev socket,id=monitor,host=127.0.0.1,port=4444,server=on,wait=off,telnet=on
-  # -mon chardev=monitor,mode=readline
+#   -mon chardev=monitor,mode=readline
   -qmp tcp:localhost:4444,server=on,wait=off
-  # -nographic
-  -daemonize
+   -nographic
+#  -daemonize
   -net user,hostfwd=tcp::10022-:22
   -net nic
 )
-qemu-system-x86_64 "${args[@]}"
+${QEMU_DIR}qemu-system-x86_64 "${args[@]}"
 # args=(
 #   --name nvram-vm
 #   --cpu host
