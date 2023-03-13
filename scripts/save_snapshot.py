@@ -62,7 +62,7 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
     tag = folder.as_posix()
     system(f"until [ -f {prev_filename} ]; do sleep 1; done")
     system(f"rm -f {prev_filename}")
-    system(f"sort -t=',' -g {tag}/*.diff > {tag}.csv && "
+    system(f"sort -t, -g {tag}/*.diff > {tag}.csv && "
            f"rm -f {tag}/* && "
            f"rmdir {folder}")
     # TODO: wait for all subprocesses to finish
