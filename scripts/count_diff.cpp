@@ -20,19 +20,20 @@ static std::vector<char> read_file(const char *filename) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 4) {
-        std::cerr << "Usage: " << argv[0] << " file1 file2 chunk\n";
+    if (argc != 5) {
+        std::cerr << "Usage: " << argv[0] << "i file1 file2 chunk\n";
         return 1;
     }
-    const std::vector<char> buffer1 = read_file(argv[1]);
-    const std::vector<char> buffer2 = read_file(argv[2]);
+    const int i = std::stoi(argv[1]);
+    const std::vector<char> buffer1 = read_file(argv[2]);
+    const std::vector<char> buffer2 = read_file(argv[3]);
     if (buffer1.size() != buffer2.size()) {
         std::cerr << "Error: file sizes differ\n";
         return 1;
     }
     std::size_t size = buffer1.size();
 
-    const int chunk_size = std::stoi(argv[3]);
+    const int chunk_size = std::stoi(argv[4]);
 
     int count = 0;
 
@@ -44,7 +45,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    std::cout << count * chunk_size  << "\n";  // << " bytes (" << count << " chunks of size " << chunk_size << ")\n";
+    std::cout << i << "," << count * chunk_size  << "\n";  // << " bytes (" << count << " chunks of size " << chunk_size << ")\n";
 
     return 0;
 }

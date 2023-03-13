@@ -37,33 +37,28 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
     res = await qmp_execute(qmp, 'query-status')
     status = res['status']
     print(f"VM status: {status}", file=sys.stderr)
-
-    paths = [(f'{folder}/{i}.dump', f'{folder}/{i}.diff')
-             for i in range(iterations)]
-    cmds = [(f"ln {folder}/{i}.dump {folder}/{i}.link && "
-             f"printf '{i},' > {folder}/{i}.diff.tmp && "
-             f"./count_diff {folder}/{i-1}.dump {folder}/{i}.link {64} >> {folder}/{i}.diff.tmp && "
-             f"rm -f {folder}/{i-1}.dump {folder}/{i}.link && "
-             f"mv {folder}/{i}.diff.tmp {folder}/{i}.diff &")
-            for i in range(iterations)]
+    diff_file = f'{cwd}/dumps/{tag}.diff'
+    os.system(f"touch {diff_file}")
+    for i in range(1, iterations):
+        cmd = (f"cd {folder} && "
+               f"until [ -f {i}.dump ]; do sleep 3; done &&"
+               f"ln {i}.dump {i}.link && "
+               f"./count_diff {i} {i-1}.dump {i}.link {64} >> {diff_file} && "
+               f"rm -f {i-1}.dump {i}.link &")
+        os.system(cmd)
     for i in range(iterations):
-        filename, _ = paths[i]
+        filename = f'{folder}/{i}.dump'
         # print(f"Saving snapshot {i} to {filenames}...", file=sys.stderr)
         res = await qmp_execute(qmp, 'dump-guest-memory', {'paging': False, 'protocol': f'file:{filename}'})
-        save_time = datetime.datetime.now()
         if res:
             raise RuntimeError("Failed to dump memory", res)
         if status != 'running':
             print("VM is not running, stopping.", file=sys.stderr)
             break
-        if i > 0:
-            os.system(cmds[i])
-        passed = datetime.datetime.now() - save_time
-        print("time passed:", passed.microseconds)
-        await asyncio.sleep((epoch_ms - passed.microseconds) / 1000)
-    for _, diff_file in paths[1:]:
-        system(f"until [ -f {diff_file} ]; do sleep 1; done")
-    system(f"rm -f {paths[-1][0]}")
+        await asyncio.sleep(epoch_ms / 1000)
+    for i in range(1, iterations):
+        system(f"until [ -f {folder}/{i}.diff ]; do sleep 1; done")
+    system(f"rm -f {folder}/{iterations-1}.dump")
     system(f"sort -t, -g {folder}/*.diff > {folder}.csv && "
            f"rm -f {folder}/*.diff && "
            f"rmdir {folder}")
