@@ -43,6 +43,7 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
     print(f"VM status: {status}", file=sys.stderr)
 
     prev_filename = "/dev/null"
+    outfiles = []
     for i in range(iterations):
         filename = (folder / f'{i}.dump').as_posix()
         print(f"Saving snapshot {i} to {filename}...", file=sys.stderr)
@@ -54,6 +55,7 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
             break
         if i > 0:
             outfile = (folder / f'{i}.diff').as_posix()
+            outfiles.append(outfile)
 
             # Link to a new file, so it doesn't get deleted by the next iteration
             myfilename = (folder / f'{i}.link').as_posix()
@@ -64,8 +66,9 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
                    f"rm -f {prev_filename} {myfilename} &")
         await asyncio.sleep(epoch_ms / 1000)
         prev_filename = filename
+    for outfile in outfiles:
+        system(f"until [ -f {outfile} ]; do sleep 1; done")
     tag = folder.as_posix()
-    system(f"until [ -f {prev_filename} ]; do sleep 1; done")
     system(f"rm -f {prev_filename}")
     system(f"sort -t, -g {tag}/*.diff > {tag}.csv && "
            f"rm -f {tag}/*.diff && "
