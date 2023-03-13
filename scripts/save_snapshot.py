@@ -61,9 +61,12 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
             myfilename = (folder / f'{i}.link').as_posix()
             system(f"ln {filename} {myfilename}")
 
-            system(f"printf '{i},' > {outfile} && "
-                   f"./count_diff {prev_filename} {myfilename} {64} >> {outfile} && "
-                   f"rm -f {prev_filename} {myfilename} &")
+            temp_diff = (folder / f'{i}.diff.tmp').as_posix()
+
+            system(f"printf '{i},' > {temp_diff} && "
+                   f"./count_diff {prev_filename} {myfilename} {64} >> {temp_diff} && "
+                   f"rm -f {prev_filename} {myfilename} && "
+                   f"mv {temp_diff} {outfile} &")
         await asyncio.sleep(epoch_ms / 1000)
         prev_filename = filename
     for outfile in outfiles:
