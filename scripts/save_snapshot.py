@@ -39,12 +39,12 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
     print(f"VM status: {status}", file=sys.stderr)
 
     prev_filename = "/dev/null"
-    filenames = [(f'{folder}/{i}.dump', f'{folder}/{i}.diff', f'{folder}/{i}.diff.tmp', f'{folder}/{i}.link')
-                 for i in range(iterations)]
+    paths = [(f'{folder}/{i}.dump', f'{folder}/{i}.diff', f'{folder}/{i}.diff.tmp', f'{folder}/{i}.link')
+             for i in range(iterations)]
     for i in range(iterations):
-        filename, outfile, temp_diff, myfilename = filenames[i]
+        filename, outfile, temp_diff, myfilename = paths[i]
         # print(f"Saving snapshot {i} to {filenames}...", file=sys.stderr)
-        res = await qmp_execute(qmp, 'dump-guest-memory', {'paging': False, 'protocol': f'file:{filenames}'})
+        res = await qmp_execute(qmp, 'dump-guest-memory', {'paging': False, 'protocol': f'file:{filename}'})
         save_time = datetime.datetime.now()
         if res:
             raise RuntimeError("Failed to dump memory", res)
@@ -62,7 +62,7 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
         passed = datetime.datetime.now() - save_time
         print("time passed:", passed.microseconds)
         await asyncio.sleep((epoch_ms - passed.microseconds) / 1000)
-    for _, outfile, _, _ in filenames:
+    for _, outfile, _, _ in paths:
         system(f"until [ -f {outfile} ]; do sleep 1; done")
     system(f"rm -f {prev_filename}")
     system(f"sort -t, -g {folder}/*.diff > {folder}.csv && "
