@@ -54,9 +54,12 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
             break
         if i > 0:
             outfile = (folder / f'{i}.diff').as_posix()
+            myfilename = (folder / f'{i}.link').as_posix()
+            # Link to a new file, so it doesn't get deleted by the next iteration
+            system(f"ln {filename} {myfilename}")
             system(f"printf '{i},' > {outfile} && "
-                   f"./count_diff {prev_filename} {filename} {64} >> {outfile} && "
-                   f"rm -f {prev_filename} &")
+                   f"./count_diff {prev_filename} {myfilename} {64} >> {outfile} && "
+                   f"rm -f {prev_filename} {myfilename} &")
         await asyncio.sleep(epoch_ms / 1000)
         prev_filename = filename
     tag = folder.as_posix()
