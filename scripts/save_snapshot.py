@@ -18,7 +18,6 @@ async def qmp_execute(qmp: QMPClient, cmd: str, args: Optional[Mapping[str, obje
 
 def count_diff(folder, i):
     result = subprocess.run(["./count_diff",
-                             f"{i}",
                              f"{folder}/{i}.a.dump",
                              f"{folder}/{i}.b.dump",
                              f"{64}",
