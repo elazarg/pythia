@@ -3,12 +3,11 @@ import os
 import pathlib
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Mapping
 
 from qemu.qmp import QMPClient
 from qemu.qmp.protocol import ConnectError
-
-import datetime
 
 
 async def qmp_execute(qmp: QMPClient, cmd: str, args: Optional[Mapping[str, object]] = None) -> dict:
@@ -17,9 +16,18 @@ async def qmp_execute(qmp: QMPClient, cmd: str, args: Optional[Mapping[str, obje
     return res
 
 
-def system(cmd):
-    # print(cmd, file=sys.stderr)
-    os.system(cmd)
+def count_diff(folder, i):
+    result = subprocess.run(["./count_diff",
+                             f"{i}",
+                             f"{folder}/{i}.a.dump",
+                             f"{folder}/{i}.b.dump",
+                             f"{64}",
+                             f"remove"],
+                            capture_output=True)
+    if result.returncode != 0:
+        raise RuntimeError("Failed to run count_diff", result)
+    output = int(result.stdout.strip())
+    return output
 
 
 async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
@@ -37,32 +45,29 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
     res = await qmp_execute(qmp, 'query-status')
     status = res['status']
     print(f"VM status: {status}", file=sys.stderr)
-    diff_file = f'{cwd}/dumps/{tag}.diff'
-    os.system(f"touch {diff_file}")
-    for i in range(1, iterations):
-        cmd = (f"cd {folder} && "
-               f"until [ -f {i}.dump ]; do sleep 3; done &&"
-               f"ln {i}.dump {i}.link && "
-               f"./count_diff {i} {i-1}.dump {i}.link {64} >> {diff_file} && "
-               f"rm -f {i-1}.dump {i}.link &")
-        os.system(cmd)
-    for i in range(iterations):
-        filename = f'{folder}/{i}.dump'
-        # print(f"Saving snapshot {i} to {filenames}...", file=sys.stderr)
-        res = await qmp_execute(qmp, 'dump-guest-memory', {'paging': False, 'protocol': f'file:{filename}'})
-        if res:
-            raise RuntimeError("Failed to dump memory", res)
-        if status != 'running':
-            print("VM is not running, stopping.", file=sys.stderr)
-            break
-        await asyncio.sleep(epoch_ms / 1000)
-    for i in range(1, iterations):
-        system(f"until [ -f {folder}/{i}.diff ]; do sleep 1; done")
-    system(f"rm -f {folder}/{iterations-1}.dump")
-    system(f"sort -t, -g {folder}/*.diff > {folder}.csv && "
-           f"rm -f {folder}/*.diff && "
-           f"rmdir {folder}")
-    # TODO: wait for all subprocesses to finish
+    with ThreadPoolExecutor() as executor:
+        ps = []
+        for i in range(iterations):
+
+            await qmp_execute(qmp, 'stop')
+            filename = f'{folder}/{i}.a.dump'
+
+            res = await qmp_execute(qmp, 'dump-guest-memory', {'paging': False, 'protocol': f'file:{filename}'})
+            if res:
+                raise RuntimeError("Failed to dump memory", res)
+            if i > 0:
+                if i == iterations - 1:
+                    os.rename(filename, f"{folder}/{i-1}.b.dump")
+                else:
+                    os.link(filename, f"{folder}/{i-1}.b.dump")
+                p = executor.submit(count_diff, folder, i - 1)
+                ps.append(p)
+            await qmp_execute(qmp, 'cont')
+
+            await asyncio.sleep(epoch_ms / 1000)
+        with open(f'{folder}.csv', 'w') as f:
+            for i, p in enumerate(ps):
+                print(f"{i},{p.result()}", file=f)
     print("Done.", file=sys.stderr)
     await qmp.disconnect()
 

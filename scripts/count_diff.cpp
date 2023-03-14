@@ -3,13 +3,17 @@
 #include <vector>
 #include <cstring>
 #include <algorithm>
+#include <filesystem>
+namespace fs = std::filesystem;
 
-static std::vector<char> read_file(const char *filename) {
+static std::vector<char> read_file(const fs::path& filename, bool remove) {
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
     if (!file) {
         std::cerr << "Error opening " << filename << '\n';
         exit(1);
     }
+    if (remove) fs::remove(filename);
+
     std::size_t size = file.tellg();
     std::vector<char> buffer(size);
 
@@ -20,20 +24,28 @@ static std::vector<char> read_file(const char *filename) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 5) {
-        std::cerr << "Usage: " << argv[0] << "i file1 file2 chunk\n";
+    if (argc != 4 && argc != 5) {
+        std::cerr << "Usage: " << argv[0] << "file1 file2 chunk [remove]\n";
         return 1;
     }
-    const int i = std::stoi(argv[1]);
-    const std::vector<char> buffer1 = read_file(argv[2]);
-    const std::vector<char> buffer2 = read_file(argv[3]);
+    bool remove = false;
+    if (argc == 5) {
+        if (std::string(argv[4]) != "remove") {
+            std::cerr << "Error: unknown argument " << argv[4] << '\n';
+            return 1;
+        }
+        remove = true;
+    }
+    const std::vector<char> buffer1 = read_file(argv[1], remove);
+    const std::vector<char> buffer2 = read_file(argv[2], remove);
+
     if (buffer1.size() != buffer2.size()) {
         std::cerr << "Error: file sizes differ\n";
         return 1;
     }
     std::size_t size = buffer1.size();
 
-    const int chunk_size = std::stoi(argv[4]);
+    const int chunk_size = std::stoi(argv[3]);
 
     int count = 0;
 
@@ -45,7 +57,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    std::cout << i << "," << count * chunk_size  << "\n";  // << " bytes (" << count << " chunks of size " << chunk_size << ")\n";
-
+    std::cout << count * chunk_size  << "\n";
     return 0;
 }
