@@ -67,6 +67,7 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
         with open(f'{folder}.csv', 'w') as f:
             for i, p in enumerate(ps):
                 print(f"{i},{p.result()}", file=f)
+    os.rmdir(folder)
     print("Done.", file=sys.stderr)
     await qmp.disconnect()
 
