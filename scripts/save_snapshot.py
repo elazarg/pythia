@@ -50,6 +50,7 @@ async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
 
             await qmp_execute(qmp, 'stop')
             filename = f'{folder}/{i}.a.dump'
+            print(f"Step {i}", end='\r', file=sys.stderr)
 
             res = await qmp_execute(qmp, 'dump-guest-memory', {'paging': False, 'protocol': f'file:{filename}'})
             if res:
