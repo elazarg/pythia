@@ -32,17 +32,17 @@ args=(
   -smp 1
   -drive "file=${img},format=qcow2"
   -drive "file=${user_data},format=qcow2"
-  -device rtl8139,netdev=net0
+#  -device rtl8139,netdev=net0
   -enable-kvm
   -m 2G
-  -netdev user,id=net0
+#  -netdev user,id=net0
    -serial mon:stdio  # use console for monitor
   # -chardev socket,id=monitor,host=127.0.0.1,port=4444,server=on,wait=off,telnet=on
 #   -mon chardev=monitor,mode=readline
   -qmp tcp:localhost:4444,server=on,wait=off
    -nographic
 #  -daemonize
-  -net user,hostfwd=tcp::10022-:22
+#  -net user,hostfwd=tcp::10022-:22
   -net nic
 )
 ${QEMU_DIR}qemu-system-x86_64 "${args[@]}"
