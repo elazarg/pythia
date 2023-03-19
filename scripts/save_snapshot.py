@@ -20,7 +20,7 @@ def count_diff(folder, i):
     result = subprocess.run(["./count_diff",
                              f"{folder}/{i}.a.dump",
                              f"{folder}/{i}.b.dump",
-                             f"{64}",
+                             "64",
                              f"remove"],
                             capture_output=True)
     if result.returncode != 0:
@@ -77,11 +77,12 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description="Save a snapshot of the VM's memory.")
-    parser.add_argument('port', type=str, default='4444', help='The port to connect to.')
+    parser.add_argument('port', type=int, default=4444, help='The port to connect to.')
     parser.add_argument('iterations', type=int, help='The number of iterations to run.')
     parser.add_argument('epoch_ms', type=int, help='The number of milliseconds between snapshots.')
     parser.add_argument('tag', type=str, help='Save as ./dumps/[tag].csv.')
     args = parser.parse_args()
+    assert iterations > 0
     asyncio.run(main(
         port=args.port,
         iterations=args.iterations,

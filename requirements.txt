@@ -4,3 +4,4 @@ matplotlib==3.7.1
 pytest==7.2.2
 pyelftools==0.29
 qemu.qmp==0.0.2
+scikit-learn==1.2.2

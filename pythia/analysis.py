@@ -184,13 +184,15 @@ def main() -> None:
     # analyze_function(f'{example_dir}/tests.py', 'tup')
     # analyze_function(f'{example_dir}/tests.py', 'destruct')
 
-    analyze_function(f'{example_dir}/feature_selection.py',
-                     'do_work')
-
-    analyze_function(f'{example_dir}/toy.py',
-                     'minimal',
-                     'not_so_minimal',
-                     )
+    analyze_function(f'{example_dir}/k_means.py',
+                     'k_means')
+    # analyze_function(f'{example_dir}/feature_selection.py',
+    #                  'do_work')
+    #
+    # analyze_function(f'{example_dir}/toy.py',
+    #                  'minimal',
+    #                  'not_so_minimal',
+    #                  )
     # analyze_function(f'{example_dir}/feature_selection.py', 'run')
 
 

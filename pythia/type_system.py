@@ -349,7 +349,6 @@ TOP = intersect([])
 BOTTOM = union([])
 
 
-
 def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
     if t1 == t2:
         return t1
@@ -840,7 +839,7 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                     case ast.Name() as expr:
                         items = (expr_to_type(expr),)
                     case _:
-                        raise NotImplementedError(f'{generic}[{slice}]')
+                        raise NotImplementedError(f'{generic}[{expr_to_type(slice)}]')
                 return Instantiation(generic, items)
             case ast.Attribute(value=value, attr=attr):
                 ref: TypeExpr = expr_to_type(value)
@@ -859,6 +858,8 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                 return (TypeVar(id, is_args=True),)
             case _:
                 raise NotImplementedError(f'{slice!r}')
+
+
     # convert a Python ast to a type expression
     def stmt_to_rows(definition: ast.stmt, index: int) -> typing.Iterator[Row]:
         match definition:

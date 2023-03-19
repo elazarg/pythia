@@ -98,6 +98,7 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
             break
     return S
 
+
 def main(dataset: str, k) -> None:
     features = np.load(f'data/{dataset}_features.npy')
     target = np.load(f'data/{dataset}_target.npy')
