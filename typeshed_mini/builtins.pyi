@@ -80,6 +80,11 @@ class Indexable(Protocol[T]):
     def __getitem__(self, slice) -> T: ...
 
 
+class Iterator(Protocol[T]):
+    @new
+    def __next__(self) -> T: ...
+
+
 def range(start: int) -> Iterable[int]: ...
 
 def abs(x: int) -> int: pass

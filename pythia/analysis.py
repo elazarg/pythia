@@ -108,14 +108,12 @@ def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], property_map:
 
 
 def find_first_for_loop(cfg: Cfg) -> tuple[Location, Location]:
-    for label, block in cfg.items():
-        if not block:
-            continue
-        if isinstance(block[0], tac.For):
-            assert len(block) == 1
-            prev, after = cfg.predecessors(label)
-            return ((label, 0), (after, cfg[after].last_index()))
-    raise ValueError('No for loop found')
+    first_label = min(label for label, block in cfg.items()
+                      if block and isinstance(block[0], tac.For))
+    block = cfg[first_label]
+    assert len(block) == 1
+    prev, after = cfg.predecessors(first_label)
+    return ((first_label, 0), (after, cfg[after].last_index()))
 
 
 def run(cfg: Cfg, annotations: dict[tac.Var, str], module_type: ts.Module, function_name: str) -> tuple[InvariantMap[AllocationType], set[str], dict[str, InvariantPair]]:

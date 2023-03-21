@@ -253,7 +253,6 @@ class ValueLattice(Lattice[T], typing.Protocol[T]):
         return self.top()
 
 
-
 InvariantMap: typing.TypeAlias = dict[Location, T]
 
 
@@ -348,7 +347,6 @@ class VarLattice(InstructionLattice[MapDomain[T]], typing.Generic[T]):
             case tac.Yield():
                 return self.lattice.top()
             case tac.Import():
-                print(f"{expr}: {type(expr)}; {expr.modname} {type(expr.modname)}")
                 if isinstance(expr.modname, tac.Attribute):
                     val = eval(expr.modname.var)
                     return self.lattice.attribute(val, expr.modname.field)
