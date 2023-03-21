@@ -840,6 +840,8 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                         items = (expr_to_type(expr),)
                     case ast.Attribute() as expr:
                         items = (expr_to_type(expr),)
+                    case ast.Subscript() as expr:
+                        items = (expr_to_type(expr),)
                     case _:
                         raise NotImplementedError(f'{generic}[{expr_to_type(slice)}]')
                 return Instantiation(generic, items)

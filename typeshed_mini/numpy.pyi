@@ -79,6 +79,9 @@ class random:
     @new
     def rand(self, dims: tuple) -> ndarray: ...
 
+    @new
+    def choice(self, a: ndarray, size: int) -> ndarray: ...
+
 @new
 def array(object) -> ndarray: ...
 

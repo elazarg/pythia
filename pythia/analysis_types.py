@@ -122,7 +122,7 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
 
     def attribute(self, var: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
         mod = self.resolve(var)
-        assert mod != ts.TOP, f'Cannot resolve {var}'
+        assert mod != ts.TOP, f'Cannot resolve {attr} in {var}'
         try:
             res = ts.subscr(mod, ts.Literal(attr.name))
             if self.is_bottom(res):
