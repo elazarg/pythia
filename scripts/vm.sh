@@ -46,7 +46,7 @@ args=(
   -nographic
 # -daemonize
   -net user,hostfwd=tcp::10022-:22
-# -net nic
+  -net nic
 )
 ${QEMU_DIR}qemu-system-x86_64 "${args[@]}"
 # args=(
