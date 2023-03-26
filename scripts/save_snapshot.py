@@ -82,7 +82,7 @@ if __name__ == '__main__':
     parser.add_argument('epoch_ms', type=int, help='The number of milliseconds between snapshots.')
     parser.add_argument('tag', type=str, help='Save as ./dumps/[tag].csv.')
     args = parser.parse_args()
-    assert iterations > 0
+    assert args.iterations > 0
     asyncio.run(main(
         port=args.port,
         iterations=args.iterations,
