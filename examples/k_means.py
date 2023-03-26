@@ -31,7 +31,8 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     centroids = np.array(X[np.random.choice(samples, k)])
 
     # Iterate until convergence or for max iterations
-    for _ in range(max_iterations):  # type: int
+    for i in range(max_iterations):  # type: int
+        print(f"{max_iterations}/{i}", end="\r", flush=True)
         # Assign samples to the closest centroids (create clusters)
         centroid_is = empty_list_of_tuples()
         for sample_i, sample in enumerate(X):
@@ -60,23 +61,25 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     return y_pred
 
 
-def plot_random(k: int) -> None:
-    import matplotlib.pyplot as plt
+def compute_random(n_samples: int, k: int, plot: bool) -> None:
     import sklearn.datasets
-    # Load dataset
     X, y = sklearn.datasets.make_blobs(
-        n_samples=100000, n_features=2, centers=k, cluster_std=0.5, shuffle=True
+        n_samples=n_samples, n_features=2, centers=k, cluster_std=1.8, shuffle=True
     )
-    print(X.size)
-    # plt.scatter(X[:, 0], X[:, 1])
-    # plt.show()
-    # plt.clf()
-    # Perform K-Means clustering
-    y_pred = k_means(X, k=k, max_iterations=100)
-    # Plot the different clusters
-    plt.scatter(X[:, 0], X[:, 1], c=y_pred)
-    plt.show()
+    y_pred = k_means(X, k=k, max_iterations=1000)
+    if plot:
+        import matplotlib.pyplot as plt
+        plt.scatter(X[:, 0], X[:, 1], c=y_pred)
+        plt.show()
+    else:
+        print("Done.")
 
 
 if __name__ == "__main__":
-    plot_random(4)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("samples", type=int)
+    parser.add_argument("k", type=int)
+    parser.add_argument("--plot", action="store_true")
+    args = parser.parse_args()
+    compute_random(args.samples, args.k, args.plot)
