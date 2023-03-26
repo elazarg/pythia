@@ -45,7 +45,7 @@ args=(
   -qmp tcp:localhost:4444,server=on,wait=off
   -nographic
 # -daemonize
-# -net user,hostfwd=tcp::10022-:22
+  -net user,hostfwd=tcp::10022-:22
 # -net nic
 )
 ${QEMU_DIR}qemu-system-x86_64 "${args[@]}"
