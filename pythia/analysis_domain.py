@@ -372,7 +372,7 @@ class VarLattice(InstructionLattice[MapDomain[T]], typing.Generic[T]):
             case _:
                 assert False, f'unexpected signature {signature}'
 
-    def forward_transfer(self, values: MapDomain[T], ins: tac.Tac, location: Location) -> MapDomain[T]:
+    def forward_transfer(self, values: MapDomain[T], ins: tac.Tac) -> MapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
         if isinstance(ins, tac.For):
@@ -393,7 +393,12 @@ class VarLattice(InstructionLattice[MapDomain[T]], typing.Generic[T]):
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()
-        to_update = self.forward_transfer(values, ins, location)
+        vars = {var: values[var] for var in tac.free_vars(ins)}
+        try:
+            to_update = self.forward_transfer(values, ins)
+        except Exception as e:
+            e.add_note(f'while processing {ins} at {location}')
+            raise
         for var in tac.gens(ins):
             if var in values:
                 del values[var]

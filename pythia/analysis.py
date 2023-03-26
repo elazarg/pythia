@@ -182,7 +182,7 @@ def main() -> None:
     # analyze_function(f'{example_dir}/tests.py', 'tup')
     # analyze_function(f'{example_dir}/tests.py', 'destruct')
 
-    analyze_function(f'{example_dir}/k_means.py',
+    analyze_function(f'{example_dir}/k_means_numpy.py',
                      'k_means')
     # analyze_function(f'{example_dir}/feature_selection.py',
     #                  'do_work')

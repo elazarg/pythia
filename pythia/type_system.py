@@ -87,6 +87,7 @@ class Row(TypeExpr):
     def __le__(self, other: Row) -> bool:
         return self.index <= other.index
 
+
 def make_row(number: typing.Optional[int], name: typing.Optional[str], t: TypeExpr) -> Row:
     return Row(Index(number if number is not None else None,
                      name if name is not None else None), t)
@@ -178,10 +179,19 @@ class Module(TypeExpr):
 
 
 @dataclass(frozen=True)
+class SideEffect(TypeExpr):
+    new: bool
+    instructions: tuple[str, ...]
+
+    def __repr__(self) -> str:
+        return f'{self.new}'
+
+
+@dataclass(frozen=True)
 class FunctionType(TypeExpr):
     params: TypedDict
     return_type: TypeExpr
-    new: bool
+    side_effect: SideEffect
     property: bool
     type_params: tuple[TypeVar, ...]
 
@@ -190,10 +200,13 @@ class FunctionType(TypeExpr):
             return f'->{self.return_type}'
         else:
             type_params = ', '.join(str(x) for x in self.type_params)
-            return f'[{type_params}]({self.params} -> {"new " if self.new else ""}{self.return_type})'
+            return f'[{type_params}]({self.params} -> {"new " if self.new() else ""}{self.return_type})'
 
     def is_property(self) -> bool:
         return self.params is None
+
+    def new(self):
+        return self.side_effect.new
 
 
 @dataclass(frozen=True)
@@ -487,7 +500,7 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
             return result
         case Literal() as param, Literal() as arg:
             if param == arg:
-                 return {}
+                return {}
             return None
         case Row() as param, Row() as arg:
             if match_index(param.index, arg.index):
@@ -573,7 +586,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
             if name == 'builtins.int' and index.number is not None:
                 return t
             return BOTTOM
-        case Instantiation(generic=FunctionType()|Class()|TypeVar()) as t, arg:
+        case Instantiation(generic=FunctionType() | Class() | TypeVar()) as t, arg:
             new_t = simplify_generic(t, {})
             if new_t != t:
                 return access(new_t, arg)
@@ -603,7 +616,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
             res = call(getter, intersect([make_row(0, None, arg)]))
             return res
         case _:
-            raise NotImplementedError(f'{t=}, {arg=}')
+            raise NotImplementedError(f'{t=}, {arg=}, {type(t)=}, {type(arg)=}')
 
 
 def bind_self(t: TypeExpr, f: FunctionType) -> FunctionType:
@@ -671,7 +684,7 @@ def make_constructor(t: TypeExpr) -> TypeExpr:
     return_type = intersect([args, Instantiation(t, (args,))])
     return FunctionType(params=intersect([make_row(None, None, args)]),
                         return_type=return_type,
-                        new=not is_immutable(return_type),
+                        side_effect=SideEffect(new=not is_immutable(return_type), instructions=()),
                         property=False,
                         type_params=(args,))
 
@@ -681,7 +694,7 @@ def make_slice_constructor() -> TypeExpr:
     return FunctionType(params=intersect([make_row(0, 'start', Ref('builtins.int')),
                                           make_row(1, 'end', Ref('builtins.int'))]),
                         return_type=return_type,
-                        new=True,
+                        side_effect=SideEffect(new=True, instructions=()),
                         property=False,
                         type_params=())
 
@@ -765,7 +778,7 @@ def infer_self(row: Row) -> Row:
         self_arg_row = replace(self_arg_row, type=self_type)
         type_params = (self_type, *type_params)
     params = intersect([self_arg_row, *other_args.row_items()])
-    g = FunctionType(params, function.return_type, function.new, function.property, type_params)
+    g = FunctionType(params, function.return_type, function.side_effect, function.property, type_params)
     return Row(row.index, g)
 
 
@@ -782,11 +795,11 @@ def pretty_print_type(t: Module | TypeExpr, indent: int = 0) -> None:
             if isinstance(typeexpr, Intersection):
                 print()
             pretty_print_type(typeexpr, indent)
-        case FunctionType(params, return_type, new, property, type_params):
+        case FunctionType(params, return_type, side_effect, property, type_params):
             # pretty_params = ', '.join(f'{row.index.name}: {row.type}'
             #                           for row in sorted(params.row_items(), key=lambda x: x.index))
             pretty_type_params = ', '.join(str(x) for x in type_params)
-            print(f'[{pretty_type_params}]({params}) -> {"new " if new else ""}{return_type}')
+            print(f'[{pretty_type_params}]({params}) -> {"new " if side_effect.new else ""}{return_type}')
         case Class(name, class_dict=class_dict, inherits=inherits, protocol=protocol, type_params=type_params):
             kind = 'protocol' if protocol else 'class'
             pretty_type_params = ', '.join(str(x) for x in type_params)
@@ -863,7 +876,6 @@ def module_to_type(module: ast.Module, name: str) -> Module:
             case _:
                 raise NotImplementedError(f'{slice!r}')
 
-
     # convert a Python ast to a type expression
     def stmt_to_rows(definition: ast.stmt, index: int) -> typing.Iterator[Row]:
         match definition:
@@ -898,7 +910,7 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                                       make_row(0, '__call__', FunctionType(intersect([
                                           make_row(0, 'cls', TypeVar('Infer')),
                                       ]), Ref('type'),
-                                          new=True,
+                                          side_effect=SideEffect(new=True, instructions=()),
                                           property=False,
                                           type_params=())),
                                   ]),
@@ -920,14 +932,18 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                 )
                 returns = expr_to_type(fdef.returns)
                 name_decorators = [decorator.id for decorator in fdef.decorator_list if isinstance(decorator, ast.Name)]
-                new = not is_immutable(returns)
+                side_effect = SideEffect(
+                    new=not is_immutable(returns), instructions=()
+                )
                 property = 'property' in name_decorators
                 type_params = tuple(TypeVar(x) for x in freevars if x in generic_vars)
-                f = FunctionType(params, returns, new=new, property=property, type_params=type_params)
+                f = FunctionType(params, returns, side_effect=side_effect, property=property, type_params=type_params)
 
                 yield make_row(index, fdef.name, f)
             case ast.If():
                 return
+            case ast.Expr():
+                return []
             case _:
                 raise NotImplementedError(f'{definition!r}, {type(definition)}')
 

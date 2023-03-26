@@ -65,8 +65,9 @@ def plot_random(k: int) -> None:
     import sklearn.datasets
     # Load dataset
     X, y = sklearn.datasets.make_blobs(
-        n_samples=1500, n_features=2, centers=k, cluster_std=0.5, shuffle=True
+        n_samples=100000, n_features=2, centers=k, cluster_std=0.5, shuffle=True
     )
+    print(X.size)
     # plt.scatter(X[:, 0], X[:, 1])
     # plt.show()
     # plt.clf()

@@ -48,10 +48,14 @@ class tuple(Generic[*Args]):
 class list(Generic[T]):
     def __getitem__(self, item: N) -> T: ...
     def __iter__(self) -> SupportsNext[T]: ...
+
     @new
-    def copy(self) -> list: pass
+    def copy(self: list[T]) -> list[T]: pass
+
     def clear(self) -> None: pass
+
     def append(self, x: T) -> None: pass
+
     def extend(self, x: list[T]) -> None: pass
     def insert(self, i: int, x: T) -> None: pass
     def remove(self, x: T) -> None: pass
@@ -60,6 +64,8 @@ class list(Generic[T]):
     def count(self, x: T) -> int: pass
     def sort(self, key: object = None, reverse: bool = False) -> None: pass
     def reverse(self) -> None: pass
+
+    def __add__(self, other: list[T]) -> list[T]: pass
 
 
 class rec(Generic[T]):

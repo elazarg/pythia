@@ -85,7 +85,7 @@ def from_function(function: ts.TypeExpr, returns: ts.TypeExpr) -> Allocation:
 
     def from_function(function: ts.TypeExpr) -> Allocation:
         if isinstance(function, ts.FunctionType):
-            if function.new:
+            if function.new():
                 return AllocationType.STACK
             else:
                 return AllocationType.NONE
