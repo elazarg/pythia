@@ -2,7 +2,6 @@ T = TypeVar('T')
 Args = TypeVarTuple('Args')
 N = TypeVar('N', Literal[int])
 
-
 class object:
     __dict__: dict
     __module__: str
@@ -44,7 +43,6 @@ class tuple(Generic[*Args]):
     def __getitem__(self, item: N) -> Args[N]: ...
     def __init__(self, *args: Args) -> None: ...
 
-
 class list(Generic[T]):
     def __getitem__(self, item: N) -> T: ...
     def __iter__(self) -> SupportsNext[T]: ...
@@ -67,32 +65,25 @@ class list(Generic[T]):
 
     def __add__(self, other: list[T]) -> list[T]: pass
 
-
 class rec(Generic[T]):
     def foo(self, item: T) -> rec[T]: ...
 
-
 class SupportsNext(Protocol[T]):
     def __next__(self) -> T: ...
-
 
 class Iterable(Protocol[T]):
     @new
     def __iter__(self) -> SupportsNext[T]: ...
 
-
 class Indexable(Protocol[T]):
     @new
     def __getitem__(self, slice) -> T: ...
-
 
 class Iterator(Protocol[T]):
     @new
     def __next__(self) -> T: ...
 
-
 def range(start: int) -> Iterable[int]: ...
-
 def abs(x: int) -> int: pass
 def len(x) -> int: pass
 def print(x) -> None: pass
@@ -104,7 +95,5 @@ def all(x) -> bool: pass
 def any(x) -> bool: pass
 def sorted(x) -> list: pass
 
-
 class B:
     def __init__(self) -> None: ...
-

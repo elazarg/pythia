@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-
+POOL=pool
 # This is already in qcow2 format.
 img=ubuntu-22.10-server-cloudimg-amd64.img
-if [ ! -f "$img" ]; then
+if [ ! -f "$POOL/$img" ]; then
+  cd $POOL
   wget "https://cloud-images.ubuntu.com/releases/22.10/release/${img}"
 
   # sparse resize: does not use any extra space, just allows the resize to happen later on.
   # https://superuser.com/questions/1022019/how-to-increase-size-of-an-ubuntu-cloud-image
   qemu-img resize "$img" + 128G
+  cd ..
 fi
 
-user_data=user-data.qcow2
+user_data=$POOL/user-data.qcow2
 if [ ! -f "$user_data" ]; then
-  yaml_file=user-data.yaml
+  yaml_file=$POOL/user-data.yaml
   # For the password.
   # user: "ubuntu"
   # https://stackoverflow.com/questions/29137679/login-credentials-of-ubuntu-cloud-server-image/53373376#53373376
@@ -30,20 +32,21 @@ fi
 args=(
   -cpu host
   -smp 1
-  -drive "file=${img},format=qcow2"
+  -drive "file=${POOL}/${img},format=qcow2"
   -drive "file=${user_data},format=qcow2"
 #  -device rtl8139,netdev=net0
   -enable-kvm
   -m 2G
-#  -netdev user,id=net0
-   -serial mon:stdio  # use console for monitor
-  # -chardev socket,id=monitor,host=127.0.0.1,port=4444,server=on,wait=off,telnet=on
-#   -mon chardev=monitor,mode=readline
+  -netdev user,id=net0
+  -device virtio-net,netdev=net0
+  -serial mon:stdio  # use console for monitor
+# -chardev socket,id=monitor,host=127.0.0.1,port=4444,server=on,wait=off,telnet=on
+# -mon chardev=monitor,mode=readline
   -qmp tcp:localhost:4444,server=on,wait=off
-   -nographic
-#  -daemonize
-#  -net user,hostfwd=tcp::10022-:22
-  -net nic
+  -nographic
+# -daemonize
+# -net user,hostfwd=tcp::10022-:22
+# -net nic
 )
 ${QEMU_DIR}qemu-system-x86_64 "${args[@]}"
 # args=(
