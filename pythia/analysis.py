@@ -154,7 +154,7 @@ def run(cfg: Cfg, annotations: dict[tac.Var, str], module_type: ts.Module, funct
     return allocation_invariants, dirty_locals, invariant_pairs
 
 
-def analyze_function(filename: str, *function_names: str) -> None:
+def analyze_function(filename: str, *function_names: str, print_invariants: bool, outfile: str) -> None:
     functions, imports = disassemble.read_file(filename)
     module_type = ts.parse_file(filename)
 
@@ -167,33 +167,26 @@ def analyze_function(filename: str, *function_names: str) -> None:
                                                                    module_type=module_type,
                                                                    function_name=function_name)
 
-        print_analysis(cfg, invariant_pairs, allocation_invariants)
+        if print_invariants:
+            print_analysis(cfg, invariant_pairs, allocation_invariants)
 
         dirty_map[function_name] = dirty_locals
 
     output = ast_transform.transform(filename, dirty_map)
-    print(output)
+    with open(outfile, 'w', encoding='utf-8') as f:
+        print(output, file=f)
 
 
 def main() -> None:
-    example_dir = '../examples'
-    # analyze_function(f'{example_dir}/tests.py', 'negative')
-    # analyze_function(f'{example_dir}/tests.py', 'iterate')
-    # analyze_function(f'{example_dir}/tests.py', 'tup')
-    # analyze_function(f'{example_dir}/tests.py', 'destruct')
-
-    analyze_function(f'{example_dir}/k_means_numpy.py',
-                     'k_means')
-    # analyze_function(f'{example_dir}/feature_selection.py',
-    #                  'do_work')
-    #
-    # analyze_function(f'{example_dir}/toy.py',
-    #                  'minimal',
-    #                  'not_so_minimal',
-    #                  )
-    # analyze_function(f'{example_dir}/feature_selection.py', 'run')
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('filename')
+    parser.add_argument('function_name', nargs='+')
+    parser.add_argument('--output', default='/dev/stdout')
+    parser.add_argument('--print-invariants', action='store_true')
+    args = parser.parse_args()
+    analyze_function(args.filename, *args.function_name, print_invariants=args.print_invariants, outfile=args.output)
 
 
 if __name__ == '__main__':
     main()
-    # analyze_function(*sys.argv[1:])

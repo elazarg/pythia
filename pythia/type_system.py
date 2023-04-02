@@ -995,8 +995,8 @@ def parse_file(path: str) -> Module:
 
 
 MODULES = Module('typeshed',
-                 intersect([make_row(index, file.split('.')[0], parse_file(f'../typeshed_mini/{file}'))
-                            for index, file in enumerate(os.listdir('../typeshed_mini'))]))
+                 intersect([make_row(index, file.split('.')[0], parse_file(f'./typeshed_mini/{file}'))
+                            for index, file in enumerate(os.listdir('./typeshed_mini'))]))
 
 
 def main() -> None:

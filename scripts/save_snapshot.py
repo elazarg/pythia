@@ -1,19 +1,15 @@
 import asyncio
+from contextlib import asynccontextmanager
 import os
 import pathlib
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor
+import typing
+from concurrent.futures import ThreadPoolExecutor, Future
 from typing import Optional, Mapping
 
 from qemu.qmp import QMPClient
 from qemu.qmp.protocol import ConnectError
-
-
-async def qmp_execute(qmp: QMPClient, cmd: str, args: Optional[Mapping[str, object]] = None) -> dict:
-    res = await qmp.execute(cmd, args)
-    assert isinstance(res, dict)
-    return res
 
 
 def count_diff(folder, i):
@@ -29,48 +25,71 @@ def count_diff(folder, i):
     return output
 
 
-async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
-    cwd = pathlib.Path.cwd().as_posix()
-    folder = f'{cwd}/dumps/{tag}'
-    os.makedirs(folder, exist_ok=True)
+async def qmp_execute(qmp: QMPClient, cmd: str, args: Optional[Mapping[str, object]] = None) -> dict:
+    res = await qmp.execute(cmd, args)
+    assert isinstance(res, dict)
+    return res
 
-    qmp = QMPClient('nvram')
+
+@asynccontextmanager
+async def qmp_pause(qmp: QMPClient) -> typing.AsyncIterator[None]:
+    await qmp_execute(qmp, 'stop')
     try:
-        await qmp.connect(('localhost', port))
+        yield
+    finally:
+        await qmp_execute(qmp, 'cont')
+
+
+@asynccontextmanager
+async def qmp_connect(port) -> typing.AsyncIterator[QMPClient]:
+    qmp = QMPClient('nvram')
+    await qmp.connect(('localhost', port))
+    try:
+        yield qmp
     except ConnectError:
         print(f"Failed to connect to QMP server.", file=sys.stderr)
         print(f"Check that the VM is running and listens at port {port}.", file=sys.stderr)
         sys.exit(1)
-    res = await qmp_execute(qmp, 'query-status')
-    status = res['status']
-    print(f"VM status: {status}", file=sys.stderr)
-    with ThreadPoolExecutor() as executor:
-        ps = []
-        for i in range(iterations):
+    finally:
+        await qmp.disconnect()
 
-            await qmp_execute(qmp, 'stop')
-            filename = f'{folder}/{i}.a.dump'
-            print(f"Step {i}", end='\r', file=sys.stderr)
 
-            res = await qmp_execute(qmp, 'dump-guest-memory', {'paging': False, 'protocol': f'file:{filename}'})
-            if res:
-                raise RuntimeError("Failed to dump memory", res)
-            if i > 0:
-                if i == iterations - 1:
-                    os.rename(filename, f"{folder}/{i-1}.b.dump")
-                else:
-                    os.link(filename, f"{folder}/{i-1}.b.dump")
-                p = executor.submit(count_diff, folder, i - 1)
-                ps.append(p)
-            await qmp_execute(qmp, 'cont')
+async def qmp_dump(qmp: QMPClient, folder: str, i: int, executor: ThreadPoolExecutor, is_last: bool) -> Optional[Future[int]]:
+    filename = f'{folder}/{i}.a.dump'
+    res = await qmp_execute(qmp, 'dump-guest-memory', {'paging': False, 'protocol': f'file:{filename}'})
+    if res:
+        raise RuntimeError("Failed to dump memory", res)
+    if i > 0:
+        if is_last:
+            os.rename(filename, f"{folder}/{i - 1}.b.dump")
+        else:
+            os.link(filename, f"{folder}/{i - 1}.b.dump")
+        p: Future[int] = executor.submit(count_diff, folder, i - 1)
+        return p
+    return None
 
-            await asyncio.sleep(epoch_ms / 1000)
-        with open(f'{folder}.csv', 'w') as f:
-            for i, p in enumerate(ps):
-                print(f"{i},{p.result()}", file=f)
-    os.rmdir(folder)
-    print("Done.", file=sys.stderr)
-    await qmp.disconnect()
+
+async def main(port: int, iterations: int, epoch_ms: int, tag: str) -> None:
+    folder = f'{pathlib.Path.cwd().as_posix()}/dumps/{tag}'
+    os.makedirs(folder, exist_ok=True)
+
+    async with qmp_connect(port) as qmp:
+        res = await qmp_execute(qmp, 'query-status')
+        status = res['status']
+        print(f"VM status: {status}", file=sys.stderr)
+        with ThreadPoolExecutor() as executor:
+            ps = []
+            for i in range(iterations):
+                async with qmp_pause(qmp):
+                    p = await qmp_dump(qmp, folder, i, executor, i == iterations - 1)
+                    if p is not None:
+                        ps.append(p)
+                await asyncio.sleep(epoch_ms / 1000)
+            with open(f'{folder}.csv', 'w') as f:
+                for i, p in enumerate(ps):
+                    print(f"{i},{p.result()}", file=f)
+        os.rmdir(folder)
+        print("Done.", file=sys.stderr)
 
 
 if __name__ == '__main__':

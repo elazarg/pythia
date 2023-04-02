@@ -32,7 +32,7 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
 
     # Iterate until convergence or for max iterations
     for i in range(max_iterations):  # type: int
-        print(f"{max_iterations}/{i}", end="\r", flush=True)
+        # print(f"{max_iterations}/{i}", end="\r", flush=True)
         # Assign samples to the closest centroids (create clusters)
         centroid_is = empty_list_of_tuples()
         for sample_i, sample in enumerate(X):

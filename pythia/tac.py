@@ -31,6 +31,7 @@ class Predefined(enum.Enum):
     SLICE = 5
     CONST_KEY_MAP = 6
     NOT = 7
+    STRING = 8
 
     def __str__(self) -> str:
         return self.name
