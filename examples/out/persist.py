@@ -5,6 +5,7 @@ from typing import Any
 import pickle
 import pathlib
 import hashlib
+import socket
 
 
 class Iter:
@@ -75,3 +76,21 @@ class PseudoLoader(Loader):
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
             print('Finished successfully')
+
+
+class SimpleTcpClient:
+    restored_state = ()
+
+    def __init__(self, tag: str) -> None:
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.connect(('10.0.2.2', 1234))
+        self.socket.send(tag.encode('utf8'))
+
+    def commit(self, i: int) -> None:
+        self.socket.send(f'{i}'.encode('utf8'))
+
+    def __enter__(self) -> 'SimpleTcpClient':
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.socket.close()
