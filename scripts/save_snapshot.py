@@ -80,7 +80,7 @@ def count_diff(folder, i):
                              f"{folder}/{i}.a.dump",
                              f"{folder}/{i}.b.dump",
                              "64",
-                             # f"remove"
+                             f"remove"
                              ],
                             capture_output=True)
     if result.returncode != 0:
