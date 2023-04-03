@@ -94,3 +94,6 @@ class SimpleTcpClient:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.socket.close()
+
+    def iterate(self, iterable):
+        return iterable
