@@ -41,7 +41,7 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
             diff = centroids - prev_centroids
             if not diff.any():
                 break
-            transaction.commit()
+            transaction.commit(i)
     y_pred = np.zeros(samples)
     for cluster_i, cluster in enumerate(clusters):
         for sample_i in cluster:
