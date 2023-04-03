@@ -34,11 +34,12 @@ class Server:
 class SimpleTcpServer(Server):
     def __init__(self, port: int):
         self.port = port
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.bind(('localhost', port))
-        self.socket.listen(1)
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.bind(('localhost', port))
+        self.server_socket.listen(1)
         print(f"Listening on port {port}", file=sys.stderr)
-        self.tag = self.socket.recv(1024).decode('utf8')
+        self.client_socket, client_address = self.server_socket.accept()
+        self.tag = self.client_socket.recv(1024).decode('utf8')
         print(f"Tag: {self.tag}", file=sys.stderr)
         if not self.tag.replace('_', '').isalnum():
             raise ValueError("Invalid tag", self.tag)
@@ -47,10 +48,11 @@ class SimpleTcpServer(Server):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.socket.close()
+        self.client_socket.close()
+        self.server_socket.close()
 
     def __next__(self) -> int:
-        index = self.socket.recv(1024).decode('utf8')
+        index = self.client_socket.recv(1024).decode('utf8')
         if not index:
             raise StopIteration
         if not index.isdigit():
@@ -106,27 +108,35 @@ async def relay_qmp_dumps(qmp_port: int, server: Server) -> None:
             print("Done.", file=sys.stderr)
 
 
+def run_server(qmp_port: int, tcp_port: int):
+    with SimpleTcpServer(tcp_port) as server:
+        asyncio.run(relay_qmp_dumps(qmp_port, server))
+
+
+def run_iterator(qmp_port: int, iterations: int, sleep_duration_ms: int, tag: str):
+    assert args.iterations > 0
+    server = IteratorServer(iterations, sleep_duration_ms, tag)
+    asyncio.run(relay_qmp_dumps(qmp_port, server))
+
+
 if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description="Save a snapshot of the VM's memory.")
-    parser.add_argument('qemu_port', type=int, default=4444, help='The port in qemu to connect the QMP client to.')
+    parser.add_argument('qmp_port', type=int, default=4444, help='The port in qemu to connect the QMP client to.')
     # subparsers: server and iterator
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers()
     server_parser = subparsers.add_parser('server', help='Run as a server.')
     server_parser.add_argument('tcp_port', type=int, default=1234, help='TCP port to listen on.')
+    server_parser.set_defaults(func=run_server)
 
     iterator_parser = subparsers.add_parser('iterator', help='Run as an iterator.')
     iterator_parser.add_argument('iterations', type=int, help='The number of iterations to run.')
     iterator_parser.add_argument('sleep_duration_ms', type=int, help='The number of milliseconds between snapshots.')
     iterator_parser.add_argument('tag', type=str, help='Save as ./dumps/[tag].csv.')
+    iterator_parser.set_defaults(func=run_iterator)
 
     args = parser.parse_args()
-    assert args.iterations > 0
-    if args.server:
-        with SimpleTcpServer(args.server_parser.tcp_port) as server:
-            asyncio.run(relay_qmp_dumps(args.qemu_port, server))
-    else:
-        asyncio.run(relay_qmp_dumps(args.qemu_port, IteratorServer(args.iterator.iterations,
-                                                                   args.iterator.sleep_duration_ms,
-                                                                   args.iterator.tag)))
+    func = args.func
+    del args.func
+    func(**vars(args))
