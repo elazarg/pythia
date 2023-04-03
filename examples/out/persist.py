@@ -6,6 +6,7 @@ import pickle
 import pathlib
 import hashlib
 import socket
+import struct
 
 
 class Iter:
