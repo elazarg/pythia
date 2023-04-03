@@ -14,6 +14,7 @@ import asyncio
 import os
 import pathlib
 import socket
+import struct
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, Future
@@ -52,11 +53,13 @@ class SimpleTcpServer(Server):
         self.server_socket.close()
 
     def __next__(self) -> int:
-        index = self.client_socket.recv(1024).decode('utf8')
-        if not index:
+        raw_index = self.client_socket.recv(8)
+        if not raw_index:
             raise StopIteration
+        index = struct.unpack('Q', raw_index)[0]
         if not index.isdigit():
             raise ValueError("Invalid index", index)
+        print(f"Received: {index!r}", file=sys.stderr)
         return int(index)
 
 
@@ -79,7 +82,8 @@ def count_diff(folder, i):
                              f"{folder}/{i}.a.dump",
                              f"{folder}/{i}.b.dump",
                              "64",
-                             f"remove"],
+                             # f"remove"
+                             ],
                             capture_output=True)
     if result.returncode != 0:
         raise RuntimeError("Failed to run count_diff", result)
@@ -95,7 +99,7 @@ async def relay_qmp_dumps(qmp_port: int, server: Server) -> None:
         with ThreadPoolExecutor() as executor:
             ps: list[Future[int]] = []
             for index in server:
-                with vm.pause(server.sleep_duration_ms):
+                async with vm.pause(server.sleep_duration_ms):
                     await vm.dump(f'{folder}/{index}.b.dump')
                     os.link(f'{folder}/{index}.b.dump', f'{folder}/{index + 1}.a.dump')
                     p: Future[int] = executor.submit(count_diff, folder, index)

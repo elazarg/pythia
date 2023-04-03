@@ -87,7 +87,7 @@ class SimpleTcpClient:
         self.socket.send(tag.encode('utf8'))
 
     def commit(self, i: int) -> None:
-        self.socket.send(f'{i}'.encode('utf8'))
+        self.socket.send(struct.pack('Q', i))
 
     def __enter__(self) -> 'SimpleTcpClient':
         return self
