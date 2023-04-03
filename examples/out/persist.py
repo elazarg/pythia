@@ -86,9 +86,10 @@ class SimpleTcpClient:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect(('10.0.2.2', 1234))
         self.socket.send(tag.encode('utf8'))
+        self.i = None
 
-    def commit(self, i: int) -> None:
-        self.socket.send(struct.pack('Q', i))
+    def commit(self) -> None:
+        self.socket.send(struct.pack('Q', self.i))
 
     def __enter__(self) -> 'SimpleTcpClient':
         return self
@@ -97,4 +98,5 @@ class SimpleTcpClient:
         self.socket.close()
 
     def iterate(self, iterable):
-        return iterable
+        for self.i in iterable:
+            yield self.i

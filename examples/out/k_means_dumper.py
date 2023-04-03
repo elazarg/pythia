@@ -35,13 +35,13 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
                 clusters[centroid_i].append(sample_i)
             prev_centroids = centroids
             res = empty_list_of_ndarray()
-            for i in range(len(clusters)):
-                res.append(np.mean(X[clusters[i]], axis=0))
+            for j in range(len(clusters)):
+                res.append(np.mean(X[clusters[j]], axis=0))
             centroids = np.array(res)
             diff = centroids - prev_centroids
             if not diff.any():
                 break
-            transaction.commit(i)
+            transaction.commit()
     y_pred = np.zeros(samples)
     for cluster_i, cluster in enumerate(clusters):
         for sample_i in cluster:

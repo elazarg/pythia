@@ -57,8 +57,6 @@ class SimpleTcpServer(Server):
         if not raw_index:
             raise StopIteration
         index = struct.unpack('Q', raw_index)[0]
-        if not index.isdigit():
-            raise ValueError("Invalid index", index)
         print(f"Received: {index!r}", file=sys.stderr)
         return int(index)
 
