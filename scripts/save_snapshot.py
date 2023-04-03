@@ -17,6 +17,7 @@ import socket
 import struct
 import subprocess
 import sys
+import argparse
 from concurrent.futures import ThreadPoolExecutor, Future
 from typing import Iterator
 
@@ -57,7 +58,7 @@ class SimpleTcpServer(Server):
         if not raw_index:
             raise StopIteration
         index = struct.unpack('Q', raw_index)[0]
-        print(f"Received: {index!r}", file=sys.stderr)
+        print(f"Received: {index!r}", end='\r', flush=True, file=sys.stderr)
         return int(index)
 
 
@@ -99,10 +100,13 @@ async def relay_qmp_dumps(qmp_port: int, server: Server) -> None:
             for index in server:
                 async with vm.pause(server.sleep_duration_ms):
                     await vm.dump(f'{folder}/{index}.b.dump')
-                    os.link(f'{folder}/{index}.b.dump', f'{folder}/{index + 1}.a.dump')
+                    next_prev_file = f'{folder}/{index + 1}.a.dump'
+                    os.link(f'{folder}/{index}.b.dump', next_prev_file)
                     p: Future[int] = executor.submit(count_diff, folder, index)
                     if p is not None:
                         ps.append(p)
+            else:
+                os.unlink(next_prev_file)
             with open(f'{folder}.csv', 'w') as f:
                 for i, p in enumerate(ps):
                     print(f"{i},{p.result()}", file=f)
@@ -116,14 +120,12 @@ def run_server(qmp_port: int, tcp_port: int):
 
 
 def run_iterator(qmp_port: int, iterations: int, sleep_duration_ms: int, tag: str):
-    assert args.iterations > 0
+    assert iterations > 0
     server = IteratorServer(iterations, sleep_duration_ms, tag)
     asyncio.run(relay_qmp_dumps(qmp_port, server))
 
 
-if __name__ == '__main__':
-    import argparse
-
+def main():
     parser = argparse.ArgumentParser(description="Save a snapshot of the VM's memory.")
     parser.add_argument('qmp_port', type=int, default=4444, help='The port in qemu to connect the QMP client to.')
     # subparsers: server and iterator
@@ -142,3 +144,7 @@ if __name__ == '__main__':
     func = args.func
     del args.func
     func(**vars(args))
+
+
+if __name__ == '__main__':
+    main()
