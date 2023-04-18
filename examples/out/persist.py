@@ -90,6 +90,7 @@ class SimpleTcpClient:
 
     def commit(self) -> None:
         self.socket.send(struct.pack('Q', self.i))
+        self.socket.recv(128)  # wait for snapshot
 
     def __enter__(self) -> 'SimpleTcpClient':
         return self

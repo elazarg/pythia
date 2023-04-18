@@ -32,6 +32,9 @@ class Server:
     def __iter__(self) -> Iterator[int]:
         return self
 
+    def finish(self) -> None:
+        pass
+
 
 class SimpleTcpServer(Server):
     port: int
@@ -41,6 +44,7 @@ class SimpleTcpServer(Server):
 
     def __init__(self, port: int):
         self.port = port
+        # We could make this UDP, but TCP is fine too
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind(('localhost', port))
         self.server_socket.listen(1)
@@ -55,16 +59,21 @@ class SimpleTcpServer(Server):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        self.client_socket.send(b'Closing')
         self.client_socket.close()
         self.server_socket.close()
 
     def __next__(self) -> int:
+        self.client_socket.send(b'Ack prev')
         raw_index = self.client_socket.recv(8)
         if not raw_index:
             raise StopIteration
         index = struct.unpack('Q', raw_index)[0]
         print(f"Received: {index!r}", end='\r', flush=True, file=sys.stderr)
         return int(index)
+
+    def finish(self) -> None:
+        self.client_socket.send(b'Finish')
 
 
 class IteratorServer(Server):
@@ -86,7 +95,7 @@ def count_diff(folder: str, i: int) -> int:
                              f"{folder}/{i}.a.dump",
                              f"{folder}/{i}.b.dump",
                              "64",
-                             f"remove"
+                             "remove"
                              ],
                             capture_output=True)
     if result.returncode != 0:
@@ -112,6 +121,7 @@ async def relay_qmp_dumps(qmp_port: int, server: Server) -> None:
                     if p is not None:
                         ps.append(p)
             else:
+                server.finish()
                 os.unlink(next_prev_file)
 
             with open(f'{folder}.csv', 'w') as f:
