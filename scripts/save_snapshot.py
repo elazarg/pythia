@@ -34,6 +34,11 @@ class Server:
 
 
 class SimpleTcpServer(Server):
+    port: int
+    server_socket: socket.socket
+    client_socket: socket.socket
+    tag: str
+
     def __init__(self, port: int):
         self.port = port
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -76,7 +81,7 @@ class IteratorServer(Server):
         return self.i
 
 
-def count_diff(folder, i):
+def count_diff(folder: str, i: int) -> int:
     result = subprocess.run(["./count_diff",
                              f"{folder}/{i}.a.dump",
                              f"{folder}/{i}.b.dump",
@@ -99,19 +104,22 @@ async def relay_qmp_dumps(qmp_port: int, server: Server) -> None:
             ps: list[Future[int]] = []
             for index in server:
                 async with vm.pause(server.sleep_duration_ms):
-                    await vm.dump(f'{folder}/{index}.b.dump')
+                    current_next_file = f'{folder}/{index}.b.dump'
                     next_prev_file = f'{folder}/{index + 1}.a.dump'
-                    os.link(f'{folder}/{index}.b.dump', next_prev_file)
+                    await vm.dump(current_next_file)
+                    os.link(current_next_file, next_prev_file)
                     p: Future[int] = executor.submit(count_diff, folder, index)
                     if p is not None:
                         ps.append(p)
             else:
                 os.unlink(next_prev_file)
+
             with open(f'{folder}.csv', 'w') as f:
                 for i, p in enumerate(ps):
-                    print(f"{i},{p.result()}", file=f)
-            os.rmdir(folder)
-            print("Done.", file=sys.stderr)
+                    print(f"{i},{p.result()}", file=f, flush=True)
+
+    os.rmdir(folder)
+    print("Done.", file=sys.stderr)
 
 
 def run_server(qmp_port: int, tcp_port: int):
