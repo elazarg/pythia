@@ -5,10 +5,6 @@ img=ubuntu-22.10-server-cloudimg-amd64.img
 if [ ! -f "$POOL/$img" ]; then
   cd $POOL
   wget "https://cloud-images.ubuntu.com/releases/22.10/release/${img}"
-
-  # sparse resize: does not use any extra space, just allows the resize to happen later on.
-  # https://superuser.com/questions/1022019/how-to-increase-size-of-an-ubuntu-cloud-image
-  qemu-img resize "$img" + 128G
   cd ..
 fi
 
@@ -39,8 +35,10 @@ args=(
   -nic user
   -serial mon:stdio  # use console for monitor
   -qmp tcp:localhost:4444,server=on,wait=off
-  -nographic
   -net user,hostfwd=tcp::10022-:22
+  -nographic
+#  -display none
+#  -daemonize
 )
 ${QEMU_DIR}qemu-system-x86_64 "${args[@]}"
 # args=(
