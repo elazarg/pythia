@@ -14,9 +14,9 @@ Args = ts.TypeVar('Args', is_args=True)
 
 def make_function(return_type: ts.TypeExpr, params: ts.Intersection, type_params=()) -> ts.FunctionType:
     return ts.FunctionType(params, return_type,
-                           new=True,
                            property=False,
-                           type_params=type_params)
+                           type_params=type_params,
+                           side_effect=ts.SideEffect(new=not ts.is_immutable(return_type), instructions=()))
 
 
 def make_rows(*types) -> ts.Intersection:
@@ -25,9 +25,24 @@ def make_rows(*types) -> ts.Intersection:
 
 
 def test_join():
-    t1 = ts.Ref('builtins.int')
-    t2 = ts.Ref('builtins.float')
+    t1 = INT
+    t2 = FLOAT
     assert ts.join(t1, t2) == ts.union([t1, t2])
+
+    t1 = INT
+    t2 = ts.Literal(0)
+    assert ts.join(t1, t2) == t1
+
+    t1 = INT
+    t2 = ts.intersect([INT, ts.Literal(1)])
+    assert ts.join(t1, t2) == t1
+
+
+def test_join_literals():
+    t1 = ts.intersect([INT, ts.Literal(0)])
+    t2 = ts.intersect([INT, ts.Literal(1)])
+    joined = INT
+    assert ts.join(t1, t2) == joined
 
 
 def test_overload():
@@ -135,8 +150,8 @@ def test_tuple():
     gt = ts.subscr(tuple_named, ts.Literal('__getitem__'))
     f = ts.FunctionType(params=ts.intersect([ts.make_row(0, 'item', N)]),
                         return_type=ts.Instantiation(tuple_structure, (N,)),
-                        new=True,
                         property=False,
+                        side_effect=ts.SideEffect(new=True, instructions=()),
                         type_params=(N,))
     assert gt == f
     x = ts.call(gt, make_rows(first))
@@ -191,11 +206,20 @@ def test_tuple():
 
 
 def test_list():
+    # Hash:
+    # - 125 Fails with empty
+    # - 126 Fails with recursion
+    # - 127 Pass
+
     t = ts.Ref('builtins.list')
     t1 = ts.simplify_generic(ts.Instantiation(t, (INT,)), {})
     gt = ts.subscr(t1, ts.Literal('__getitem__'))
     x = ts.call(gt, make_rows(ts.Literal(0)))
     assert x == INT
+
+    gt = ts.subscr(t1, ts.Literal('__add__'))
+    x = ts.call(gt, make_rows(t1))
+    assert x == t1
 
 
 def test_getitem_list():

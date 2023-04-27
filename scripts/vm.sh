@@ -32,15 +32,16 @@ args=(
   -drive "file=${user_data},format=qcow2"
   -enable-kvm
   -m 2G
-  -nic user
-  -serial mon:stdio  # use console for monitor
+#  -serial mon:stdio  # use console for monitor
   -qmp tcp:localhost:4444,server=on,wait=off
-  -net user,hostfwd=tcp::10022-:22
-  -nographic
+#  -nic user
+  -device virtio-net-pci,netdev=n1
+  -netdev user,id=n1,hostfwd=tcp::10022-:22
+#  -nographic
 #  -display none
 #  -daemonize
 )
-${QEMU_DIR}qemu-system-x86_64 "${args[@]}"
+${QEMU_DIR}qemu-system-x86_64 "${args[@]}" "$@"
 # args=(
 #   --name nvram-vm
 #   --cpu host

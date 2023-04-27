@@ -7,7 +7,7 @@ from typing import Iterable
 import pythia.type_system as ts
 from pythia import tac
 from pythia.tac import Predefined, UnOp
-from .analysis_domain import ValueLattice
+from analysis_domain import ValueLattice
 
 
 class TypeLattice(ValueLattice[ts.TypeExpr]):
@@ -150,4 +150,30 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
         return self.join(left, right) == left
 
 
+def main():
+    import sys
+    import analysis
+    import disassemble
+    import tac
+    from collections import defaultdict
 
+    filename = sys.argv[1]
+    function_name = sys.argv[2]
+
+    functions, imports = disassemble.read_file(filename)
+    module_type = ts.parse_file(filename)
+
+    f = functions[function_name]
+    cfg = analysis.make_tac_cfg(f, simplify=False)
+    annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
+    liveness_invariants = analysis.analyze(cfg, analysis.LivenessVarLattice(), annotations)
+    type_analysis = analysis.domain.VarLattice(TypeLattice(function_name, module_type), liveness_invariants.post)
+    type_invariants = analysis.analyze(cfg, type_analysis, annotations)
+    invariant_pairs = {
+        "Type": type_invariants,
+    }
+    analysis.print_analysis(cfg, invariant_pairs, defaultdict(lambda: analysis.AllocationType.NONE))
+
+
+if __name__ == '__main__':
+    main()

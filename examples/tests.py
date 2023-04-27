@@ -25,6 +25,8 @@ def listing():
     lst = [1]
     tpl = (1,)
 
+def list_add():
+    return [1] + [2]
 
 def pair() -> tuple[int, float]:
     x = 2

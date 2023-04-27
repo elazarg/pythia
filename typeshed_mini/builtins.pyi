@@ -1,4 +1,5 @@
 T = TypeVar('T')
+Q = TypeVar('Q')
 Args = TypeVarTuple('Args')
 N = TypeVar('N', Literal[int])
 
@@ -44,26 +45,26 @@ class tuple(Generic[*Args]):
     def __init__(self, *args: Args) -> None: ...
 
 class list(Generic[T]):
-    def __getitem__(self, item: N) -> T: ...
-    def __iter__(self) -> SupportsNext[T]: ...
+    def __getitem__(self: list[T], item: N) -> T: ...
+    def __iter__(self: list[T]) -> SupportsNext[T]: ...
 
     @new
     def copy(self: list[T]) -> list[T]: pass
 
-    def clear(self) -> None: pass
+    def clear(self: list[T]) -> None: pass
 
-    def append(self, x: T) -> None: pass
+    def append(self: list[T], x: T) -> None: pass
 
-    def extend(self, x: list[T]) -> None: pass
-    def insert(self, i: int, x: T) -> None: pass
-    def remove(self, x: T) -> None: pass
-    def pop(self, i: int = -1) -> T: pass
-    def index(self, x: T, start: int = 0, end: int = 0) -> int: pass
-    def count(self, x: T) -> int: pass
-    def sort(self, key: object = None, reverse: bool = False) -> None: pass
-    def reverse(self) -> None: pass
+    def extend(self: list[T], x: list[T]) -> None: pass
+    def insert(self: list[T], i: int, x: T) -> None: pass
+    def remove(self: list[T], x: T) -> None: pass
+    def pop(self: list[T], i: int = -1) -> T: pass
+    def index(self: list[T], x: T, start: int = 0, end: int = 0) -> int: pass
+    def count(self: list[T], x: T) -> int: pass
+    def sort(self: list[T], key: object = None, reverse: bool = False) -> None: pass
+    def reverse(self: list[T]) -> None: pass
 
-    def __add__(self, other: list[T]) -> list[T]: pass
+    def __add__(self: list[T], other: list[Q]) -> list[T|Q]: pass
 
 class rec(Generic[T]):
     def foo(self, item: T) -> rec[T]: ...

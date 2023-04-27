@@ -161,7 +161,7 @@ def analyze_function(filename: str, *function_names: str, print_invariants: bool
     dirty_map = {}
     for function_name in function_names:
         f = functions[function_name]
-        cfg: Cfg = make_tac_cfg(f, simplify=True)
+        cfg = make_tac_cfg(f, simplify=True)
         annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
         allocation_invariants, dirty_locals, invariant_pairs = run(cfg, annotations,
                                                                    module_type=module_type,
