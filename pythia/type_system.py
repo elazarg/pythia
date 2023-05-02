@@ -390,7 +390,7 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             return union([t1, t2])
         case (Literal() as n, Ref() as ref) | (Ref() as ref, Literal() as n) if n.ref() == ref:
             return ref
-        case (Ref() as ref, other) | (other, Ref() as ref):
+        case (Ref() as ref, other) | (other, Ref() as ref):  # type: ignore
             return union([ref, other])
         case (Instantiation(generic1, type_args1), Instantiation(generic2, type_args2)) if generic1 == generic2:
             return Instantiation(generic1, tuple(join(t1, t2) for t1, t2 in zip(type_args1, type_args2)))
@@ -398,8 +398,12 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             return Instantiation(Ref('builtins.list'), tuple(join(t1, t) for t in type_args))
         case (FunctionType() as f1, FunctionType() as f2):
             if (f1.property, f1.side_effect, f1.type_params) == (f2.property, f2.side_effect, f2.type_params):
+                new_params = meet(f1.params, f2.params)
+                if isinstance(new_params, Row):
+                    new_params = intersect([new_params])
+                assert isinstance(new_params, Intersection)
                 return replace(f1,
-                               params=meet(f1.params, f2.params),
+                               params=new_params,
                                return_type=join(f1.return_type, f2.return_type))
             return union([f1, f2])
         case Class(), Class():
@@ -442,9 +446,11 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             return Intersection(items | {t})
         case (FunctionType() as f1, FunctionType() as f2):
             if (f1.property, f1.side_effect, f1.type_params) == (f2.property, f2.side_effect, f2.type_params):
-                params = join(f1.params, f2.params)
-                if not isinstance(params, Union):
-                    return replace(f1, params=params,
+                new_params = join(f1.params, f2.params)
+                if not isinstance(new_params, Union):
+                    if isinstance(new_params, Row):
+                        new_params = intersect([new_params])
+                    return replace(f1, params=new_params,
                                    return_type=meet(f1.return_type, f2.return_type))
             return intersect([f1, f2])
         case (t1, t2):
@@ -628,6 +634,9 @@ def bind_self(attr: TypeExpr, selftype: TypeExpr) -> TypeExpr:
     match attr:
         case FunctionType() as attr:
             res = partial(attr, intersect([make_row(0, 'self', selftype)]))
+            if res == BOTTOM:
+                # no binding - probably a module
+                return attr
             assert isinstance(res, FunctionType)
             if res.property:
                 return res.return_type
@@ -811,8 +820,8 @@ def infer_self(row: Row) -> Row:
         self_type = TypeVar('Self')
         self_arg_row = replace(self_arg_row, type=self_type)
         type_params = (self_type, *type_params)
-    params = intersect([self_arg_row, *other_args.row_items()])
-    g = FunctionType(params, function.return_type, function.side_effect, function.property, type_params)
+    g = FunctionType(intersect([self_arg_row, *other_args.row_items()]), function.return_type,
+                     function.side_effect, function.property, type_params)
     return Row(row.index, g)
 
 
@@ -960,10 +969,6 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                 yield make_row(index, name, res)
             case ast.FunctionDef() as fdef:
                 freevars = {x for node in fdef.args.args for x in free_vars(node)}
-                params = intersect(
-                    [make_row(index, arg.arg, expr_to_type(arg.annotation))
-                     for index, arg in enumerate(fdef.args.args)]
-                )
                 returns = expr_to_type(fdef.returns)
                 name_decorators = [decorator.id for decorator in fdef.decorator_list if isinstance(decorator, ast.Name)]
                 side_effect = SideEffect(
@@ -971,6 +976,10 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                 )
                 property = 'property' in name_decorators
                 type_params = tuple(TypeVar(x) for x in freevars if x in generic_vars)
+                params = intersect(
+                    [make_row(index, arg.arg, expr_to_type(arg.annotation))
+                     for index, arg in enumerate(fdef.args.args)]
+                )
                 f = FunctionType(params, returns, side_effect=side_effect, property=property, type_params=type_params)
 
                 yield make_row(index, fdef.name, f)

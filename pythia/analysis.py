@@ -173,8 +173,11 @@ def analyze_function(filename: str, *function_names: str, print_invariants: bool
         dirty_map[function_name] = dirty_locals
 
     output = ast_transform.transform(filename, dirty_map)
-    with open(outfile, 'w', encoding='utf-8') as f:
-        print(output, file=f)
+    if outfile is None:
+        print(output)
+    else:
+        with open(outfile, 'w', encoding='utf-8') as f:
+            print(output, file=f)
 
 
 def main() -> None:
@@ -182,7 +185,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('filename')
     parser.add_argument('function_name', nargs='+')
-    parser.add_argument('--output', default='/dev/stdout')
+    parser.add_argument('--output', default=None)
     parser.add_argument('--print-invariants', action='store_true')
     args = parser.parse_args()
     analyze_function(args.filename, *args.function_name, print_invariants=args.print_invariants, outfile=args.output)
