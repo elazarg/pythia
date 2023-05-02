@@ -224,11 +224,7 @@ class Instantiation(TypeExpr):
 
 def constant(value: object) -> TypeExpr:
     assert isinstance(value, (int, str, type(None), bool, float)), value
-    if value is None:
-        t = Ref('builtins.NoneType')
-    else:
-        t = Ref(f'builtins.{type(value).__name__}')
-    return intersect([t, Literal(value)])
+    return Literal(value)
 
 
 def simplify_generic(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
@@ -377,13 +373,7 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
     if t1 == TOP or t2 == TOP:
         return TOP
     match t1, t2:
-        case (Ref() as ref, Literal() as n) | (Literal() as n, Ref() as ref) if n.ref() == ref:
-            return ref
-        case (Literal() as l1, Literal() as l2) if l1.ref() == l2.ref():
-            return l1.ref()
         case (Intersection(items), other) | (other, Intersection(items)):  # type: ignore
-            if other in items:
-                return other
             joined = set()
             for item in items:
                 j = join(item, other)
@@ -393,12 +383,14 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             return Union(items1 | items2).squeeze()
         case (Union(items), other) | (other, Union(items)):  # type: ignore
             return Union(items | {other}).squeeze()
+        case (Literal() as l1, Literal() as l2):
+            if l1.ref() == l2.ref():
+                return l1.ref()
+            assert l1 != l2
+            return union([t1, t2])
         case (Literal() as n, Ref() as ref) | (Ref() as ref, Literal() as n) if n.ref() == ref:
             return ref
-        case Literal(value1), Literal(value2):
-            assert value1 != value2
-            return union([t1, t2])
-        case (Ref() as ref, other) | (other, Ref() as ref):  # type: ignore
+        case (Ref() as ref, other) | (other, Ref() as ref):
             return union([ref, other])
         case (Instantiation(generic1, type_args1), Instantiation(generic2, type_args2)) if generic1 == generic2:
             return Instantiation(generic1, tuple(join(t1, t2) for t1, t2 in zip(type_args1, type_args2)))
@@ -438,8 +430,8 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
     if t1 == BOTTOM or t2 == BOTTOM:
         return BOTTOM
     match (t1, t2):
-        case(Ref() as ref, Literal() as n) | (Literal() as n, Ref() as ref) if n.ref() == ref:
-            return intersect([t1, t2])
+        case (Ref() as ref, Literal() as n) | (Literal() as n, Ref() as ref) if n.ref() == ref:
+            return n
         case (Union(items), t) | (t, Union(items)):  # type: ignore
             if t in items:
                 return t
@@ -787,7 +779,7 @@ def binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     if binop_func == BOTTOM:
         # assume there is an implementation.
         return TOP
-    return call(binop_func, intersect([make_row(0, None, right)]))
+    return call(binop_func, intersect([make_row(1, None, right)]))
 
 
 def get_unop(left: TypeExpr, op: str) -> TypeExpr:

@@ -1,7 +1,7 @@
 ordering = range(n)
 root_to_leaf_path = []
 
-def CN():
+def CN(root_to_leaf_path):
     world = set(ordering)
     for v in root_to_leaf_path:
         world = world.intersection(G[v])

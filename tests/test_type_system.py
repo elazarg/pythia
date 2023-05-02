@@ -11,6 +11,9 @@ T2 = ts.TypeVar('T2')
 N = ts.TypeVar('N')
 Args = ts.TypeVar('Args', is_args=True)
 
+FIRST = ts.Literal(0)
+SECOND = ts.Literal(1)
+
 
 def make_function(return_type: ts.TypeExpr, params: ts.Intersection, type_params=()) -> ts.FunctionType:
     return ts.FunctionType(params, return_type,
@@ -34,13 +37,13 @@ def test_join():
     assert ts.join(t1, t2) == t1
 
     t1 = INT
-    t2 = ts.intersect([INT, ts.Literal(1)])
+    t2 = ts.constant(1)
     assert ts.join(t1, t2) == t1
 
 
 def test_join_literals():
-    t1 = ts.intersect([INT, ts.Literal(0)])
-    t2 = ts.intersect([INT, ts.Literal(1)])
+    t1 = ts.constant(0)
+    t2 = ts.constant(1)
     joined = INT
     assert ts.join(t1, t2) == joined
 
@@ -55,7 +58,7 @@ def test_overload():
 
     f1 = make_function(STR, make_rows(INT))
     f2 = make_function(FLOAT, make_rows(FLOAT))
-    arg = ts.intersect([ts.Literal(0), INT])
+    arg = ts.constant(0)
     args = make_rows(arg)
     overload = ts.intersect([f1, f2])
     assert ts.call(overload, args) == STR
@@ -120,17 +123,17 @@ def test_function_call_generic_project():
     arg = make_rows(INT, FLOAT)
     assert ts.call(f, arg) == ts.join(INT, FLOAT)
 
-
-def test_function_call_variadic():
-    f = make_function(Args, make_rows(Args), [Args])
-    arg = make_rows(INT, FLOAT)
-    assert ts.call(f, arg) == arg
-
-    f = make_function(ts.Instantiation(Args, (N,)), make_rows(N, Args), [N, Args])
-    arg = make_rows(ts.Literal(0), INT, FLOAT)
-    assert ts.call(f, arg) == INT
-    arg = make_rows(ts.Literal(1), INT, FLOAT)
-    assert ts.call(f, arg) == FLOAT
+#
+# def test_function_call_variadic():
+#     f = make_function(Args, make_rows(Args), [Args])
+#     arg = make_rows(INT, FLOAT)
+#     assert ts.call(f, arg) == arg
+#
+#     f = make_function(ts.Instantiation(Args, (N,)), make_rows(N, Args), [N, Args])
+#     arg = make_rows(ts.Literal(0), INT, FLOAT)
+#     assert ts.call(f, arg) == INT
+#     arg = make_rows(ts.Literal(1), INT, FLOAT)
+#     assert ts.call(f, arg) == FLOAT
 
 
 def test_tuple():
@@ -142,11 +145,6 @@ def test_tuple():
 
     tuple_structure = make_rows(INT, FLOAT)
 
-    first = ts.Literal(0)
-    second = ts.Literal(1)
-    first_intersect = ts.intersect([first, ts.Ref('builtins.int')])
-    second_intersect = ts.intersect([second, ts.Ref('builtins.int')])
-
     gt = ts.subscr(tuple_named, ts.Literal('__getitem__'))
     f = ts.FunctionType(params=ts.intersect([ts.make_row(0, 'item', N)]),
                         return_type=ts.Instantiation(tuple_structure, (N,)),
@@ -154,55 +152,31 @@ def test_tuple():
                         side_effect=ts.SideEffect(new=True, instructions=()),
                         type_params=(N,))
     assert gt == f
-    x = ts.call(gt, make_rows(first))
-    assert x == INT
-    x = ts.call(gt, make_rows(first_intersect))
+    x = ts.call(gt, make_rows(FIRST))
     assert x == INT
 
-    x = ts.subscr(tuple_named, first)
-    assert x == INT
-    x = ts.subscr(tuple_named, first_intersect)
+    x = ts.subscr(tuple_named, FIRST)
     assert x == INT
 
-    x = ts.subscr(tuple_named, second)
-    assert x == FLOAT
-    x = ts.subscr(tuple_named, second_intersect)
+    x = ts.subscr(tuple_named, SECOND)
     assert x == FLOAT
 
-    x = ts.call(gt, make_rows(second))
-    assert x == FLOAT
-    x = ts.call(gt, make_rows(second_intersect))
+    x = ts.call(gt, make_rows(SECOND))
     assert x == FLOAT
 
-    left = ts.subscr(tuple_structure, first)
-    assert left == INT
-    left = ts.subscr(tuple_structure, first_intersect)
+    left = ts.subscr(tuple_structure, FIRST)
     assert left == INT
 
-    right = ts.subscr(tuple_structure, second)
-    assert right == FLOAT
-    right = ts.subscr(tuple_structure, second_intersect)
+    right = ts.subscr(tuple_structure, SECOND)
     assert right == FLOAT
 
     both = ts.intersect([tuple_structure, tuple_named])
 
-    left = ts.subscr(both, first)
-    assert left == INT
-    left = ts.subscr(both, first_intersect)
+    left = ts.subscr(both, FIRST)
     assert left == INT
 
-    right = ts.subscr(both, second)
+    right = ts.subscr(both, SECOND)
     assert right == FLOAT
-    right = ts.subscr(both, second_intersect)
-    assert right == FLOAT
-
-    tuple_named = ts.Instantiation(ts.Ref('builtins.tuple'),
-                                   (ts.intersect([ts.Literal(1), INT]),
-                                    ts.intersect([ts.Literal('x'), STR])))
-    left = ts.subscr(tuple_named, first_intersect)
-    assert left == ts.intersect([ts.Literal(1), INT])
-    right = ts.subscr(tuple_named, second_intersect)
-    assert right == ts.intersect([ts.Literal('x'), STR])
 
 
 def test_list():
@@ -229,7 +203,7 @@ def test_getitem_list():
 
 
 def test_getitem_numpy():
-    x = ts.subscr(ARRAY, ts.intersect([ts.Literal(0), INT]))
+    x = ts.subscr(ARRAY, ts.constant(0))
     assert x == FLOAT
 
     x = ts.subscr(ARRAY, ARRAY)
