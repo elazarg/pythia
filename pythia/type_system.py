@@ -391,11 +391,20 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
         case (Literal() as n, Ref() as ref) | (Ref() as ref, Literal() as n) if n.ref() == ref:
             return ref
         case (Ref() as ref, other) | (other, Ref() as ref):  # type: ignore
+            if resolve_static_ref(ref) == other:
+                return ref
             return union([ref, other])
         case (Instantiation(generic1, type_args1), Instantiation(generic2, type_args2)) if generic1 == generic2:
             return Instantiation(generic1, tuple(join(t1, t2) for t1, t2 in zip(type_args1, type_args2)))
+        case (Row(index1, t1), Row(index2, t2)):
+            if index1 == index2:
+                return Row(index1, join(t1, t2))
+            return BOTTOM
         case (Row(_, t1), (Instantiation(Ref('builtins.list'), type_args))) | (Instantiation(Ref('builtins.list'), type_args), Row(_, t1)):
             return Instantiation(Ref('builtins.list'), tuple(join(t1, t) for t in type_args))
+        case (Row(_, t1), (Instantiation(Ref('builtins.tuple'), type_args))) | (Instantiation(Ref('builtins.tuple'), type_args), Row(_, t1)):
+            # not exact; should only join at the index of the row
+            return Instantiation(Ref('builtins.tuple'), tuple(join(t1, t) for t in type_args))
         case (FunctionType() as f1, FunctionType() as f2):
             if (f1.property, f1.side_effect, f1.type_params) == (f2.property, f2.side_effect, f2.type_params):
                 new_params = meet(f1.params, f2.params)
@@ -410,10 +419,8 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             return TOP
         case (Class(name="int") | Ref('builtins.int') as c, Literal(int())) | (Literal(int()), Class(name="int") | Ref('builtins.int') as c):
             return c
-        case Class(), _:
-            return TOP
-        case _, _:
-            return TOP
+        case x, y:
+            return union([x, y])
     raise NotImplementedError(f'{t1!r}, {t2!r}')
 
 
@@ -444,12 +451,18 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             return Intersection(items1 | items2)
         case (Intersection(items), t) | (t, Intersection(items)):  # type: ignore
             return Intersection(items | {t})
+        case (Row(index1, t1), Row(index2, t2)):
+            if index1 == index2:
+                return Row(index1, meet(t1, t2))
+            return TOP
         case (FunctionType() as f1, FunctionType() as f2):
             if (f1.property, f1.side_effect, f1.type_params) == (f2.property, f2.side_effect, f2.type_params):
                 new_params = join(f1.params, f2.params)
                 if not isinstance(new_params, Union):
                     if isinstance(new_params, Row):
                         new_params = intersect([new_params])
+                    # TODO: side_effect = join(f1.side_effect, f2.side_effect)
+                    assert isinstance(new_params, Intersection)
                     return replace(f1, params=new_params,
                                    return_type=meet(f1.return_type, f2.return_type))
             return intersect([f1, f2])
@@ -478,7 +491,7 @@ def match_row(param: Row, arg: Row) -> bool:
         return False
     if param.type == Ref('typing.Any'):
         return True
-    return join(param.type, arg.type) == arg.type
+    return join(param.type, arg.type) == param.type
 
 
 def index_from_literal(index: int | str) -> Index:
@@ -575,20 +588,35 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
     t = simplify_generic(t, {})
     arg = simplify_generic(arg, {})
     match t, arg:
+        case Class(class_dict=class_dict) | Module(class_dict=class_dict), Literal(str() as value):
+            good, bad = class_dict.split_by_index(value)
+            if not good.items:
+                return BOTTOM
+            types = [x.type for x in good.row_items()]
+            return meet_all(types)
+        case Class() as t, arg:
+            getter = access(t, Literal('__getitem__'))
+            getter_as_property = partial(getter, intersect([make_row(1, None, arg)]))
+            if getter_as_property == BOTTOM:
+                return BOTTOM
+            assert isinstance(getter_as_property, FunctionType), f'{getter_as_property!r}'
+            return replace(getter_as_property, property=True)
+        case Module() as t, arg:
+            return access(t.class_dict, arg)
         case Ref() as ref, arg:
             return access(resolve_static_ref(ref), arg)
         case t, Intersection(items):
             mid = [access(t, item) for item in items]
-            return meet_all(mid)
+            return join_all(mid)
         case Union(items), arg:
             mid = [access(item, arg) for item in items]
-            return meet_all(mid)
+            return join_all(mid)
         case Intersection(items), arg:
             mid = [result for item in items if (result := access(item, arg)) != BOTTOM]
-            return join_all(mid)
+            return meet_all(mid)
         case t, Union(items):
             mid = [access(t, item) for item in items]
-            return join_all(mid)
+            return meet_all(mid)
         case Row() as t, Literal(str() as value):
             if match_index(t.index, index_from_literal(value)):
                 if isinstance(t.type, FunctionType) and t.type.property:
@@ -611,26 +639,13 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
             new_generic = resolve_static_ref(generic)
             assert new_generic != generic, f'Cannot access {t} with {arg}'
             return access(Instantiation(new_generic, args), arg)
-        case Module() as t, arg:
-            return access(t.class_dict, arg)
-        case Class(class_dict=class_dict) | Module(class_dict=class_dict), Literal(str() as value):
-            good, bad = class_dict.split_by_index(value)
-            if not good.items:
-                return BOTTOM
-            types = [x.type for x in good.row_items()]
-            return meet_all(types)
-        case Class() as t, arg:
-            getter = access(t, Literal('__getitem__'))
-            getter_as_property = partial(getter, intersect([make_row(1, None, arg)]))
-            if getter_as_property == BOTTOM:
-                return BOTTOM
-            assert isinstance(getter_as_property, FunctionType), f'{getter_as_property!r}'
-            return replace(getter_as_property, property=True)
         case _:
             raise NotImplementedError(f'{t=}, {arg=}, {type(t)=}, {type(arg)=}')
 
 
 def bind_self(attr: TypeExpr, selftype: TypeExpr) -> TypeExpr:
+    if isinstance(selftype, Module):
+        return attr
     match attr:
         case FunctionType() as attr:
             res = partial(attr, intersect([make_row(0, 'self', selftype)]))
@@ -788,7 +803,7 @@ def binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     if binop_func == BOTTOM:
         # assume there is an implementation.
         return TOP
-    return call(binop_func, intersect([make_row(1, None, right)]))
+    return call(binop_func, intersect([make_row(0, None, right)]))
 
 
 def get_unop(left: TypeExpr, op: str) -> TypeExpr:

@@ -18,15 +18,19 @@ def access(x: np.ndarray):
     m = x[x]
 
 
-def tup():
+def tup() -> tuple[int, float]:
     a, b = (1, 'x')
 
 def listing():
     lst = [1]
     tpl = (1,)
 
+def make_int() -> int:
+    return 1
+
 def list_add():
-    return [1] + [2]
+    x = [1] + [make_int()]
+    y = [(1,)] + [(2,)]
 
 def pair() -> tuple[int, float]:
     x = 2

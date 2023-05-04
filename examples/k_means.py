@@ -40,7 +40,7 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
             centroid_is = centroid_is + [(centroid_i, sample_i)]
         clusters = empty_list_of_lists(k)
         for centroid_i, sample_i in centroid_is:
-            clusters[centroid_i].append(sample_i)
+            clusters[centroid_i] = clusters[centroid_i] + [sample_i]
 
         # Save current centroids for convergence check
         prev_centroids = centroids
