@@ -108,6 +108,8 @@ class Union(TypeExpr):
     items: frozenset[TypeExpr]
 
     def __repr__(self) -> str:
+        if not self.items:
+            return 'BOT'
         return f'{{{" | ".join(f"{item}" for item in self.items)}}}'
 
     def squeeze(self) -> TypeExpr:
@@ -122,6 +124,8 @@ class Intersection(TypeExpr):
 
     def __repr__(self) -> str:
         items = self.items
+        if not items:
+            return 'TOP'
         if all(isinstance(item, Row) for item in items):
             res = ", ".join(f"{item.index}={item.type}"
                             for item in sorted(self.row_items(), key=lambda item: item.index))
@@ -241,7 +245,7 @@ def simplify_generic(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
         case Intersection(items):
             return intersect(simplify_generic(item, context) for item in items)
         case Union(items):
-            return union(simplify_generic(item, context) for item in items)
+            return join_all(simplify_generic(item, context) for item in items)
         case Row() as row:
             return replace(row, type=simplify_generic(row.type, context))
         case FunctionType(type_params=type_params, params=params, return_type=return_type) as function:
@@ -328,8 +332,8 @@ def simplify_generic(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
                         return Instantiation(generic, (type_arg,))
                     return subscr(generic, type_arg)
                 case generic, (Union(items),):
-                    return union(simplify_generic(Instantiation(generic, (item,)), context)
-                                 for item in items)
+                    return join_all(simplify_generic(Instantiation(generic, (item,)), context)
+                                    for item in items)
                 case _:
                     raise NotImplementedError(f'Cannot instantiate {generic!r} of type {type(generic)} with {type_args!r}')
 
@@ -440,7 +444,7 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
         return t1
     if t1 == BOTTOM or t2 == BOTTOM:
         return BOTTOM
-    match (t1, t2):
+    match t1, t2:
         case (Ref() as ref, Literal() as n) | (Literal() as n, Ref() as ref) if n.ref() == ref:
             return n
         case (Union(items), t) | (t, Union(items)):  # type: ignore
