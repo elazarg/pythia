@@ -124,8 +124,8 @@ class Intersection(TypeExpr):
 
     def __repr__(self) -> str:
         items = self.items
-        if not items:
-            return 'TOP'
+        # if not items:
+        #     return 'TOP'
         if all(isinstance(item, Row) for item in items):
             res = ", ".join(f"{item.index}={item.type}"
                             for item in sorted(self.row_items(), key=lambda item: item.index))
@@ -516,7 +516,7 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
             res = [unified for item in items if (unified := unify_argument(type_params, param, item)) is not None]
             if not res:
                 return None
-            return {k: meet_all(item.get(k, TOP) for item in res) for k in type_params}
+            return {k: join_all(item.get(k, BOTTOM) for item in res) for k in type_params}
         case TypeVar() as param, arg:
             return {param: arg}
         case Class() as param, Instantiation(Class() as arg, arg_args):
@@ -709,7 +709,7 @@ def partial(callable: TypeExpr, args: Intersection) -> TypeExpr:
                 new_params = intersect([replace(item, index=item.index - max_bound - 1) if item.index > max_bound else item
                                         for item in new_params.row_items()])
             f = replace(f, params=new_params)
-            return simplify_generic(f, binding)
+            return f
         case Class(class_dict=class_dict), arg:
             dunder = subscr(class_dict, Literal('__call__'))
             return partial(dunder, arg)
