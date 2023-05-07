@@ -154,14 +154,14 @@ def run(cfg: Cfg, annotations: dict[tac.Var, str], module_type: ts.Module, funct
     return allocation_invariants, dirty_locals, invariant_pairs
 
 
-def analyze_function(filename: str, *function_names: str, print_invariants: bool, outfile: str) -> None:
+def analyze_function(filename: str, *function_names: str, print_invariants: bool, outfile: str, simplify: bool) -> None:
     functions, imports = disassemble.read_file(filename)
     module_type = ts.parse_file(filename)
 
     dirty_map = {}
     for function_name in function_names:
         f = functions[function_name]
-        cfg = make_tac_cfg(f, simplify=True)
+        cfg = make_tac_cfg(f, simplify=simplify)
         annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
         allocation_invariants, dirty_locals, invariant_pairs = run(cfg, annotations,
                                                                    module_type=module_type,
@@ -187,8 +187,12 @@ def main() -> None:
     parser.add_argument('function_name', nargs='+')
     parser.add_argument('--output', default=None)
     parser.add_argument('--print-invariants', action='store_true')
+    parser.add_argument('--simplify', action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
-    analyze_function(args.filename, *args.function_name, print_invariants=args.print_invariants, outfile=args.output)
+    analyze_function(args.filename, *args.function_name,
+                     print_invariants=args.print_invariants,
+                     outfile=args.output,
+                     simplify=args.simplify)
 
 
 if __name__ == '__main__':
