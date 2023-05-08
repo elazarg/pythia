@@ -99,7 +99,7 @@ class Cfg(Generic[T]):
         self._annotator = staticmethod(annotator)
 
     def __init__(self, graph: nx.DiGraph | dict | list[tuple[Label, Label]] | list[tuple[Label, Label, dict]],
-                 blocks: Optional[dict[Label, list[T]]] = None, add_sink: bool = True) -> None:
+                 blocks: Optional[dict[Label, list[T]]] = None, add_sink: bool = True, add_source=False) -> None:
         if isinstance(graph, nx.DiGraph):
             self.graph = graph
         else:
@@ -109,15 +109,25 @@ class Cfg(Generic[T]):
             self.graph.add_nodes_from(blocks.keys())
             nx.set_node_attributes(self.graph, name=BLOCK_NAME, values={k: Block(block) for k, block in blocks.items()})
 
+        sinks = {label for label in self.labels if self.graph.out_degree(label) == 0}
         if add_sink:
             # Connect all sink nodes to exit:
-            sinks = {label for label in self.labels if self.graph.out_degree(label) == 0}
-            self.graph.add_node(self.exit_label, block=Block([]))
+            sink = self.exit_label
+            self.graph.add_node(sink, block=Block([]))
             for label in sinks:
-                self.graph.add_edge(label, self.exit_label)
+                self.graph.add_edge(label, sink)
+        else:
+            [sink] = sinks
 
-        [sink] = {label for label in self.labels if self.graph.out_degree(label) == 0}
-        [source] = {label for label in self.labels if self.graph.in_degree(label) == 0}
+        sources = {label for label in self.labels if self.graph.in_degree(label) == 0}
+        if add_source:
+            # Connect all source nodes to entry:
+            source = self.entry_label
+            self.graph.add_node(source, block=Block([]))
+            for label in sources:
+                self.graph.add_edge(source, label)
+        else:
+            [source] = sources
         assert {sink, source} == {self.exit_label, self.entry_label}, {sink, source}
         self.annotator = lambda tup, x: ''
 
@@ -216,26 +226,28 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
     return simplified_cfg
 
 
-def refine_to_chain(g: nx.Digraph, from_attr: str, to_attr: str) -> nx.DiGraph:
+def refine_to_chain(cfg: Cfg) -> nx.DiGraph:
     """can be used to refine basic blocks into blocks - the dual of simplify_cfg()
-    assume g.nodes[n][attr] is a list
+    assume cfg.graph.nodes[n][attr] is a list
     returns a graph whose nodes are the refinement of the lists into paths
     the elements of the lists are held as to_attr
     the nodes become tuples (node_index, list_index)"""
+    g = cfg.graph
     paths = []
-    for n in g.nodes_iter():
-        block = g.nodes[n][from_attr]
+    for n in g.nodes():
+        block = g.nodes[n][BLOCK_NAME]
         size = len(block)
         path = nx.path_graph(size, create_using=nx.DiGraph())
-        nx.relabel_nodes(path, mapping={x: (n, x) for x in path.nodes()}, copy=False)
-        path.add_edges_from(((n, size - 1), (s, 0)) for s in g.successors_iter(n))
+        nx.relabel_nodes(path, mapping={x: n + x for x in path.nodes()}, copy=False)
+        path.add_edges_from((n + size - 1, s) for s in g.successors(n))
         paths.append(path)
-    values = {(n, x): block
-              for n in g.nodes_iter()
-              for x, block in enumerate(g.nodes[n][from_attr])}
-    res = nx.compose_all(paths)
-    nx.set_node_attributes(res, values, to_attr)
-    return res
+    blocks = {n + i: [block]
+              for n in g.nodes()
+              for i, block in enumerate(g.nodes[n][BLOCK_NAME])}
+    res: nx.DiGraph = nx.compose_all(paths)
+    simplified_cfg = Cfg(res.edges(), blocks=blocks, add_sink=True, add_source=False)
+    simplified_cfg.annotator = cfg.annotator
+    return simplified_cfg
 
 
 def node_data_map(cfg: Cfg[T], f: Callable[[Label, Block[T]], Block[Q]]) -> Cfg[Q]:

@@ -100,3 +100,5 @@ def sorted(x) -> list: pass
 
 class B:
     def __init__(self) -> None: ...
+
+def enumerate(xs: T) -> Iterable[tuple[int, T]]: pass
