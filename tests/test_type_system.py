@@ -106,6 +106,12 @@ def test_function_call():
     assert ts.call(f, arg) == INT
 
 
+def test_call_union():
+    f = make_function(INT, make_rows(ts.union([INT, FLOAT])))
+    arg = make_rows(INT)
+    assert ts.call(f, arg) == INT
+
+
 def test_function_call_generic_project():
     f = make_function(T, make_rows(T), [T])
     arg = make_rows(INT)

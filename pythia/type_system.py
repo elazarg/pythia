@@ -512,11 +512,16 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
     match param, arg:
         case Ref('typing.Any'), _:
             return {}
+        case Union(items), arg:
+            res = [unified for item in items if (unified := unify_argument(type_params, item, arg)) is not None]
+            if not res:
+                return None
+            return {k: join_all(t.get(k, BOTTOM) for t in res) for k in type_params}
         case param, Intersection(items):
             res = [unified for item in items if (unified := unify_argument(type_params, param, item)) is not None]
             if not res:
                 return None
-            return {k: join_all(item.get(k, BOTTOM) for item in res) for k in type_params}
+            return {k: join_all(t.get(k, BOTTOM) for t in res) for k in type_params}
         case TypeVar() as param, arg:
             return {param: arg}
         case Class() as param, Instantiation(Class() as arg, arg_args):
