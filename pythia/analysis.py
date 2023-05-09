@@ -196,7 +196,3 @@ def main() -> None:
                      print_invariants=args.print_invariants,
                      outfile=args.output,
                      simplify=args.simplify)
-
-
-if __name__ == '__main__':
-    main()

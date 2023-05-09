@@ -7,7 +7,7 @@ from typing import Iterable
 import pythia.type_system as ts
 from pythia import tac
 from pythia.tac import Predefined, UnOp
-from analysis_domain import ValueLattice
+from pythia.analysis_domain import ValueLattice
 
 
 class TypeLattice(ValueLattice[ts.TypeExpr]):
@@ -152,10 +152,10 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
 
 def main():
     import sys
-    import analysis
-    import disassemble
-    import tac
     from collections import defaultdict
+    from pythia import analysis
+    from pythia import disassemble
+    from pythia import tac
 
     filename = sys.argv[1]
     function_name = sys.argv[2]
@@ -173,7 +173,3 @@ def main():
         "Type": type_invariants,
     }
     analysis.print_analysis(cfg, invariant_pairs, defaultdict(lambda: analysis.AllocationType.NONE))
-
-
-if __name__ == '__main__':
-    main()

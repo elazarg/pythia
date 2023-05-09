@@ -28,6 +28,9 @@ def listing():
 def make_int() -> int:
     return 1
 
+def empty_list_add(x: int):
+    return [] + [x]
+
 def list_add():
     x = [1] + [make_int()]
     y = [(1,)] + [(2,)]

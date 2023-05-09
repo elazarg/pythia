@@ -674,13 +674,9 @@ def make_tac_no_dels(opname: str, val: str | int | None, stack_effect: int, stac
 
 
 def main() -> None:
-    env, imports = disassemble.read_file('../examples/toy.py')
+    env, imports = disassemble.read_file('examples/toy.py')
 
     for k, func in env.items():
         cfg = make_tac_cfg(func)
         cfg = gu.simplify_cfg(cfg)
         gu.pretty_print_cfg(cfg)
-
-
-if __name__ == '__main__':
-    main()

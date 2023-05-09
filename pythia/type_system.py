@@ -1069,7 +1069,3 @@ MODULES = Module('typeshed',
 
 def main() -> None:
     pretty_print_type(MODULES)
-
-
-if __name__ == '__main__':
-    main()

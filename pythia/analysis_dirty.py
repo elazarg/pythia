@@ -5,10 +5,10 @@ from typing import TypeAlias
 
 from pythia import tac, analysis_domain as domain
 from pythia.graph_utils import Location
-from .analysis_allocation import AllocationType
-from .analysis_domain import InvariantMap, InstructionLattice, Bottom, BOTTOM, MapDomain
-from .analysis_liveness import Liveness
-from .analysis_pointer import Graph, Object, LOCALS, object_to_location, find_reachable
+from pythia.analysis_allocation import AllocationType
+from pythia.analysis_domain import InvariantMap, InstructionLattice, Bottom, BOTTOM, MapDomain
+from pythia.analysis_liveness import Liveness
+from pythia.analysis_pointer import Graph, Object, LOCALS, object_to_location, find_reachable
 
 Dirty: TypeAlias = set[Object] | Bottom
 

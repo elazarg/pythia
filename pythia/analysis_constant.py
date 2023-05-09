@@ -6,7 +6,7 @@ import typing
 from typing import TypeVar, Optional, TypeAlias
 
 from pythia import tac
-from .analysis_domain import ValueLattice, TOP, BOTTOM, Top, Bottom
+from pythia.analysis_domain import ValueLattice, TOP, BOTTOM, Top, Bottom
 
 T = TypeVar('T')
 

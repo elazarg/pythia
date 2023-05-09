@@ -9,11 +9,11 @@ from typing import TypeAlias, Final
 
 from pythia import tac
 from pythia.graph_utils import Location
-from . import analysis_domain as domain
-from . import analysis_liveness
-from .analysis_allocation import AllocationType
-from .analysis_domain import InstructionLattice, InvariantMap, BOTTOM, MapDomain
-from .analysis_liveness import Liveness
+from pythia import analysis_domain as domain
+from pythia import analysis_liveness
+from pythia.analysis_allocation import AllocationType
+from pythia.analysis_domain import InstructionLattice, InvariantMap, BOTTOM, MapDomain
+from pythia.analysis_liveness import Liveness
 
 
 @dataclass(frozen=True)
