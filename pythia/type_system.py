@@ -595,7 +595,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
             good, bad = class_dict.split_by_index(value)
             # FIX: should return TOP, i.e. falling out of the implementation
             if not good.items:
-                return BOTTOM
+                return TOP
             types = [x.type for x in good.row_items()]
             return meet_all(types)
         case Class() as t, arg:
@@ -614,8 +614,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
         case Union(items), arg:
             return join_all(access(item, arg) for item in items)
         case Intersection(items), arg:
-            return meet_all(result for item in items
-                            if (result := access(item, arg)) != BOTTOM)
+            return meet_all(access(item, arg) for item in items)
         case t, Union(items):
             return meet_all(access(t, item) for item in items)
         case Row() as t, Literal(str() as value):
@@ -623,15 +622,15 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
                 if isinstance(t.type, FunctionType) and t.type.property:
                     return t.type.return_type
                 return t.type
-            return BOTTOM  # FIX: should return TOP
+            return TOP
         case Row() as t, Literal(int() as value):
             if match_index(t.index, index_from_literal(value)):
                 return t.type
-            return BOTTOM  # FIX: should return TOP
+            return TOP
         case Row(index, t), Ref(name):
             if name == 'builtins.int' and index.number is not None:
                 return t
-            return BOTTOM  # FIX: should return TOP
+            return TOP
         case Instantiation() as t, arg:
             # FIX: use bind_typevars only, to allow the bound type vars to escape
             # simplified = simplify_generic(t)
