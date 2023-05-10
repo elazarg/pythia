@@ -41,9 +41,9 @@ class str: pass
 class slice: pass
 
 class tuple(Generic[*Args]):
-    def __getitem__(self, item: N) -> Args[N]: ...
-    def __init__(self, *args: Args) -> None: ...
-    def __add__(self: tuple, other: tuple) -> tuple: pass
+    def __getitem__(self: tuple[*Args], item: N) -> Args[N]: ...
+    def __init__(self: tuple[*Args], *args: Args) -> None: ...
+    def __add__(self: tuple[*Args], other: tuple) -> tuple: pass
     # def __add__(self: tuple[*Args], other: tuple[*Args2]) -> tuple[*Args, *Args2]: pass
 
 class list(Generic[T]):
@@ -66,6 +66,7 @@ class list(Generic[T]):
     def sort(self: list[T], key: object = None, reverse: bool = False) -> None: pass
     def reverse(self: list[T]) -> None: pass
 
+    @new
     def __add__(self: list[T], other: list[Q]) -> list[T|Q]: pass
 
 class rec(Generic[T]):

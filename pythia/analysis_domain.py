@@ -393,7 +393,6 @@ class VarLattice(InstructionLattice[MapDomain[T]], typing.Generic[T]):
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()
-        vars = {var: values[var] for var in tac.free_vars(ins)}
         try:
             to_update = self.forward_transfer(values, ins)
         except Exception as e:

@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from pythia import type_system as ts
 
 INT = ts.Ref('builtins.int')
@@ -140,6 +142,21 @@ def test_function_call_generic_project():
 #     assert ts.call(f, arg) == INT
 #     arg = make_rows(ts.Literal(1), INT, FLOAT)
 #     assert ts.call(f, arg) == FLOAT
+def test_bind_self_tuple():
+    tuple_structure = make_rows(INT, FLOAT)
+    tuple_named = ts.Instantiation(ts.Ref('builtins.tuple'), (INT, FLOAT))
+    tuple_param = ts.Instantiation(ts.Ref('builtins.tuple'), (Args,))
+    assert ts.unify_argument((Args,), tuple_param, tuple_named) == {Args: tuple_structure}
+    f = ts.FunctionType(params=make_rows(tuple_param, N),
+                        return_type=ts.Instantiation(Args, (N,)),
+                        property=False,
+                        side_effect=ts.SideEffect(new=True, instructions=()),
+                        type_params=(N, Args))
+    g = replace(f,
+                params=make_rows(N),
+                return_type=ts.Instantiation(tuple_structure, (N,)),
+                type_params=(N,))
+    assert ts.bind_self(f, tuple_named) == g
 
 
 def test_tuple():
@@ -151,14 +168,14 @@ def test_tuple():
 
     tuple_structure = make_rows(INT, FLOAT)
 
-    gt = ts.subscr(tuple_named, ts.Literal('__getitem__'))
+    g = ts.subscr(tuple_named, ts.Literal('__getitem__'))
     f = ts.FunctionType(params=ts.intersect([ts.make_row(0, 'item', N)]),
-                        return_type=ts.Instantiation(tuple_structure, (N,)),
+                        return_type=ts.Access(tuple_structure, N),
                         property=False,
                         side_effect=ts.SideEffect(new=True, instructions=()),
                         type_params=(N,))
-    assert gt == f
-    x = ts.call(gt, make_rows(FIRST))
+    assert g == f
+    x = ts.call(g, make_rows(FIRST))
     assert x == INT
 
     x = ts.subscr(tuple_named, FIRST)
@@ -167,7 +184,7 @@ def test_tuple():
     x = ts.subscr(tuple_named, SECOND)
     assert x == FLOAT
 
-    x = ts.call(gt, make_rows(SECOND))
+    x = ts.call(g, make_rows(SECOND))
     assert x == FLOAT
 
     left = ts.subscr(tuple_structure, FIRST)
@@ -192,7 +209,7 @@ def test_list():
     # - 127 Pass
 
     t = ts.Ref('builtins.list')
-    t1 = ts.simplify_generic(ts.Instantiation(t, (INT,)), {})
+    t1 = ts.Instantiation(t, (INT,))
     gt = ts.subscr(t1, ts.Literal('__getitem__'))
     x = ts.call(gt, make_rows(ts.Literal(0)))
     assert x == INT
