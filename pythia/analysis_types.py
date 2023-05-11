@@ -15,7 +15,7 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
     Abstract domain for type analysis with lattice operations.
     """
     def __init__(self, this_function: str, this_module: ts.Module):
-        this_signature = ts.subscr(this_module, ts.Literal(this_function))
+        this_signature = ts.subscr(this_module, ts.literal(this_function))
         assert isinstance(this_signature, ts.FunctionType)
         self.annotations: dict[tac.Var, ts.TypeExpr] = {tac.Var(row.index.name, is_stackvar=False): row.type
                                                         for row in this_signature.params.row_items()
@@ -65,7 +65,7 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
             if '.' in ref.name:
                 module, name = ref.name.split('.', 1)
                 if module == self.globals.name:
-                    return ts.subscr(self.globals, ts.Literal(name))
+                    return ts.subscr(self.globals, ts.literal(name))
             ref = ts.resolve_static_ref(ref)
         assert isinstance(ref, (ts.TypeExpr, ts.Module, ts.Class)), ref
         return ref
@@ -108,8 +108,8 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
 
     def predefined(self, name: Predefined) -> ts.TypeExpr:
         match name:
-            case Predefined.LIST: return ts.make_constructor(ts.Ref('builtins.list'))
-            case Predefined.TUPLE: return ts.make_constructor(ts.Ref('builtins.tuple'))
+            case Predefined.LIST: return ts.make_list_constructor()
+            case Predefined.TUPLE: return ts.make_tuple_constructor()
             case Predefined.SLICE: return ts.make_slice_constructor()
             case Predefined.GLOBALS: return self.globals
             case Predefined.NONLOCALS: return self.top()
@@ -118,20 +118,20 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
         assert False, name
 
     def const(self, value: object) -> ts.TypeExpr:
-        return ts.constant(value)
+        return ts.literal(value)
 
     def attribute(self, var: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
         mod = self.resolve(var)
         assert mod != ts.TOP, f'Cannot resolve {attr} in {var}'
         try:
-            res = ts.subscr(mod, ts.Literal(attr.name))
+            res = ts.subscr(mod, ts.literal(attr.name))
             if self.is_bottom(res):
                 if mod == self.globals:
-                    return ts.subscr(self.builtins, ts.Literal(attr.name))
+                    return ts.subscr(self.builtins, ts.literal(attr.name))
             return res
         except TypeError:
             if mod == self.globals:
-                return ts.subscr(self.builtins, ts.Literal(attr.name))
+                return ts.subscr(self.builtins, ts.literal(attr.name))
             raise
 
     def subscr(self, array: ts.TypeExpr, index: ts.TypeExpr) -> ts.TypeExpr:

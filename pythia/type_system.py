@@ -6,6 +6,7 @@ import os
 import typing
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import List
 
 
 @dataclass(frozen=True)
@@ -15,23 +16,6 @@ class TypeExpr:
 
 T = typing.TypeVar('T', bound=TypeExpr)
 K = typing.TypeVar('K')
-
-
-@dataclass(frozen=True)
-class Literal(TypeExpr):
-    value: int | str | bool | float | None
-
-    def __repr__(self) -> str:
-        return f'Literal({self.value!r})'
-
-    def ref(self) -> Ref:
-        match self.value:
-            case int(): return Ref('builtins.int')
-            case float(): return Ref('builtins.float')
-            case str(): return Ref('builtins.str')
-            case bool(): return Ref('builtins.bool')
-            case None: return Ref('builtins.NoneType')
-        assert False, f'Unknown literal type {self.value!r}'
 
 
 @dataclass(frozen=True)
@@ -49,6 +33,39 @@ class TypeVar(TypeExpr):
 
     def __repr__(self) -> str:
         return f'*{self.name}' if self.is_args else self.name
+
+
+@dataclass(frozen=True)
+class Literal(TypeExpr):
+    value: int | str | bool | float | tuple | TypeVar | None
+    ref: TypeExpr
+
+    def __repr__(self) -> str:
+        return f'Literal({self.value!r})'
+
+
+def literal(value: int | str | bool | float | tuple | list | TypeVar | None) -> Literal:
+    match value:
+        case int(): ref = Ref('builtins.int')
+        case float(): ref = Ref('builtins.float')
+        case str(): ref = Ref('builtins.str')
+        case bool(): ref = Ref('builtins.bool')
+        case None: ref = Ref('builtins.NoneType')
+        case tuple(): ref = Ref('builtins.tuple')
+        case list():
+            value = tuple(value)
+            ref = Ref('builtins.list')
+        case _:
+            assert False, f'Unknown literal type {value!r}'
+    return Literal(value, ref)
+
+
+@dataclass(frozen=True)
+class Star(TypeExpr):
+    items: tuple[TypeExpr, ...]
+
+    def __repr__(self) -> str:
+        return f'*{self.items}'
 
 
 @dataclass(frozen=True)
@@ -137,7 +154,7 @@ class Intersection(TypeExpr):
             return f'({res})'
         for item in set(items):
             if isinstance(item, Literal):
-                items -= {item.ref()}
+                items -= {item.ref}
         return f'{{{" & ".join(f"{decl}" for decl in items)}}}'
 
     def __and__(self, other: TypeExpr) -> Intersection:
@@ -210,7 +227,7 @@ class FunctionType(TypeExpr):
     type_params: tuple[TypeVar, ...]
 
     def __repr__(self) -> str:
-        if self.property == Literal(True):
+        if self.property == literal(True):
             return f'->{self.return_type}'
         else:
             type_params = ', '.join(str(x) for x in self.type_params)
@@ -238,19 +255,31 @@ class Access(TypeExpr):
         return f'{self.items}.[{self.arg}]'
 
 
-def constant(value: object) -> TypeExpr:
-    assert isinstance(value, (int, str, type(None), bool, float)), value
-    return Literal(value)
+def unpack_star(type_args: typing.Iterable[TypeExpr]) -> tuple[TypeExpr, ...]:
+    unpacked_args: list[TypeExpr] = []
+    for arg in type_args:
+        if isinstance(arg, Star):
+            unpacked_args.extend(arg.items)
+        else:
+            unpacked_args.append(arg)
+    return tuple(unpacked_args)
 
 
 def bind_typevars(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
     if not context:
         return t
     match t:
-        case Module() | Ref() | Literal():
+        case Module() | Ref():
             return t
         case TypeVar() as t:
             return context.get(t, t)
+        case Literal() as t:
+            if isinstance(t.value, tuple):
+                return replace(t,
+                               value=unpack_star(bind_typevars(x, context) for x in t.value))
+            return t
+        case Star(items):
+            return Star(tuple(bind_typevars(item, context) for item in items))
         case Intersection(items):
             return intersect(bind_typevars(item, context) for item in items)
         case Union(items):
@@ -275,39 +304,17 @@ def bind_typevars(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
                            class_dict=bind_typevars(class_dict, context),
                            inherits=tuple(bind_typevars(x, context) for x in inherits))
         case Instantiation(generic, type_args) as instantiation:
-            new_type_args: tuple[TypeExpr, ...] = ()
-            for x in type_args:
-                if isinstance(x, TypeVar) and x.is_args:
-                    if x in context:
-                        t = context[x]
-                        assert isinstance(t, Intersection) and all(isinstance(item, Row) for item in t.items)
-                        new_type_args += tuple(item.type for item in sorted(t.row_items()))
-                    else:
-                        new_type_args += (x,)
-                    continue
-                new_type_args += (bind_typevars(x, context),)
+            new_type_args = unpack_star(bind_typevars(x, context) for x in type_args)
             return replace(instantiation,
                            generic=bind_typevars(generic, context),
                            type_args=new_type_args)
         case Access(argsvar, arg):
             choices = bind_typevars(argsvar, context)
             actual_arg = bind_typevars(arg, context)
-            if isinstance(choices, Intersection) and isinstance(actual_arg, Literal):
-                return access(choices, actual_arg)
+            if isinstance(choices, Star) and isinstance(actual_arg, Literal) and isinstance(actual_arg.value, int):
+                return choices.items[actual_arg.value]
             return Access(choices, actual_arg)
     raise NotImplementedError(f'{t!r}, {type(t)}')
-
-
-def unpack_type_args(type_args: typing.Iterable[TypeExpr]) -> tuple[TypeExpr, ...]:
-    unpacked_args = []
-    for arg in type_args:
-        if isinstance(arg, TypeVar) and arg.is_args:
-            assert isinstance(arg, Intersection)
-            unpacked_args.extend([arg.type for arg in sorted(arg.row_items(),
-                                                             key=lambda x: x.index)])
-        else:
-            unpacked_args.append(arg)
-    return tuple(unpacked_args)
 
 
 def simplify_generic(t: TypeExpr) -> TypeExpr:
@@ -326,7 +333,7 @@ def simplify_generic(t: TypeExpr) -> TypeExpr:
     assert isinstance(generic, (Class, FunctionType)), t
     type_params = generic.type_params
     type_args = t.type_args
-    unpacked_args = unpack_type_args(type_args)
+    unpacked_args = unpack_star(type_args)
     star_index = None
     for n, type_param in enumerate(type_params):
         if type_params[n].is_args:
@@ -353,8 +360,11 @@ def intersect(rows: typing.Iterable[T]) -> TypedDict:
     return Intersection(frozenset(rows))
 
 
-def union(items: typing.Iterable[TypeExpr]) -> TypeExpr:
-    return Union(frozenset(items)).squeeze()
+def union(items: typing.Iterable[TypeExpr], squeeze=True) -> TypeExpr:
+    res = Union(frozenset(items))
+    if squeeze:
+        return res.squeeze()
+    return res
 
 
 TOP = intersect([])
@@ -382,12 +392,18 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
         case (Union(items), other) | (other, Union(items)):  # type: ignore
             return Union(items | {other}).squeeze()
         case (Literal() as l1, Literal() as l2):
-            if l1.ref() == l2.ref():
-                return l1.ref()
+            if l1.ref == l2.ref:
+                if l1.ref.name in ['builtins.list', 'builtins.tuple'] and len(l1.value) == len(l2.value):
+                    return Literal(tuple(join(t1, t2) for t1, t2 in zip(l1.value, l2.value)), l1.ref)
+                return l1.ref
             assert l1 != l2
             return union([t1, t2])
-        case (Literal() as n, Ref() as ref) | (Ref() as ref, Literal() as n) if n.ref() == ref:
+        case (Literal() as n, Ref() as ref) | (Ref() as ref, Literal() as n) if n.ref == ref:
             return ref
+        case (Literal(tuple() as value, ref=ref), Instantiation() as inst) | (Instantiation() as inst, Literal(tuple() as value, ref=ref)) if ref == inst.generic:
+            if ref.name == 'builtins.list':
+                value = (join_all(value),)
+            return join(inst, Instantiation(ref, value))
         case (Ref() as ref, other) | (other, Ref() as ref):  # type: ignore
             if resolve_static_ref(ref) == other:
                 return ref
@@ -424,7 +440,7 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
 
 def join_all(items: typing.Iterable[TypeExpr]) -> TypeExpr:
     res: TypeExpr = BOTTOM
-    for t in items:
+    for t in unpack_star(items):
         res = join(res, t)
     return res
 
@@ -439,7 +455,18 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
     if t1 == BOTTOM or t2 == BOTTOM:
         return BOTTOM
     match t1, t2:
-        case (Ref() as ref, Literal() as n) | (Literal() as n, Ref() as ref) if n.ref() == ref:
+        case (Literal() as l1, Literal() as l2):
+            if l1.ref == l2.ref:
+                if l1.ref.name in ['builtins.list', 'builtins.tuple'] and len(l1.value) == len(l2.value):
+                    return Literal(tuple(meet(t1, t2) for t1, t2 in zip(l1.value, l2.value)), l1.ref)
+                return l1.ref
+            assert l1 != l2
+            return intersect([t1, t2])
+        case (Literal(tuple() as value, ref=ref), Instantiation() as inst) | (Instantiation() as inst, Literal(tuple() as value, ref=ref)) if ref == inst.generic:
+            if ref.name == 'builtins.list':
+                value = (meet_all(value),)
+            return meet(inst, Instantiation(ref, value))
+        case (Ref() as ref, Literal() as n) | (Literal() as n, Ref() as ref) if n.ref == ref:
             return n
         case (Union(items), t) | (t, Union(items)):  # type: ignore
             if t in items:
@@ -472,7 +499,7 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
 
 def meet_all(items: typing.Iterable[TypeExpr]) -> TypeExpr:
     res: TypeExpr = TOP
-    for t in items:
+    for t in unpack_star(items):
         res = meet(res, t)
     if isinstance(res, Intersection):
         return res.squeeze()
@@ -522,20 +549,27 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
             if param.name == arg.name:
                 return {k: v for k, v in zip(param.type_params, arg_args)}
             return None
-        case Instantiation(param, param_args), Instantiation(arg, arg_args):
-            if param != arg:
+        case Instantiation() as param, Instantiation() as arg:
+            if param.generic != arg.generic:
                 return None
-            mid_context = unify(type_params, intersect([make_row(i, None, p) for i, p in enumerate(param_args)]),
-                                             intersect([make_row(i, None, p) for i, p in enumerate(arg_args)]))
-            # collect = [unified for param, arg in zip(param_args, arg_args)
-            #            if (unified := unify_argument(type_params, param, arg)) is not None]
-            # result = {k: join_all(item.get(k, BOTTOM) for item in collect) for k in type_params}
+            mid_context = unify(type_params, intersect([make_row(i, None, p) for i, p in enumerate(param.type_args)]),
+                                             intersect([make_row(i, None, p) for i, p in enumerate(arg.type_args)]))
             return mid_context
+        case Instantiation() as param, Literal(value, ref) if isinstance(value, tuple):
+            if param.generic != ref:
+                return None
+            if ref.name == 'builtins.list':
+                value = (join_all(value),)
+            return unify_argument(type_params, param, Instantiation(ref, value))
         case param, Instantiation(Ref() as param_type, param_args) if not isinstance(param, Ref):
             return unify_argument(type_params, param, Instantiation(resolve_static_ref(param_type), param_args))
         case Literal() as param, Literal() as arg:
             if param == arg:
                 return {}
+            if param.ref == arg.ref and param.ref in ['builtins.tuple', 'builtins.list']:
+                mid_context = unify(type_params, intersect([make_row(i, None, p) for i, p in enumerate(param.value)]),
+                                                 intersect([make_row(i, None, p) for i, p in enumerate(arg.value)]))
+                return mid_context
             return None
         case Row() as param, Row() as arg:
             if match_index(param.index, arg.index):
@@ -562,7 +596,7 @@ def unify(type_params: tuple[TypeVar, ...], params: Intersection, args: Intersec
     assert isinstance(args, Intersection), f'{args!r}'
     unbound_args = set(args.row_items())
     varparam_type: typing.Optional[TypeVar] = None
-    for param in params.row_items():
+    for param in sorted(params.row_items()):
         if isinstance(param.type, TypeVar) and param.type.is_args:
             varparam_type = param.type
             continue
@@ -574,19 +608,34 @@ def unify(type_params: tuple[TypeVar, ...], params: Intersection, args: Intersec
                     if (unified := unify_argument(type_params, param.type, arg.type)) is not None]
         if not bindings:
             return None
-        for k in type_params:
-            bound_types[k] = join(bound_types.get(k, BOTTOM),
-                                  join_all(bind.get(k, BOTTOM) for bind in bindings))
+        bindable_type_params = {k for k in type_params if any(k in bind for bind in bindings)}
+        for k in bindable_type_params:
+            if k.is_args:
+                items = {bound_types.get(k, None), *[bind.get(k, None) for bind in bindings]} - {None}
+                assert len(items) <= 1, f'{items!r}'
+                if items:
+                    bound_types[k] = items.pop()
+            else:
+                bound_types[k] = join(bound_types.get(k, BOTTOM),
+                                      join_all(bind.get(k, BOTTOM) for bind in bindings))
     if varparam_type is not None:
-        if not unbound_args:
-            argtype = TOP
-        else:
-            minimal_index = min(arg.index for arg in unbound_args)
-            argtype = intersect(
-                Row(r.index - minimal_index, r.type)
-                for r in unbound_args)
-        bound_types[varparam_type] = argtype
-    return {k: v for k, v in bound_types.items() if v != BOTTOM}
+        elements: list[TypeExpr] = []
+        if unbound_args:
+            by_index: dict[int, list[TypeExpr]] = {}
+            for arg in unbound_args:
+                assert arg.index.number is not None
+                by_index.setdefault(arg.index.number, []).append(arg.type)
+            minimal_index = min(by_index)
+            maximal_index = max(by_index)
+            for i in range(minimal_index, maximal_index + 1):
+                if i not in by_index:
+                    break
+                elements.append(join_all(by_index[i]))
+                del by_index[i]
+            if by_index:
+                return None
+        bound_types[varparam_type] = Star(tuple(elements))
+    return bound_types
 
 
 def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
@@ -599,7 +648,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
             types = [x.type for x in good.row_items()]
             return meet_all(types)
         case Class() as t, arg:
-            getter = access(t, Literal('__getitem__'))
+            getter = access(t, literal('__getitem__'))
             getter_as_property = partial(getter, intersect([make_row(1, None, arg)]))
             if getter_as_property == BOTTOM:
                 return BOTTOM
@@ -615,6 +664,8 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
             return join_all(access(item, arg) for item in items)
         case Intersection(items), arg:
             return meet_all(access(item, arg) for item in items)
+        case Literal(), arg:
+            return access(t.ref, arg)
         case t, Union(items):
             return meet_all(access(t, item) for item in items)
         case Row() as t, Literal(str() as value):
@@ -632,9 +683,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
                 return t
             return TOP
         case Instantiation() as t, arg:
-            # FIX: use bind_typevars only, to allow the bound type vars to escape
-            # simplified = simplify_generic(t)
-            # assert simplified != t, f'Cannot access {t} with {arg}'
+            # ignore type arguments for now
             return access(t.generic, arg)
         case _:
             raise NotImplementedError(f'{t=}, {arg=}, {type(t)=}, {type(arg)=}')
@@ -691,7 +740,7 @@ def partial(callable: TypeExpr, args: Intersection) -> TypeExpr:
             f = replace(f, params=new_params)
             return f
         case Class(class_dict=class_dict), arg:
-            dunder = subscr(class_dict, Literal('__call__'))
+            dunder = subscr(class_dict, literal('__call__'))
             return partial(dunder, arg)
         case _:
             assert False, f'Cannot call {callable} with {args}'
@@ -720,10 +769,20 @@ def call(callable: TypeExpr, args: Intersection) -> TypeExpr:
     return res  # simplify_generic(res)
 
 
-def make_constructor(t: TypeExpr) -> TypeExpr:
+def make_list_constructor() -> TypeExpr:
     args = TypeVar('Args', is_args=True)
-    return_type = intersect([args, Instantiation(t, (args,))])
-    return FunctionType(params=intersect([make_row(None, None, args)]),
+    return_type = literal([args])
+    return FunctionType(params=intersect([make_row(0, 'self', args)]),
+                        return_type=return_type,
+                        side_effect=SideEffect(new=not is_immutable(return_type), instructions=()),
+                        property=False,
+                        type_params=(args,))
+
+
+def make_tuple_constructor() -> TypeExpr:
+    args = TypeVar('Args', is_args=True)
+    return_type = literal((args,))
+    return FunctionType(params=intersect([make_row(0, 'self', args)]),
                         return_type=return_type,
                         side_effect=SideEffect(new=not is_immutable(return_type), instructions=()),
                         property=False,
@@ -778,7 +837,7 @@ def unop_to_dunder_method(op: str) -> str:
 
 def get_binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     lop, rop = binop_to_dunder_method(op)
-    return subscr(left, Literal(lop))
+    return subscr(left, literal(lop))
 
 
 def binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
@@ -790,7 +849,7 @@ def binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
 
 
 def get_unop(left: TypeExpr, op: str) -> TypeExpr:
-    return subscr(left, Literal(unop_to_dunder_method(op)))
+    return subscr(left, literal(unop_to_dunder_method(op)))
 
 
 def resolve_static_ref(ref: Ref) -> TypeExpr:
@@ -800,7 +859,7 @@ def resolve_static_ref(ref: Ref) -> TypeExpr:
 def resolve_relative_ref(ref: Ref, module: Module) -> TypeExpr:
     result: TypeExpr = module
     for attr in ref.name.split('.'):
-        result = subscr(result, Literal(attr))
+        result = subscr(result, literal(attr))
     return result
 
 
@@ -873,7 +932,7 @@ def module_to_type(module: ast.Module, name: str) -> Module:
             case None:
                 return Ref(f'typing.Any')
             case ast.Constant(value):
-                return constant(value)
+                return literal(value)
             case ast.Name(id=id):
                 if id in generic_vars:
                     return generic_vars[id]
