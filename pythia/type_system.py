@@ -6,7 +6,7 @@ import os
 import typing
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import List
+from typing import List, Set, Any
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ class TypeVar(TypeExpr):
 @dataclass(frozen=True)
 class Literal(TypeExpr):
     value: int | str | bool | float | tuple | TypeVar | None
-    ref: TypeExpr
+    ref: Ref
 
     def __repr__(self) -> str:
         return f'Literal({self.value!r})'
@@ -457,7 +457,7 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
     match t1, t2:
         case (Literal() as l1, Literal() as l2):
             if l1.ref == l2.ref:
-                if l1.ref.name in ['builtins.list', 'builtins.tuple'] and len(l1.value) == len(l2.value):
+                if isinstance(l1.value, tuple) and isinstance(l2.value, tuple) and len(l1.value) == len(l2.value):
                     return Literal(tuple(meet(t1, t2) for t1, t2 in zip(l1.value, l2.value)), l1.ref)
                 return l1.ref
             assert l1 != l2
@@ -555,7 +555,7 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
             mid_context = unify(type_params, intersect([make_row(i, None, p) for i, p in enumerate(param.type_args)]),
                                              intersect([make_row(i, None, p) for i, p in enumerate(arg.type_args)]))
             return mid_context
-        case Instantiation() as param, Literal(value, ref) if isinstance(value, tuple):
+        case Instantiation() as param, Literal(tuple() as value, ref):
             if param.generic != ref:
                 return None
             if ref.name == 'builtins.list':
@@ -566,7 +566,8 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
         case Literal() as param, Literal() as arg:
             if param == arg:
                 return {}
-            if param.ref == arg.ref and param.ref in ['builtins.tuple', 'builtins.list']:
+            if param.ref == arg.ref and isinstance(param.value, tuple):
+                assert isinstance(arg.value, tuple)
                 mid_context = unify(type_params, intersect([make_row(i, None, p) for i, p in enumerate(param.value)]),
                                                  intersect([make_row(i, None, p) for i, p in enumerate(arg.value)]))
                 return mid_context
@@ -611,7 +612,7 @@ def unify(type_params: tuple[TypeVar, ...], params: Intersection, args: Intersec
         bindable_type_params = {k for k in type_params if any(k in bind for bind in bindings)}
         for k in bindable_type_params:
             if k.is_args:
-                items = {bound_types.get(k, None), *[bind.get(k, None) for bind in bindings]} - {None}
+                items: set[TypeExpr] = {bound_types.get(k, None), *[bind.get(k, None) for bind in bindings]} - {None}
                 assert len(items) <= 1, f'{items!r}'
                 if items:
                     bound_types[k] = items.pop()
@@ -663,9 +664,11 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
         case Union(items), arg:
             return join_all(access(item, arg) for item in items)
         case Intersection(items), arg:
-            return meet_all(access(item, arg) for item in items)
-        case Literal(), arg:
-            return access(t.ref, arg)
+            # intersect and not meet in order to differentiate between
+            # a non-existent attribute and an attribute with type TOP
+            return intersect([access(item, arg) for item in items])
+        case Literal(ref=ref), arg:
+            return access(ref, arg)
         case t, Union(items):
             return meet_all(access(t, item) for item in items)
         case Row() as t, Literal(str() as value):
@@ -759,6 +762,11 @@ def get_return(callable: TypeExpr) -> TypeExpr:
 
 def subscr(selftype: TypeExpr, index: TypeExpr) -> TypeExpr:
     attr_type = access(selftype, index)
+    if attr_type == TOP:
+        # non-existent attribute
+        return BOTTOM
+    elif isinstance(attr_type, Intersection):
+        attr_type = attr_type.squeeze()
     res = bind_self(attr_type, selftype)
     return res  # simplify_generic(res)
 

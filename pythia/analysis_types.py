@@ -124,6 +124,7 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
         mod = self.resolve(var)
         assert mod != ts.TOP, f'Cannot resolve {attr} in {var}'
         try:
+            # FIX: How to differentiate nonexistent attributes from attributes that are TOP?
             res = ts.subscr(mod, ts.literal(attr.name))
             if self.is_bottom(res):
                 if mod == self.globals:
