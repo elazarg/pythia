@@ -9,7 +9,7 @@ def cost_function(X: np.ndarray, y: np.ndarray, theta: np.ndarray) -> tuple[floa
     return cost, error
 
 
-def gradient_descent(X: np.ndarray, y: np.ndarray, theta: np.ndarray, alpha: float, iters) -> tuple[np.ndarray, np.ndarray]:
+def gradient_descent(X: np.ndarray, y: np.ndarray, theta: np.ndarray, alpha: float, iters: int) -> tuple[np.ndarray, np.ndarray]:
     cost_array = np.zeros(iters)
     m = y.size
     for i in range(iters):
@@ -74,8 +74,26 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     for idx in range(k):  # type: int
         log(idx, k)
         # define and train model
-        # preprocess current solution
-        grad = linear_regression(features, target, np.unique(S[S >= 0]))
+        # preprocess features and target
+        dims = np.unique(S[S >= 0])
+        target = np.array(target).reshape(target.shape[0], -1)
+        if features[:, dims].size > 0:
+            # define sparse features
+            X = features[:, dims]
+            if X.ndim == 1:
+                X = X.reshape(X.shape[0], 1)
+            target = np.concatenate(target)
+            X = (X - X.mean()) / X.std()
+            X = np.c_[np.ones(X.shape[0]), X]
+            theta = np.zeros(X.shape[1])
+            for x in range(10000):
+                m = target.size
+                error = np.dot(X, theta.T) - target
+                theta = theta - (0.1 * (1 / m) * np.dot(X.T, error))
+            prediction = predict(X, theta)
+        else:
+            prediction = np.zeros(features.shape[0]).reshape(features.shape[0], -1)
+        grad = np.dot(features.T, target - prediction)
 
         # define vals
         A = np.array(range(len(grad)))

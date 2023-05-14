@@ -226,7 +226,7 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
     return simplified_cfg
 
 
-def refine_to_chain(cfg: Cfg) -> nx.DiGraph:
+def refine_to_chain(cfg: Cfg) -> Cfg:
     """can be used to refine basic blocks into blocks - the dual of simplify_cfg()
     assume cfg.graph.nodes[n][attr] is a list
     returns a graph whose nodes are the refinement of the lists into paths

@@ -214,6 +214,16 @@ def test_list():
     assert x == t1
 
 
+def test_list_join():
+    non_empty1 = ts.literal([INT])
+    non_empty2 = ts.literal([INT])
+    assert ts.join(non_empty1, non_empty2) == non_empty1
+
+    empty = ts.literal([])
+    non_empty = ts.literal([INT])
+    assert ts.join(empty, non_empty) == non_empty
+
+
 def test_getitem_list():
     t = ts.Instantiation(LIST, (INT,))
     x = ts.subscr(t, ts.literal(0))

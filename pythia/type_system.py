@@ -582,6 +582,8 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
             return None
         case param, Ref() as arg:
             return unify_argument(type_params, param, resolve_static_ref(arg))
+        case Ref() as param, Literal(ref=arg) if arg == param:
+            return {}
         case Ref() as param, arg:
             return unify_argument(type_params, resolve_static_ref(param), arg)
         case param, arg:
@@ -643,7 +645,6 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
     match t, arg:
         case Class(class_dict=class_dict) | Module(class_dict=class_dict), Literal(str() as value):
             good, bad = class_dict.split_by_index(value)
-            # FIX: should return TOP, i.e. falling out of the implementation
             if not good.items:
                 return TOP
             types = [x.type for x in good.row_items()]
@@ -652,7 +653,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
             getter = access(t, literal('__getitem__'))
             getter_as_property = partial(getter, intersect([make_row(1, None, arg)]))
             if getter_as_property == BOTTOM:
-                return BOTTOM
+                return TOP
             assert isinstance(getter_as_property, FunctionType), f'{getter_as_property!r}'
             return replace(getter_as_property, property=True)
         case Module() as t, arg:
@@ -700,6 +701,8 @@ def bind_self(attr: TypeExpr, selftype: TypeExpr) -> TypeExpr:
     match attr:
         case FunctionType() as attr:
             res = partial(attr, intersect([make_row(0, 'self', selftype)]))
+            if res == BOTTOM:
+                return TOP
             assert isinstance(res, FunctionType), f'{res!r}'
             if res.property:
                 return res.return_type
@@ -799,8 +802,11 @@ def make_tuple_constructor() -> TypeExpr:
 
 def make_slice_constructor() -> TypeExpr:
     return_type = Ref('builtins.slice')
-    return FunctionType(params=intersect([make_row(0, 'start', Ref('builtins.int')),
-                                          make_row(1, 'end', Ref('builtins.int'))]),
+    NONE = literal(None)
+    INT = Ref('builtins.int')
+    both = union([NONE, INT])
+    return FunctionType(params=intersect([make_row(0, 'start', both),
+                                          make_row(1, 'end', both)]),
                         return_type=return_type,
                         side_effect=SideEffect(new=True, instructions=()),
                         property=False,
@@ -812,6 +818,7 @@ def binop_to_dunder_method(op: str) -> tuple[str, typing.Optional[str]]:
         case '+': return '__add__', '__radd__'
         case '-': return '__sub__', '__rsub__'
         case '*': return '__mul__', '__rmul__'
+        case '/': return '__truediv__', '__rtruediv__'
         case '/': return '__truediv__', '__rtruediv__'
         case '//': return '__floordiv__', '__rfloordiv__'
         case '%': return '__mod__', '__rmod__'
@@ -845,7 +852,24 @@ def unop_to_dunder_method(op: str) -> str:
 
 def get_binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     lop, rop = binop_to_dunder_method(op)
-    return subscr(left, literal(lop))
+    left_ops = access(left, literal(lop))
+    if isinstance(left_ops, FunctionType):
+        left_ops = intersect([left_ops])
+    right_ops = access(right, literal(rop))
+    if isinstance(right_ops, FunctionType):
+        right_ops = intersect([right_ops])
+    assert isinstance(right_ops, Intersection), f'{right_ops!r}'
+    right_ops = meet_all(swap_binop_params(rf) for rf in right_ops.items)
+    ops = meet(left_ops, right_ops)
+    return bind_self(ops, left)
+
+
+def swap_binop_params(rf: FunctionType) -> FunctionType:
+    assert len(rf.params.items) == 2
+    left, right = sorted(rf.params.items)
+    right_ops = replace(rf, params=intersect([replace(right, index=index_from_literal(0)),
+                                              replace(left, index=index_from_literal(1))]))
+    return right_ops
 
 
 def binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
