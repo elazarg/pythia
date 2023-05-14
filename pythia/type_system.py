@@ -6,7 +6,6 @@ import os
 import typing
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import List, Set, Any
 
 
 @dataclass(frozen=True)
@@ -393,8 +392,11 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             return Union(items | {other}).squeeze()
         case (Literal() as l1, Literal() as l2):
             if l1.ref == l2.ref:
-                if l1.ref.name in ['builtins.list', 'builtins.tuple'] and len(l1.value) == len(l2.value):
-                    return Literal(tuple(join(t1, t2) for t1, t2 in zip(l1.value, l2.value)), l1.ref)
+                if isinstance(l1.value, tuple):
+                    if len(l1.value) == len(l2.value):
+                        return Literal(tuple(join(t1, t2) for t1, t2 in zip(l1.value, l2.value)), l1.ref)
+                    if l1.ref == Ref('builtins.list'):
+                        return Instantiation(l1.ref, (join_all([*l1.value, *l2.value]),))
                 return l1.ref
             assert l1 != l2
             return union([t1, t2])
@@ -457,8 +459,11 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
     match t1, t2:
         case (Literal() as l1, Literal() as l2):
             if l1.ref == l2.ref:
-                if isinstance(l1.value, tuple) and isinstance(l2.value, tuple) and len(l1.value) == len(l2.value):
-                    return Literal(tuple(meet(t1, t2) for t1, t2 in zip(l1.value, l2.value)), l1.ref)
+                if isinstance(l1.value, tuple) and isinstance(l2.value, tuple):
+                    if len(l1.value) == len(l2.value):
+                        return Literal(tuple(meet(t1, t2) for t1, t2 in zip(l1.value, l2.value)), l1.ref)
+                    if l1.ref == Ref('builtins.list'):
+                        return Instantiation(l1.ref, (meet_all([*l1.value, *l2.value]),))
                 return l1.ref
             assert l1 != l2
             return intersect([t1, t2])
@@ -792,7 +797,7 @@ def make_list_constructor() -> TypeExpr:
 
 def make_tuple_constructor() -> TypeExpr:
     args = TypeVar('Args', is_args=True)
-    return_type = literal((args,))
+    return_type = Instantiation(Ref('builtins.tuple'), (args,))
     return FunctionType(params=intersect([make_row(0, 'self', args)]),
                         return_type=return_type,
                         side_effect=SideEffect(new=not is_immutable(return_type), instructions=()),

@@ -378,9 +378,10 @@ class VarLattice(InstructionLattice[MapDomain[T]], typing.Generic[T]):
         if isinstance(ins, tac.For):
             ins = ins.as_call()
         updated = self.make_map()
-        if self.lattice.name() == 'Type':
-            print(values)
-            print(ins)
+        if False:
+            if self.lattice.name() == 'Type':
+                print(values)
+                print(ins)
         match ins:
             case tac.Assign():
                 assigned = self.transformer_expr(values, ins.expr)
@@ -390,9 +391,10 @@ class VarLattice(InstructionLattice[MapDomain[T]], typing.Generic[T]):
                 updated = self.make_map({
                     tac.Var('return'): assigned
                 })
-        if self.lattice.name() == 'Type':
-            print(updated)
-            print()
+        if False:
+            if self.lattice.name() == 'Type':
+                print(updated)
+                print()
         return updated
 
     def transfer(self, values: MapDomain[T], ins: tac.Tac, location: Location) -> MapDomain[T]:

@@ -221,7 +221,7 @@ def test_list_join():
 
     empty = ts.literal([])
     non_empty = ts.literal([INT])
-    assert ts.join(empty, non_empty) == non_empty
+    assert ts.join(empty, non_empty) == ts.Instantiation(LIST, (INT,))
 
 
 def test_getitem_list():

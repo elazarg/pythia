@@ -5,7 +5,7 @@ def empty_list_of_ndarray() -> list[np.ndarray]:
     return []
 
 
-def empty_list_of_lists(k) -> list[list[int]]:
+def list_of_empty_lists(k) -> list[list[int]]:
     return [[] for _ in range(k)]
 
 
@@ -29,7 +29,7 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     samples, features = X.shape
     # Fix: wrapping in np.array to help the analysis
     centroids = np.array(X[np.random.choice(samples, k)])
-    clusters = empty_list_of_lists(k)
+    clusters = list_of_empty_lists(k)
     # Iterate until convergence or for max iterations
     for i in range(max_iterations):  # type: int
         # print(f"{max_iterations}/{i}", end="\r", flush=True)
@@ -39,7 +39,10 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
             centroid_i = np.argmin(np.linalg.norm(sample - centroids, axis=1))
             centroid_is = centroid_is + [(centroid_i, sample_i)]
         clusters = []
+        for _ in range(k):
+            clusters = clusters + [[]]
         for centroid_i, sample_i in centroid_is:
+            # TODO: update type of clusters
             clusters[centroid_i] = clusters[centroid_i] + [sample_i]
 
         # Save current centroids for convergence check
