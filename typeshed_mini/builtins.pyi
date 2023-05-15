@@ -59,20 +59,27 @@ class tuple(Generic[*Args]):
     # def __add__(self: tuple[*Args], other: tuple[*Args2]) -> tuple[*Args, *Args2]: pass
 
 class list(Generic[T]):
-    def __getitem__(self: list[T], item: N) -> T: ...
+    def __getitem__(self: list[T], index: N) -> T: ...
+    @update(list[T|Q])
+    def __setitem__(self: list[T], index: N, value: Q) -> None: ...
+
     def __iter__(self: list[T]) -> SupportsNext[T]: ...
 
     @new
     def copy(self: list[T]) -> list[T]: pass
 
+    @update(list[Q])
     def clear(self: list[T]) -> None: pass
+    @update(list[T|Q])
+    def append(self: list[T], x: Q) -> None: pass
+    @update(list[T | Q])
+    def extend(self: list[T], x: list[Q]) -> None: pass
+    @update(list[T | Q])
+    def insert(self: list[T], i: int, x: Q) -> None: pass
 
-    def append(self: list[T], x: T) -> None: pass
-
-    def extend(self: list[T], x: list[T]) -> None: pass
-    def insert(self: list[T], i: int, x: T) -> None: pass
     def remove(self: list[T], x: T) -> None: pass
     def pop(self: list[T], i: int = -1) -> T: pass
+
     def index(self: list[T], x: T, start: int = 0, end: int = 0) -> int: pass
     def count(self: list[T], x: T) -> int: pass
     def sort(self: list[T], key: object = None, reverse: bool = False) -> None: pass
@@ -80,9 +87,6 @@ class list(Generic[T]):
 
     @new
     def __add__(self: list[T], other: list[Q]) -> list[T|Q]: pass
-
-class rec(Generic[T]):
-    def foo(self, item: T) -> rec[T]: ...
 
 class SupportsNext(Protocol[T]):
     def __next__(self: SupportsNext[T]) -> T: ...
@@ -110,8 +114,5 @@ def sum(x) -> int: pass
 def all(x) -> bool: pass
 def any(x) -> bool: pass
 def sorted(x) -> list: pass
-
-class B:
-    def __init__(self) -> None: ...
 
 def enumerate(xs: T) -> Iterable[tuple[int, T]]: pass

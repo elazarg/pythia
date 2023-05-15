@@ -211,10 +211,7 @@ class Module(TypeExpr):
 @dataclass(frozen=True)
 class SideEffect(TypeExpr):
     new: bool
-    instructions: tuple[str, ...]
-
-    def __repr__(self) -> str:
-        return f'{self.new}'
+    update: typing.Optional[TypeExpr] = None
 
 
 @dataclass(frozen=True)
@@ -230,7 +227,9 @@ class FunctionType(TypeExpr):
             return f'->{self.return_type}'
         else:
             type_params = ', '.join(str(x) for x in self.type_params)
-            return f'[{type_params}]({self.params} -> {"new " if self.new() else ""}{self.return_type})'
+            new = "new " if self.new() else ""
+            update = "{update " + str(self.side_effect.update) + "}@" if self.side_effect.update else ""
+            return f'[{type_params}]({self.params} -> {update}{new}{self.return_type})'
 
     def new(self):
         return self.side_effect.new
@@ -286,15 +285,22 @@ def bind_typevars(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
         case Row() as row:
             return replace(row,
                            type=bind_typevars(row.type, context))
-        case FunctionType(type_params=type_params, params=params, return_type=return_type) as function:
-            context = {k: v for k, v in context.items() if k not in type_params}
+        case FunctionType() as f:
+            context = {k: v for k, v in context.items() if k not in f.type_params}
             if not context:
-                return function
-            new_params = bind_typevars(params, context)
-            new_return_type = bind_typevars(return_type, context)
-            return replace(function,
+                return f
+            new_params = bind_typevars(f.params, context)
+            new_return_type = bind_typevars(f.return_type, context)
+            new_side_effect = bind_typevars(f.side_effect, context)
+            return replace(f,
                            params=new_params,
-                           return_type=new_return_type)
+                           return_type=new_return_type,
+                           side_effect=new_side_effect)
+        case SideEffect() as s:
+            if s.update is None:
+                return s
+            return replace(s,
+                           update=bind_typevars(s.update, context))
         case Class(type_params=type_params, class_dict=class_dict, inherits=inherits) as klass:
             context = {k: v for k, v in context.items() if k not in type_params}
             if not context:
@@ -314,45 +320,6 @@ def bind_typevars(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
                 return choices.items[actual_arg.value]
             return Access(choices, actual_arg)
     raise NotImplementedError(f'{t!r}, {type(t)}')
-
-
-def simplify_generic(t: TypeExpr) -> TypeExpr:
-    if isinstance(t, Intersection):
-        return meet_all(simplify_generic(x) for x in t.items)
-    if isinstance(t, Union):
-        return join_all(simplify_generic(x) for x in t.items)
-    if isinstance(t, Row):
-        return replace(t, type=simplify_generic(t.type))
-    if not isinstance(t, Instantiation):
-        return t
-
-    generic = t.generic
-    if isinstance(t.generic, Ref):
-        generic = resolve_static_ref(t.generic)
-    assert isinstance(generic, (Class, FunctionType)), t
-    type_params = generic.type_params
-    type_args = t.type_args
-    unpacked_args = unpack_star(type_args)
-    star_index = None
-    for n, type_param in enumerate(type_params):
-        if type_params[n].is_args:
-            star_index = n
-            break
-    context: dict[TypeVar, TypeExpr] = {}
-    if star_index is not None:
-        left_params, star_param, right_params = type_params[:star_index], type_params[star_index], type_params[star_index + 1:]
-        left_end_index = len(left_params)
-        left_args, star_args = unpacked_args[:left_end_index], unpacked_args[left_end_index:]
-        right_start_index = len(star_args) - len(right_params)
-        star_args, right_args = star_args[:right_start_index], star_args[right_start_index:]
-        context[star_param] = intersect(make_row(i, None, arg) for i, arg in enumerate(star_args))
-        type_params = left_params + right_params
-        unpacked_args = left_args + right_args
-    assert len(type_params) == len(unpacked_args), (type_params, unpacked_args)
-    for type_var, v in zip(type_params, unpacked_args):
-        context[type_var] = v
-    generic = replace(generic, type_params=())
-    return bind_typevars(generic, context)
 
 
 def intersect(rows: typing.Iterable[T]) -> TypedDict:
@@ -701,8 +668,6 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
 def bind_self(attr: TypeExpr, selftype: TypeExpr) -> TypeExpr:
     if isinstance(selftype, Module):
         return attr
-    # if isinstance(selftype, Instantiation):
-    #     selftype = simplify_generic(selftype)
     match attr:
         case FunctionType() as attr:
             res = partial(attr, intersect([make_row(0, 'self', selftype)]))
@@ -776,13 +741,13 @@ def subscr(selftype: TypeExpr, index: TypeExpr) -> TypeExpr:
     elif isinstance(attr_type, Intersection):
         attr_type = attr_type.squeeze()
     res = bind_self(attr_type, selftype)
-    return res  # simplify_generic(res)
+    return res
 
 
 def call(callable: TypeExpr, args: Intersection) -> TypeExpr:
     resolved = partial(callable, args)
     res = get_return(resolved)
-    return res  # simplify_generic(res)
+    return res
 
 
 def make_list_constructor() -> TypeExpr:
@@ -790,7 +755,7 @@ def make_list_constructor() -> TypeExpr:
     return_type = literal([args])
     return FunctionType(params=intersect([make_row(0, 'self', args)]),
                         return_type=return_type,
-                        side_effect=SideEffect(new=not is_immutable(return_type), instructions=()),
+                        side_effect=SideEffect(new=not is_immutable(return_type)),
                         property=False,
                         type_params=(args,))
 
@@ -800,7 +765,7 @@ def make_tuple_constructor() -> TypeExpr:
     return_type = Instantiation(Ref('builtins.tuple'), (args,))
     return FunctionType(params=intersect([make_row(0, 'self', args)]),
                         return_type=return_type,
-                        side_effect=SideEffect(new=not is_immutable(return_type), instructions=()),
+                        side_effect=SideEffect(new=not is_immutable(return_type)),
                         property=False,
                         type_params=(args,))
 
@@ -813,7 +778,7 @@ def make_slice_constructor() -> TypeExpr:
     return FunctionType(params=intersect([make_row(0, 'start', both),
                                           make_row(1, 'end', both)]),
                         return_type=return_type,
-                        side_effect=SideEffect(new=True, instructions=()),
+                        side_effect=SideEffect(new=True),
                         property=False,
                         type_params=())
 
@@ -1051,7 +1016,7 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                                       make_row(0, '__call__', FunctionType(intersect([
                                           make_row(0, 'cls', TypeVar('Infer')),
                                       ]), Ref('type'),
-                                          side_effect=SideEffect(new=True, instructions=()),
+                                          side_effect=SideEffect(new=True),
                                           property=False,
                                           type_params=())),
                                   ]),
@@ -1068,9 +1033,18 @@ def module_to_type(module: ast.Module, name: str) -> Module:
             case ast.FunctionDef() as fdef:
                 freevars = {x for node in fdef.args.args for x in free_vars(node)}
                 returns = expr_to_type(fdef.returns)
-                name_decorators = [decorator.id for decorator in fdef.decorator_list if isinstance(decorator, ast.Name)]
+                name_decorators = {decorator.id: decorator for decorator in fdef.decorator_list if isinstance(decorator, ast.Name)}
+                call_decorators = {decorator.func.id: decorator for decorator in fdef.decorator_list if isinstance(decorator, ast.Call)}
+                update = call_decorators.get('update')
+                if update is not None:
+                    assert isinstance(update, ast.Call)
+                    assert len(update.args) == 1
+                    update_type = expr_to_type(update.args[0])
+                else:
+                    update_type = None
                 side_effect = SideEffect(
-                    new=not is_immutable(returns), instructions=()
+                    new='new' in name_decorators and not is_immutable(returns),
+                    update=update_type
                 )
                 property = 'property' in name_decorators
                 type_params = tuple(generic_vars[x] for x in freevars if x in generic_vars)

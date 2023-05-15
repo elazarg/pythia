@@ -19,11 +19,13 @@ FIRST = ts.literal(0)
 SECOND = ts.literal(1)
 
 
-def make_function(return_type: ts.TypeExpr, params: ts.Intersection, type_params=()) -> ts.FunctionType:
+def make_function(return_type: ts.TypeExpr, params: ts.Intersection, type_params=(), update=None) -> ts.FunctionType:
     return ts.FunctionType(params, return_type,
                            property=False,
                            type_params=type_params,
-                           side_effect=ts.SideEffect(new=not ts.is_immutable(return_type), instructions=()))
+                           side_effect=ts.SideEffect(
+                               new=not ts.is_immutable(return_type),
+                               update=update))
 
 
 def make_rows(*types) -> ts.Intersection:
@@ -134,17 +136,6 @@ def test_function_call_generic_project():
     assert ts.call(f, arg) == ts.join(INT, FLOAT)
 
 
-#
-# def test_function_call_variadic():
-#     f = make_function(Args, make_rows(Args), [Args])
-#     arg = make_rows(INT, FLOAT)
-#     assert ts.call(f, arg) == arg
-#
-#     f = make_function(ts.Instantiation(Args, (N,)), make_rows(N, Args), [N, Args])
-#     arg = make_rows(ts.literal(0), INT, FLOAT)
-#     assert ts.call(f, arg) == INT
-#     arg = make_rows(ts.literal(1), INT, FLOAT)
-#     assert ts.call(f, arg) == FLOAT
 def test_bind_self_tuple():
     tuple_star = ts.Star((INT, FLOAT))
     tuple_named = ts.Instantiation(TUPLE, (INT, FLOAT))
@@ -153,7 +144,7 @@ def test_bind_self_tuple():
     f = ts.FunctionType(params=make_rows(tuple_param, N),
                         return_type=ts.Access(Args, N),
                         property=False,
-                        side_effect=ts.SideEffect(new=True, instructions=()),
+                        side_effect=ts.SideEffect(new=False),
                         type_params=(N, Args))
     g = replace(f,
                 params=make_rows(N),
@@ -176,7 +167,7 @@ def test_tuple():
     f = ts.FunctionType(params=ts.intersect([ts.make_row(0, 'item', N)]),
                         return_type=ts.Access(tuple_star, N),
                         property=False,
-                        side_effect=ts.SideEffect(new=True, instructions=()),
+                        side_effect=ts.SideEffect(new=False),
                         type_params=(N,))
     assert g == f
     x = ts.call(g, make_rows(FIRST))
@@ -199,11 +190,6 @@ def test_tuple():
 
 
 def test_list():
-    # Hash:
-    # - 125 Fails with empty
-    # - 126 Fails with recursion
-    # - 127 Pass
-
     t1 = ts.Instantiation(LIST, (INT,))
     gt = ts.subscr(t1, ts.literal('__getitem__'))
     x = ts.call(gt, make_rows(ts.literal(0)))

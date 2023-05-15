@@ -31,6 +31,10 @@ def make_int() -> int:
 def empty_list_add(x: int):
     return [] + [x]
 
+def list_append(y: int):
+    x = []
+    x.append(y)
+
 def list_add():
     x = [1] + [make_int()]
     y = [(1,)] + [(2,)]
