@@ -20,9 +20,6 @@ from pythia.analysis_liveness import Liveness
 class Object:
     location: str
 
-    def __str__(self) -> str:
-        return f'@{self.location}'
-
     def __repr__(self) -> str:
         return f'@{self.location}'
 
@@ -58,8 +55,7 @@ class PointerLattice(InstructionLattice[Graph]):
     def name(self) -> str:
         return "Pointer"
 
-    def __init__(self, allocation_invariant_map: InvariantMap[AllocationType], liveness: InvariantMap[MapDomain[
-        analysis_liveness.Liveness]]) -> None:
+    def __init__(self, allocation_invariant_map: InvariantMap[AllocationType], liveness: InvariantMap[MapDomain[analysis_liveness.Liveness]]) -> None:
         super().__init__()
         self.allocation_invariant_map = allocation_invariant_map
         self.liveness = liveness
