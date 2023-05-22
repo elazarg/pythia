@@ -47,9 +47,6 @@ class DirtyLattice(InstructionLattice[Dirty]):
     def is_less_than(self, left: Dirty, right: Dirty) -> bool:
         return self.join(left, right) == right
 
-    def is_equivalent(self, left: Dirty, right: Dirty) -> bool:
-        return left == right
-
     def join(self, left: Dirty, right: Dirty) -> Dirty:
         if left is BOTTOM:
             return right

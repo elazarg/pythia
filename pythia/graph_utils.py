@@ -168,10 +168,6 @@ class Cfg(Generic[T]):
         nx.draw_networkx(self.graph, with_labels=True)
         plt.show()
 
-    def print_graph(self) -> None:
-        for label in sorted(self.graph.nodes()):
-            print(label, ':', self[label])
-
     def predecessors(self, label: Label) -> Iterator[Label]:
         return self.graph.predecessors(label)
 

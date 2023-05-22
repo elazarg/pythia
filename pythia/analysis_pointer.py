@@ -62,9 +62,6 @@ class PointerLattice(InstructionLattice[Graph]):
     def is_less_than(self, left: Graph, right: Graph) -> bool:
         return self.join(left, right) == right
 
-    def is_equivalent(self, left: Graph, right: Graph) -> bool:
-        return left == right
-
     def copy(self, values: Graph) -> Graph:
         return {obj: {field: targets.copy() for field, targets in fields.items() if targets}
                 for obj, fields in values.items()}
@@ -149,12 +146,6 @@ class PointerLattice(InstructionLattice[Graph]):
                 del activation[var]
 
         return values
-
-
-def allocation_to_str(t: AllocationType) -> str:
-    if t is not AllocationType.NONE:
-        return f' #  ' + t.name
-    return ''
 
 
 def object_to_location(obj: Object) -> Location:

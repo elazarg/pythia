@@ -66,9 +66,6 @@ class LivenessLattice(Lattice[Liveness]):
     def is_bottom(self, elem: Liveness) -> bool:
         return isinstance(elem, Bottom)
 
-    def is_equivalent(self, left: Liveness, right: Liveness) -> bool:
-        return left == right
-
     def is_less_than(self, left: Liveness, right: Liveness) -> bool:
         return self.join(left, right) == right
 
@@ -99,9 +96,6 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
     def is_less_than(self, left: MapDomain[Liveness], right: MapDomain[Liveness]) -> bool:
         return self.join(left, right) == right
 
-    def is_equivalent(self, left: MapDomain[Liveness], right: MapDomain[Liveness]) -> bool:
-        return self.is_less_than(left, right) and self.is_less_than(right, left)
-
     def copy(self, values: MapDomain[Liveness]) -> MapDomain[Liveness]:
         return values.copy()
 
@@ -131,9 +125,6 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
                     res[k] = self.lattice.join(left[k], right[k])
                 return normalize(res)
         return self.top()
-
-    def back_transformer_signature(self, signature: tac.Signature) -> tuple[set[tac.Var], set[tac.Var]]:
-        return tac.gens_signature(signature), tac.free_vars_lval(signature)
 
     def back_transfer(self, values: MapDomain[Liveness], ins: tac.Tac, location: Location) -> MapDomain[Liveness]:
         if isinstance(values, Bottom):

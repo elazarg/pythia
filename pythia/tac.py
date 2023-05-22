@@ -202,18 +202,6 @@ class Assign:
             return f'{self.expr}'
         return f'{self.lhs} = {self.expr}'
 
-    @property
-    def is_mov(self) -> bool:
-        return isinstance(self.lhs, Var) and isinstance(self.expr, (Var, Attribute, Const))
-
-    @property
-    def no_side_effect(self) -> bool:
-        return self.assign_stack and isinstance(self.expr, (Subscript, Attribute, Var, Const))
-
-    @property
-    def assign_stack(self) -> bool:
-        return self.lhs is None or isinstance(self.lhs, Var) and is_stackvar(self.lhs)
-
 
 @dataclass(frozen=True)
 class Jump:
@@ -377,43 +365,6 @@ def subst_var_in_expr(expr: Expr, target: Var, new_var: Var) -> Expr:
             return expr
         case _:
             raise NotImplementedError(f'subst_var_in_expr({expr}, {target}, {new_var})')
-
-
-def subst_var_in_signature(signature: Signature, target: Var, new_var: Var) -> Signature:
-    match signature:
-        case Var():
-            return signature
-        case tuple() as items:
-            return tuple(new_var if var == target else typing.cast(Var, var)
-                         for var in items)
-        case Attribute():
-            if signature.var == target:
-                return replace(signature, var=new_var)
-            return signature
-        case Subscript():
-            if signature.var == target:
-                signature = replace(signature, var=new_var)
-            if signature.index == target:
-                signature = replace(signature, index=new_var)
-            return signature
-    return signature
-
-
-def subst_var_in_ins(ins: Tac, target: Var, new_var: Var) -> Tac:
-    match ins:
-        case Assign():
-            return replace(ins, lhs=subst_var_in_signature(ins.lhs, target, new_var),
-                                expr=subst_var_in_expr(ins.expr, target, new_var))
-        case For():
-            return replace(ins, lhs=subst_var_in_signature(ins.lhs, target, new_var),
-                                iterator=subst_var_in_expr(ins.iterator, target, new_var))
-        case Return():
-            return replace(ins, value=subst_var_in_expr(ins.value, target, new_var))
-        case Yield():
-            return replace(ins, value=subst_var_in_expr(ins.value, target, new_var))
-        case Raise():
-            return replace(ins, value=subst_var_in_expr(ins.value, target, new_var))
-    return ins
 
 
 def make_tac(ins: instruction_cfg.Instruction, stack_depth: int,

@@ -43,10 +43,6 @@ def next_list(ins: Instruction, fallthrough: gu.Label, stack_effect: int) -> lis
     return res
 
 
-def is_block_boundary(ins: Instruction) -> bool:
-    return is_jump_source(ins) or ins.is_jump_target
-
-
 def calculate_stack_effect(ins: Instruction) -> int:
     """not exact.
     see https://github.com/python/cpython/blob/master/Python/compile.c#L860"""

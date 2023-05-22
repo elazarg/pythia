@@ -74,9 +74,6 @@ class Lattice(typing.Protocol[T]):
     def is_less_than(self, left: T, right: T) -> bool:
         raise NotImplementedError
 
-    def is_equivalent(self, left: T, right: T) -> bool:
-        raise NotImplementedError
-
     def copy(self, values: T) -> T:
         raise NotImplementedError
 
@@ -271,9 +268,6 @@ class VarLattice(InstructionLattice[MapDomain[T]], typing.Generic[T]):
 
     def is_less_than(self, left: MapDomain[T], right: MapDomain[T]) -> bool:
         return self.join(left, right) == right
-
-    def is_equivalent(self, left: MapDomain[T], right: MapDomain[T]) -> bool:
-        return self.is_less_than(left, right) and self.is_less_than(right, left)
 
     def copy(self, values: MapDomain[T]) -> MapDomain[T]:
         return values.copy()
