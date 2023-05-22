@@ -80,9 +80,6 @@ class Lattice(typing.Protocol[T]):
     def copy(self, values: T) -> T:
         raise NotImplementedError
 
-    def initial(self, annotations: dict[tac.Var, str]) -> T:
-        raise NotImplementedError
-
 
 @dataclass(frozen=True)
 class Top:
@@ -212,6 +209,9 @@ class InstructionLattice(Lattice[T], typing.Protocol[T]):
 
     def transfer(self, values: T, ins: tac.Tac, location: Location) -> T:
         raise NotImplementedError
+
+    def initial(self, annotations: dict[tac.Var, str]) -> T:
+        return self.top()
 
 
 class ValueLattice(Lattice[T], typing.Protocol[T]):

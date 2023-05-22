@@ -1,6 +1,4 @@
-# Data flow analysis and stuff.
-
-from __future__ import annotations as _, annotations
+from __future__ import annotations as _
 
 import typing
 from dataclasses import dataclass

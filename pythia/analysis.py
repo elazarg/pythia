@@ -119,7 +119,6 @@ def find_first_for_loop(cfg: Cfg) -> tuple[Location, Location]:
 def run(cfg: Cfg, annotations: dict[tac.Var, str], module_type: ts.Module, function_name: str) -> tuple[InvariantMap[AllocationType], set[str], dict[str, InvariantPair]]:
 
     liveness_invariants = analyze(cfg, LivenessVarLattice(), annotations)
-    constant_invariants = analyze(cfg, domain.VarLattice(ConstLattice(), liveness_invariants.post), annotations)
 
     type_analysis: domain.VarLattice[ts.TypeExpr] = domain.VarLattice[ts.TypeExpr](TypeLattice(function_name, module_type),
                                                                                    liveness_invariants.post)
@@ -145,7 +144,6 @@ def run(cfg: Cfg, annotations: dict[tac.Var, str], module_type: ts.Module, funct
 
     invariant_pairs: dict[str, InvariantPair] = {
         "Liveness": liveness_invariants,
-        "Constant": constant_invariants,
         "Type": type_invariants,
         "Pointer": pointer_invariants,
         "Dirty": dirty_invariants,

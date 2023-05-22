@@ -52,13 +52,10 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
         return values
 
     def is_equivalent(self, left: ts.TypeExpr, right: ts.TypeExpr) -> bool:
-        return left == right
+        return ts.is_subtype(left, right) and ts.is_subtype(right, left)
 
     def is_less_than(self, left: ts.TypeExpr, right: ts.TypeExpr) -> bool:
-        return ts.join(left, right) == right
-
-    def initial(self, annotations: dict[tac.Var, str]) -> ts.TypeExpr:
-        return self.top()
+        return ts.is_subtype(left, right)
 
     def resolve(self, ref: ts.TypeExpr) -> ts.TypeExpr:
         if isinstance(ref, ts.Ref):
@@ -71,10 +68,7 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
         return ref
 
     def join_all(self, types: Iterable[ts.TypeExpr]) -> ts.TypeExpr:
-        result = self.bottom()
-        for t in types:
-            result = self.join(result, t)
-        return result
+        return ts.join_all(types)
 
     def call(self, function: ts.TypeExpr, args: list[ts.TypeExpr]) -> ts.TypeExpr:
         return ts.call(self.resolve(function), ts.intersect([ts.make_row(index, None, self.resolve(arg))
@@ -141,14 +135,6 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
     def imported(self, modname: str) -> ts.TypeExpr:
         assert isinstance(modname, str)
         return ts.resolve_static_ref(ts.Ref(modname))
-
-    def is_subtype(self, left: ts.TypeExpr, right: ts.TypeExpr) -> bool:
-        left = self.resolve(left)
-        right = self.resolve(right)
-        return self.join(left, right) == right
-
-    def is_supertype(self, left: ts.TypeExpr, right: ts.TypeExpr) -> bool:
-        return self.join(left, right) == left
 
 
 def main():

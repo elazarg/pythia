@@ -60,9 +60,6 @@ class LivenessLattice(Lattice[Liveness]):
     def top(self) -> Liveness:
         return TOP
 
-    def initial(self, values: dict[tac.Var, str]) -> Liveness:
-        return TOP
-
     def is_top(self, elem: Liveness) -> bool:
         return isinstance(elem, Top)
 
@@ -117,9 +114,6 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
     def make_map(self, d: typing.Optional[dict[tac.Var, Liveness]] = None) -> Map[Liveness]:
         d = d or {}
         return Map(default=self.lattice.default(), d=d)
-
-    def initial(self, annotations: dict) -> MapDomain[Liveness]:
-        return self.top()
 
     def top(self) -> Map[Liveness]:
         return self.make_map()

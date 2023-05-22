@@ -42,9 +42,6 @@ class ConstLattice(ValueLattice[Constant]):
     def top(self) -> Top:
         return TOP
 
-    def initial(self, annotations: dict[tac.Var, str]) -> Constant:
-        return self.top()
-
     def is_top(self, elem: Constant) -> bool:
         return isinstance(elem, Top)
 

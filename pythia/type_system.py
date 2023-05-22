@@ -483,12 +483,16 @@ class Action(enum.Enum):
     SELECT = enum.auto()
 
 
+def is_subtype(left: TypeExpr, right: TypeExpr) -> bool:
+    return join(left, right) == right
+
+
 def match_row(param: Row, arg: Row) -> bool:
     if not match_index(param.index, arg.index):
         return False
     if param.type == Ref('typing.Any'):
         return True
-    return join(param.type, arg.type) == param.type
+    return is_subtype(arg.type, param.type)
 
 
 def index_from_literal(index: int | str) -> Index:
