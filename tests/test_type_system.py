@@ -19,18 +19,18 @@ FIRST = ts.literal(0)
 SECOND = ts.literal(1)
 
 
-def make_function(return_type: ts.TypeExpr, params: ts.Intersection, type_params=(), update=None) -> ts.FunctionType:
+def make_function(return_type: ts.TypeExpr, params: ts.TypedDict, type_params=(), update=None) -> ts.FunctionType:
     return ts.FunctionType(params, return_type,
-                           property=False,
+                           is_property=False,
                            type_params=type_params,
                            side_effect=ts.SideEffect(
                                new=not ts.is_immutable(return_type),
                                update=update))
 
 
-def make_rows(*types) -> ts.Intersection:
-    return ts.intersect([ts.make_row(index, None, t)
-                         for index, t in enumerate(types)])
+def make_rows(*types) -> ts.TypedDict:
+    return ts.typed_dict([ts.make_row(index, None, t)
+                          for index, t in enumerate(types)])
 
 
 def test_join():
@@ -59,14 +59,14 @@ def test_overload():
     f2 = make_function(FLOAT, make_rows(FLOAT))
     arg = INT
     args = make_rows(arg)
-    overload = ts.intersect([f1, f2])
+    overload = ts.overload([f1, f2])
     assert ts.call(overload, args) == STR
 
     f1 = make_function(STR, make_rows(INT))
     f2 = make_function(FLOAT, make_rows(FLOAT))
     arg = ts.literal(0)
     args = make_rows(arg)
-    overload = ts.intersect([f1, f2])
+    overload = ts.overload([f1, f2])
     assert ts.call(overload, args) == STR
 
 
@@ -74,24 +74,26 @@ def test_unification():
     assert ts.unify(
         type_params=(T,),
         params=make_rows(T),
-        args=make_rows(INT)) == {T: INT}
+        args=make_rows(INT)).bound_typevars == {T: INT}
 
     assert ts.unify(
         type_params=(T1, T2),
         params=make_rows(T1, T2),
-        args=make_rows(INT, FLOAT)) == {T1: INT, T2: FLOAT}
+        args=make_rows(INT, FLOAT)).bound_typevars == {T1: INT, T2: FLOAT}
 
+
+def test_unification_args():
     args = make_rows(INT, FLOAT)
     assert ts.unify(
         type_params=(Args,),
         params=make_rows(Args),
-        args=args) == {Args: ts.Star((INT, FLOAT))}
+        args=args).bound_typevars == {Args: ts.Star((INT, FLOAT))}
 
     args = make_rows(FLOAT, INT, FLOAT)
     assert ts.unify(
         type_params=(T, Args),
         params=make_rows(T, Args, T),
-        args=args) == {T: FLOAT, Args: ts.Star((INT,))}
+        args=args).bound_typevars == {T: FLOAT, Args: ts.Star((INT,))}
 
 
 def test_function_call():
@@ -108,7 +110,7 @@ def test_function_call():
     assert ts.call(f, arg) == ts.BOTTOM
 
     f = make_function(INT, make_rows())
-    arg = ts.BOTTOM
+    arg = ts.typed_dict([])
     assert ts.call(f, arg) == INT
 
 
@@ -143,14 +145,14 @@ def test_bind_self_tuple():
     assert ts.unify_argument((Args,), tuple_param, tuple_named) == {Args: tuple_star}
     f = ts.FunctionType(params=make_rows(tuple_param, N),
                         return_type=ts.Access(Args, N),
-                        property=False,
+                        is_property=False,
                         side_effect=ts.SideEffect(new=False),
                         type_params=(N, Args))
     g = replace(f,
                 params=make_rows(N),
                 return_type=ts.Access(tuple_star, N),
                 type_params=(N,))
-    assert ts.bind_self(f, tuple_named) == g
+    assert ts.bind_self(ts.overload([f]), tuple_named) == g
 
 
 def test_tuple():
@@ -164,9 +166,9 @@ def test_tuple():
     tuple_structure = ts.literal((INT, FLOAT))
 
     g = ts.subscr(tuple_named, ts.literal('__getitem__'))
-    f = ts.FunctionType(params=ts.intersect([ts.make_row(0, 'item', N)]),
+    f = ts.FunctionType(params=ts.typed_dict([ts.make_row(0, 'item', N)]),
                         return_type=ts.Access(tuple_star, N),
-                        property=False,
+                        is_property=False,
                         side_effect=ts.SideEffect(new=False),
                         type_params=(N,))
     assert g == f

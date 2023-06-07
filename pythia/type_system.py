@@ -6,6 +6,7 @@ import os
 import typing
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import List
 
 
 @dataclass(frozen=True)
@@ -32,31 +33,6 @@ class TypeVar(TypeExpr):
 
     def __repr__(self) -> str:
         return f'*{self.name}' if self.is_args else self.name
-
-
-@dataclass(frozen=True)
-class Literal(TypeExpr):
-    value: int | str | bool | float | tuple | TypeVar | None
-    ref: Ref
-
-    def __repr__(self) -> str:
-        return f'Literal({self.value!r})'
-
-
-def literal(value: int | str | bool | float | tuple | list | TypeVar | None) -> Literal:
-    match value:
-        case int(): ref = Ref('builtins.int')
-        case float(): ref = Ref('builtins.float')
-        case str(): ref = Ref('builtins.str')
-        case bool(): ref = Ref('builtins.bool')
-        case None: ref = Ref('builtins.NoneType')
-        case tuple(): ref = Ref('builtins.tuple')
-        case list():
-            value = tuple(value)
-            ref = Ref('builtins.list')
-        case _:
-            assert False, f'Unknown literal type {value!r}'
-    return Literal(value, ref)
 
 
 @dataclass(frozen=True)
@@ -102,6 +78,21 @@ class Index:
 
 
 @dataclass(frozen=True)
+class Union(TypeExpr):
+    items: frozenset[TypeExpr]
+
+    def __repr__(self) -> str:
+        if not self.items:
+            return 'BOT'
+        return f'{{{" | ".join(f"{item}" for item in self.items)}}}'
+
+    def squeeze(self) -> TypeExpr:
+        if len(self.items) == 1:
+            return next(iter(self.items))
+        return self
+
+
+@dataclass(frozen=True)
 class Row(TypeExpr):
     # an index has either a name or an index or both
     index: Index
@@ -123,23 +114,33 @@ def make_row(number: typing.Optional[int], name: typing.Optional[str], t: TypeEx
 
 
 @dataclass(frozen=True)
-class Union(TypeExpr):
-    items: frozenset[TypeExpr]
+class Literal(TypeExpr):
+    value: int | str | bool | float | tuple | TypeVar | None
+    ref: Ref
 
     def __repr__(self) -> str:
-        if not self.items:
-            return 'BOT'
-        return f'{{{" | ".join(f"{item}" for item in self.items)}}}'
+        return f'Literal({self.value!r})'
 
-    def squeeze(self) -> TypeExpr:
-        if len(self.items) == 1:
-            return next(iter(self.items))
-        return self
+
+def literal(value: int | str | bool | float | tuple | list | TypeVar | None) -> Literal:
+    match value:
+        case int(): ref = Ref('builtins.int')
+        case float(): ref = Ref('builtins.float')
+        case str(): ref = Ref('builtins.str')
+        case bool(): ref = Ref('builtins.bool')
+        case None: ref = Ref('builtins.NoneType')
+        case tuple(): ref = Ref('builtins.tuple')
+        case list():
+            value = tuple(value)
+            ref = Ref('builtins.list')
+        case _:
+            assert False, f'Unknown literal type {value!r}'
+    return Literal(value, ref)
 
 
 @dataclass(frozen=True)
-class Intersection(TypeExpr):
-    items: frozenset[TypeExpr]
+class TypedDict(TypeExpr):
+    items: frozenset[Row]
 
     def __repr__(self) -> str:
         items = self.items
@@ -151,40 +152,36 @@ class Intersection(TypeExpr):
             if len(items) == 1:
                 return f'({res},)'
             return f'({res})'
-        for item in set(items):
-            if isinstance(item, Literal):
-                items -= {item.ref}
         return f'{{{" & ".join(f"{decl}" for decl in items)}}}'
-
-    def __and__(self, other: TypeExpr) -> Intersection:
-        if not isinstance(other, Intersection):
-            raise TypeError(f'Cannot intersect {self} with {other}')
-        if not self.items:
-            return other
-        if not other.items:
-            return self
-        res = Intersection(self.items | other.items)
-        assert len(set(type(item) for item in res.items)) <= 1
-        return res
 
     def row_items(self) -> frozenset[Row]:
         assert all(isinstance(item, Row) for item in self.items)
         return typing.cast(frozenset[Row], self.items)
 
-    def split_by_index(self: Intersection, value: int | str) -> tuple[Intersection, Intersection]:
+    def split_by_index(self: TypedDict, value: int | str) -> tuple[TypedDict, TypedDict]:
         index = index_from_literal(value)
         items = self.row_items()
-        good = intersect([item for item in items if match_index(item.index, index)])
-        bad = intersect([item for item in items if not match_index(item.index, index)])
+        good = typed_dict([item for item in items if match_index(item.index, index)])
+        bad = typed_dict([item for item in items if not match_index(item.index, index)])
         return good, bad
 
-    def squeeze(self: Intersection) -> TypeExpr:
+    def squeeze(self: TypedDict) -> TypedDict | Row:
         if len(self.items) == 1:
             return next(iter(self.items))
         return self
 
 
-TypedDict: typing.TypeAlias = Intersection
+@dataclass(frozen=True)
+class Overloaded(TypeExpr):
+    items: tuple[FunctionType, ...]
+
+    def __repr__(self) -> str:
+        return f'Overloaded({self.items})'
+
+    def squeeze(self: Overloaded) -> Overloaded | FunctionType:
+        if len(self.items) == 1:
+            return next(iter(self.items))
+        return self
 
 
 @dataclass(frozen=True)
@@ -219,11 +216,11 @@ class FunctionType(TypeExpr):
     params: TypedDict
     return_type: TypeExpr
     side_effect: SideEffect
-    property: bool
+    is_property: bool
     type_params: tuple[TypeVar, ...]
 
     def __repr__(self) -> str:
-        if self.property == literal(True):
+        if self.is_property == literal(True):
             return f'->{self.return_type}'
         else:
             type_params = ', '.join(str(x) for x in self.type_params)
@@ -271,15 +268,17 @@ def bind_typevars(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
             return t
         case TypeVar() as t:
             return context.get(t, t)
+        case Star(items):
+            return Star(tuple(bind_typevars(item, context) for item in items))
         case Literal() as t:
             if isinstance(t.value, tuple):
                 return replace(t,
                                value=unpack_star(bind_typevars(x, context) for x in t.value))
             return t
-        case Star(items):
-            return Star(tuple(bind_typevars(item, context) for item in items))
-        case Intersection(items):
-            return intersect(bind_typevars(item, context) for item in items)
+        case TypedDict(items):
+            return typed_dict(bind_typevars(item, context) for item in items)
+        case Overloaded(items):
+            return overload(bind_typevars(item, context) for item in items)
         case Union(items):
             return join_all(bind_typevars(item, context) for item in items)
         case Row() as row:
@@ -322,19 +321,37 @@ def bind_typevars(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
     raise NotImplementedError(f'{t!r}, {type(t)}')
 
 
-def intersect(rows: typing.Iterable[T]) -> TypedDict:
-    return Intersection(frozenset(rows))
+def typed_dict(rows: typing.Iterable[Row]) -> TypedDict:
+    rows = tuple(rows)
+    assert all(isinstance(x, Row) for x in rows)
+    assert len({x.index for x in rows}) == len(rows), rows
+    return TypedDict(frozenset(rows))
+
+
+def overload(functions: typing.Iterable[FunctionType | Overloaded]) -> Overloaded:
+    collect: list[FunctionType] = []
+    for f in functions:
+        if isinstance(f, Overloaded):
+            assert all(isinstance(x, FunctionType) for x in f.items)
+            collect.extend(f.items)
+        else:
+            assert isinstance(f, FunctionType), f
+            collect.append(f)
+    assert len(collect) > 0
+    return Overloaded(tuple(collect))
 
 
 def union(items: typing.Iterable[TypeExpr], squeeze=True) -> TypeExpr:
-    res = Union(frozenset(items))
+    items = frozenset(items)
+    assert len(items) > 0
+    res = Union(items)
     if squeeze:
         return res.squeeze()
     return res
 
 
-TOP = intersect([])
-BOTTOM = union([])
+TOP = typed_dict([])
+BOTTOM = Union(frozenset())
 
 
 def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
@@ -347,16 +364,6 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
     if t1 == TOP or t2 == TOP:
         return TOP
     match t1, t2:
-        case (Intersection(items), other) | (other, Intersection(items)):  # type: ignore
-            joined = set()
-            for item in items:
-                j = join(item, other)
-                joined.add(j)
-            return meet_all(joined)
-        case Union(items1), Union(items2):
-            return Union(items1 | items2).squeeze()
-        case (Union(items), other) | (other, Union(items)):  # type: ignore
-            return Union(items | {other}).squeeze()
         case (Literal() as l1, Literal() as l2):
             if l1.ref == l2.ref:
                 if isinstance(l1.value, tuple):
@@ -373,6 +380,14 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             if ref.name == 'builtins.list':
                 value = (join_all(value),)
             return join(inst, Instantiation(ref, value))
+        case (TypedDict(items1), TypedDict(items2)):  # type: ignore
+            return TypedDict(items1.intersection(items2))
+        case (Overloaded(), _):
+            return TOP
+        case Union(items1), Union(items2):
+            return Union(items1 | items2).squeeze()
+        case (Union(items), other) | (other, Union(items)):  # type: ignore
+            return Union(items | {other}).squeeze()
         case (Ref() as ref, other) | (other, Ref() as ref):  # type: ignore
             if resolve_static_ref(ref) == other:
                 return ref
@@ -389,11 +404,11 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             # not exact; should only join at the index of the row
             return Instantiation(Ref('builtins.tuple'), tuple(join(t1, t) for t in type_args))
         case (FunctionType() as f1, FunctionType() as f2):
-            if (f1.property, f1.side_effect, f1.type_params) == (f2.property, f2.side_effect, f2.type_params):
+            if (f1.is_property, f1.side_effect, f1.type_params) == (f2.is_property, f2.side_effect, f2.type_params):
                 new_params = meet(f1.params, f2.params)
                 if isinstance(new_params, Row):
-                    new_params = intersect([new_params])
-                assert isinstance(new_params, Intersection)
+                    new_params = typed_dict([new_params])
+                assert isinstance(new_params, TypedDict)
                 return replace(f1,
                                params=new_params,
                                return_type=join(f1.return_type, f2.return_type))
@@ -433,39 +448,43 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
                         return Instantiation(l1.ref, (meet_all([*l1.value, *l2.value]),))
                 return l1.ref
             assert l1 != l2
-            return intersect([t1, t2])
+            assert False, f'{l1!r}, {l2!r}'
         case (Literal(tuple() as value, ref=ref), Instantiation() as inst) | (Instantiation() as inst, Literal(tuple() as value, ref=ref)) if ref == inst.generic:
             if ref.name == 'builtins.list':
                 value = (meet_all(value),)
             return meet(inst, Instantiation(ref, value))
+        case (Overloaded(), _):
+            return TOP
+        case (TypedDict(items1), TypedDict(items2)):  # type: ignore
+            return typed_dict(items1 | items2)
         case (Ref() as ref, Literal() as n) | (Literal() as n, Ref() as ref) if n.ref == ref:
             return n
         case (Union(items), t) | (t, Union(items)):  # type: ignore
             if t in items:
                 return t
-            return join_all(meet(item, t) for item in items)
-        case (Intersection(items1), Intersection(items2)):
-            return Intersection(items1 | items2)
-        case (Intersection(items), t) | (t, Intersection(items)):  # type: ignore
-            return Intersection(items | {t})
+            types = [meet(item, t) for item in items]
+            return join_all(types)
         case (Row(index1, t1), Row(index2, t2)):
             if index1 == index2:
                 return Row(index1, meet(t1, t2))
             return TOP
+        case (Overloaded(items), FunctionType() as f):
+            return overload([*items, f])
+        case (FunctionType() as f, Overloaded(items)):
+            return overload([f, *items])
         case (FunctionType() as f1, FunctionType() as f2):
-            if (f1.property, f1.side_effect, f1.type_params, f1.return_type) == (f2.property, f2.side_effect, f2.type_params, f1.return_type):
-                new_params = join(f1.params, f2.params)
-                if not isinstance(new_params, Union):
-                    if isinstance(new_params, Row):
-                        new_params = intersect([new_params])
-                    # TODO: side_effect = join(f1.side_effect, f2.side_effect)
-                    assert isinstance(new_params, Intersection)
-                    return replace(f1, params=new_params,
-                                   return_type=meet(f1.return_type, f2.return_type))
-            return intersect([f1, f2])
+            # if (f1.is_property, f1.side_effect, f1.type_params, f1.return_type) == (f2.is_property, f2.side_effect, f2.type_params, f1.return_type):
+            #     new_params = join(f1.params, f2.params)
+            #     if not isinstance(new_params, Union):
+            #         if isinstance(new_params, Row):
+            #             new_params = typed_dict([new_params])
+            #         # TODO: side_effect = join(f1.side_effect, f2.side_effect)
+            #         assert isinstance(new_params, TypedDict)
+            #         return replace(f1, params=new_params,
+            #                        return_type=meet(f1.return_type, f2.return_type))
+            return overload([f1, f2])
         case (t1, t2):
-            assert t1 != t2
-            return intersect([t1, t2])
+            raise NotImplementedError(f'{t1!r}, {t2!r}')
     raise AssertionError
 
 
@@ -473,7 +492,7 @@ def meet_all(items: typing.Iterable[TypeExpr]) -> TypeExpr:
     res: TypeExpr = TOP
     for t in unpack_star(items):
         res = meet(res, t)
-    if isinstance(res, Intersection):
+    if isinstance(res, Overloaded):
         return res.squeeze()
     return res
 
@@ -485,14 +504,6 @@ class Action(enum.Enum):
 
 def is_subtype(left: TypeExpr, right: TypeExpr) -> bool:
     return join(left, right) == right
-
-
-def match_row(param: Row, arg: Row) -> bool:
-    if not match_index(param.index, arg.index):
-        return False
-    if param.type == Ref('typing.Any'):
-        return True
-    return is_subtype(arg.type, param.type)
 
 
 def index_from_literal(index: int | str) -> Index:
@@ -514,7 +525,7 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
             if not res:
                 return None
             return {k: join_all(t.get(k, BOTTOM) for t in res) for k in type_params}
-        case param, Intersection(items):
+        case param, TypedDict(items):
             res = [unified for item in items if (unified := unify_argument(type_params, param, item)) is not None]
             if not res:
                 return None
@@ -528,8 +539,8 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
         case Instantiation() as param, Instantiation() as arg:
             if param.generic != arg.generic:
                 return None
-            mid_context = unify(type_params, intersect([make_row(i, None, p) for i, p in enumerate(param.type_args)]),
-                                             intersect([make_row(i, None, p) for i, p in enumerate(arg.type_args)]))
+            mid_context = unify(type_params, typed_dict([make_row(i, None, p) for i, p in enumerate(param.type_args)]),
+                                             typed_dict([make_row(i, None, p) for i, p in enumerate(arg.type_args)]))
             return mid_context
         case Instantiation() as param, Literal(tuple() as value, ref):
             if param.generic != ref:
@@ -544,8 +555,8 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
                 return {}
             if param.ref == arg.ref and isinstance(param.value, tuple):
                 assert isinstance(arg.value, tuple)
-                mid_context = unify(type_params, intersect([make_row(i, None, p) for i, p in enumerate(param.value)]),
-                                                 intersect([make_row(i, None, p) for i, p in enumerate(arg.value)]))
+                mid_context = unify(type_params, typed_dict([make_row(i, None, p) for i, p in enumerate(param.value)]),
+                                                 typed_dict([make_row(i, None, p) for i, p in enumerate(arg.value)]))
                 return mid_context
             return None
         case Row() as param, Row() as arg:
@@ -568,36 +579,48 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
     assert False
 
 
-def unify(type_params: tuple[TypeVar, ...], params: Intersection, args: Intersection) -> typing.Optional[dict[TypeVar, TypeExpr]]:
-    if not params.items:
-        return {}
+@dataclass
+class Binding:
+    bound_typevars: dict[TypeVar, TypeExpr]
+    bound_params: dict[Row, Row]
+    bound_varparam: typing.Optional[tuple[Row, list[Row]]]
+    unbound_params: set[Row]
+
+
+def unify(type_params: tuple[TypeVar, ...], params: TypedDict, args: TypedDict) -> typing.Optional[Binding]:
     bound_types: dict[TypeVar, TypeExpr] = {}
-    assert isinstance(args, Intersection), f'{args!r}'
+    bound_params: dict[Row, Row] = {}
+    unbound_params: set[Row] = set(params.row_items())
     unbound_args = set(args.row_items())
-    varparam_type: typing.Optional[TypeVar] = None
+    varparam: typing.Optional[Row] = None
     for param in sorted(params.row_items()):
         if isinstance(param.type, TypeVar) and param.type.is_args:
-            varparam_type = param.type
+            varparam = varparam
             continue
-        matching_args = {arg for arg in args.row_items() if match_index(param.index, arg.index)}
+        matching_args = {arg for arg in unbound_args if match_index(param.index, arg.index)}
         if not matching_args:
             continue
+        unbound_params.remove(param)
         unbound_args -= matching_args
-        bindings = [unified for arg in matching_args
-                    if (unified := unify_argument(type_params, param.type, arg.type)) is not None]
-        if not bindings:
+        assert len(matching_args) == 1, f'{matching_args!r}'
+        matching_arg = matching_args.pop()
+        binding = unify_argument(type_params, param.type, matching_arg.type)
+        if binding is None:
             return None
-        bindable_type_params = {k for k in type_params if any(k in bind for bind in bindings)}
+        bound_params[param] = matching_arg
+        bindable_type_params = {k for k in type_params if k in binding}
         for k in bindable_type_params:
             if k.is_args:
-                items: set[TypeExpr] = {bound_types.get(k, None), *[bind.get(k, None) for bind in bindings]} - {None}
+                items: set[TypeExpr] = {bound_types.get(k, None), binding.get(k, None)} - {None}
                 assert len(items) <= 1, f'{items!r}'
                 if items:
                     bound_types[k] = items.pop()
             else:
                 bound_types[k] = join(bound_types.get(k, BOTTOM),
-                                      join_all(bind.get(k, BOTTOM) for bind in bindings))
-    if varparam_type is not None:
+                                      binding.get(k, BOTTOM))
+    bound_varparam = None
+    if varparam is not None:
+        # varparam is never removed from unbound_params, since it can continue matching
         elements: list[TypeExpr] = []
         if unbound_args:
             by_index: dict[int, list[TypeExpr]] = {}
@@ -613,55 +636,69 @@ def unify(type_params: tuple[TypeVar, ...], params: Intersection, args: Intersec
                 del by_index[i]
             if by_index:
                 return None
-        bound_types[varparam_type] = Star(tuple(elements))
-    return bound_types
+        assert isinstance(varparam.type, TypeVar)
+        elements = [bind_typevars(e, bound_types) for e in elements]
+        bound_types[varparam.type] = Star(tuple(elements))
+        bound_varparam = (varparam, elements)
+    if unbound_args:
+        return None
+    return Binding(
+        bound_typevars=bound_types,
+        bound_params={k: bind_typevars(v, bound_types) for k, v in bound_params.items()},
+        bound_varparam=bound_varparam,
+        unbound_params=unbound_params,
+    )
 
 
-def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
+def match_row(row: Row, arg: Literal | Ref) -> bool:
+    match arg:
+        case Literal(value):
+            return match_index(row.index, index_from_literal(value))
+        case Ref(name):
+            return name == 'builtins.int' and row.index.number is not None
+    assert False, f'{row!r}, {arg!r}'
+
+
+def access(t: TypeExpr, arg: TypeExpr) -> Overloaded | Module:
     match t, arg:
         case Class(class_dict=class_dict) | Module(class_dict=class_dict), Literal(str() as value):
             good, bad = class_dict.split_by_index(value)
-            if not good.items:
+            types: list[TypeExpr] = [x.type for x in good.row_items()]
+            if len(types) == 1:
+                [t] = types
+                if isinstance(t, Module):
+                    return t
+                if not isinstance(t, (Overloaded, FunctionType)):
+                    return t
+            if not types and isinstance(t, Module) and t.name not in ['builtins', 'numpy']:
                 return TOP
-            types = [x.type for x in good.row_items()]
-            return meet_all(types)
+            return overload(types)
         case Class() as t, arg:
             getter = access(t, literal('__getitem__'))
-            getter_as_property = partial(getter, intersect([make_row(1, None, arg)]))
-            if getter_as_property == BOTTOM:
-                return TOP
-            assert isinstance(getter_as_property, FunctionType), f'{getter_as_property!r}'
-            return replace(getter_as_property, property=True)
+            getter_as_property = partial(getter, typed_dict([make_row(1, None, arg)]))
+            assert isinstance(getter_as_property, Overloaded), f'{getter_as_property!r}'
+            return overload([replace(g, is_property=True) for g in getter_as_property.items])
         case Module() as t, arg:
             return access(t.class_dict, arg)
         case Ref() as ref, arg:
             return access(resolve_static_ref(ref), arg)
-        case t, Intersection(items):
-            return join_all(access(t, item) for item in items)
+        case t, TypedDict(items):
+            assert False, f'{t!r}, {arg!r}'
+        case t, Overloaded(items):
+            assert False, f'{t!r}, {arg!r}'
+        case Overloaded(tuple()), arg:
+            return TOP
         case Union(items), arg:
             return join_all(access(item, arg) for item in items)
-        case Intersection(items), arg:
+        case TypedDict(items), arg:
             # intersect and not meet in order to differentiate between
             # a non-existent attribute and an attribute with type TOP
-            return intersect([access(item, arg) for item in items])
+            return overload([row.type for row in items
+                             if match_row(row, arg)])
         case Literal(ref=ref), arg:
             return access(ref, arg)
         case t, Union(items):
-            return meet_all(access(t, item) for item in items)
-        case Row() as t, Literal(str() as value):
-            if match_index(t.index, index_from_literal(value)):
-                if isinstance(t.type, FunctionType) and t.type.property:
-                    return t.type.return_type
-                return t.type
-            return TOP
-        case Row() as t, Literal(int() as value):
-            if match_index(t.index, index_from_literal(value)):
-                return t.type
-            return TOP
-        case Row(index, t), Ref(name):
-            if name == 'builtins.int' and index.number is not None:
-                return t
-            return TOP
+            return overload([access(t, item) for item in items])
         case Instantiation() as t, arg:
             # ignore type arguments for now
             return access(t.generic, arg)
@@ -669,56 +706,128 @@ def access(t: TypeExpr, arg: TypeExpr) -> TypeExpr:
             raise NotImplementedError(f'{t=}, {arg=}, {type(t)=}, {type(arg)=}')
 
 
-def bind_self(attr: TypeExpr, selftype: TypeExpr) -> TypeExpr:
-    if isinstance(selftype, Module):
-        return attr
-    match attr:
-        case FunctionType() as attr:
-            res = partial(attr, intersect([make_row(0, 'self', selftype)]))
-            if res == BOTTOM:
-                return TOP
-            assert isinstance(res, FunctionType), f'{res!r}'
-            if res.property:
-                return res.return_type
-            return res
-        case Intersection(items):
-            return meet_all(bind_self(item, selftype) for item in items)
+def subtract_indices(unbound_params: TypedDict, bound_params: TypedDict) -> TypedDict:
+    # Fix: subtract index from all indexable params
+    # For this, we need to go from lowest to highest,
+    # and subtract from it the number of lower-indexed params that became bound
+    # (i.e. the number of params that were removed from the row)
+    # Here we assume that the params are consecutive, starting from 0
+    indexes = [item.index for item in bound_params.row_items()
+               if item.index.number is not None]
+
+    if indexes:
+        max_bound = max(indexes)
+        unbound_params = typed_dict([replace(item, index=item.index - max_bound - 1) if item.index > max_bound else item
+                                    for item in unbound_params.row_items()])
+    return unbound_params
+
+
+def split_params_by_arg_indices(params: TypedDict, args: TypedDict) -> tuple[list[tuple[Row, Row]], TypedDict]:
+    bound_params: list[tuple[Row, Row]] = []
+    unbound_params: list[Row] = []
+    arg_items = set(args.row_items())
+    for param in params.row_items():
+        for arg in arg_items:
+            if match_index(param.index, arg.index):
+                bound_params.append((param, arg))
+                arg_items.remove(arg)
+                break
+        else:
+            unbound_params.append(param)
+    return bound_params, typed_dict(unbound_params)
+
+
+def free_vars_expr(t: TypeExpr) -> set[TypeVar]:
+    match t:
+        case TypeVar() as t:
+            return {t}
+        case Ref() | Literal():
+            return set()
         case Union(items):
-            return join_all(bind_self(item, selftype) for item in items)
-        case _:
-            return attr
+            return set.union(*[free_vars_expr(item) for item in items])
+        case Instantiation(generic, args):
+            return free_vars_expr(generic).union(set.union(*[free_vars_expr(arg) for arg in args]))
+        case TypedDict(): assert False
+        case FunctionType(): assert False
+        case Class(): assert False
+        case Module(): assert False
+        case Overloaded(): assert False
+        case _: assert False, f'{t=}'
 
 
-def partial(callable: TypeExpr, args: Intersection) -> TypeExpr:
+def free_vars_typed_dict(t: TypedDict) -> set[TypeVar]:
+    return set.union(*[free_vars_expr(item.type) for item in t.row_items()])
+
+
+def subtract_type_underapprox(argtype: TypeExpr, paramtype: TypeExpr) -> TypeExpr:
+    if argtype == paramtype:
+        return BOTTOM
+    if is_subtype(argtype, paramtype):
+        return BOTTOM
+    if isinstance(argtype, Union) and paramtype in argtype.items:
+        return union(argtype.items - {paramtype})
+    if isinstance(argtype, Union) and isinstance(paramtype, Union):
+        return union(argtype.items - paramtype.items)
+    return argtype
+
+
+def partial(callable: TypeExpr, args: TypedDict) -> TypeExpr:
     match callable:
-        case Intersection(items):
-            return join_all(partial(item, args) for item in items)
-        case Union(items):
-            return meet_all(partial(item, args) for item in items)
+        case Overloaded(items):
+            # This returns a union of cases, so defaults to TOP.
+            applied = []
+            skip = set()
+            for i, f in enumerate(items):
+                if i in skip:
+                    continue
+                first_bound_params = None
+                overloaded = []
+                for j, f in enumerate(items[i:], i):
+                    if j in skip:
+                        continue
+
+                    binding = unify(f.type_params, f.params, args)
+                    if binding is None:
+                        if first_bound_params is not None:
+                            continue
+                        else:
+                            break
+                    if first_bound_params is None:
+                        first_bound_params = binding.bound_params
+                    if binding.bound_params == first_bound_params:
+                        skip.add(j)
+                        f = replace(f,
+                                    type_params=tuple(v for v in f.type_params if v not in binding.bound_typevars),
+                                    params=subtract_indices(typed_dict(binding.unbound_params),
+                                                            typed_dict(binding.bound_params.keys())),
+                                    return_type=bind_typevars(f.return_type, binding.bound_typevars))
+                        overloaded.append(f)
+                del f
+
+                applied.append(overload(overloaded))
+
+                if first_bound_params is None:
+                    continue
+
+                args = typed_dict(
+                    replace(arg, type=subtract_type_underapprox(arg.type, param.type))
+                    for param, arg in first_bound_params.items()
+                )
+                if any(arg.type == BOTTOM for arg in args.row_items()):
+                    break
+            return union(applied)
         case FunctionType() as f:
-            binding = unify(tuple(f.type_params), f.params, args)
+            binding = unify(f.type_params, f.params, args)
+            # This returns a single case, so defaults to BOTTOM.
             if binding is None:
                 return BOTTOM
-            assert isinstance(f, FunctionType)
-            new_type_params = tuple(v for v in f.type_params if v not in binding)
-            f = replace(f, type_params=new_type_params)
-            f = typing.cast(FunctionType, bind_typevars(f, binding))
-            new_params = intersect([item for item in f.params.row_items()
-                                    if not any(match_row(item, arg) for arg in args.row_items())])
-            # Fix: subtract index from all indexable params
-            # For this, we need to go from lowest to highest,
-            # and subtract from it the number of lower-indexed params that became bound
-            # (i.e. the number of params that were removed from the row)
-            # Here we assume that the params are consecutive, starting from 0
-            indexes = [item.index for item in f.params.row_items()
-                       if item not in new_params.items and item.index.number is not None]
-
-            if indexes:
-                max_bound = max(indexes)
-                new_params = intersect([replace(item, index=item.index - max_bound - 1) if item.index > max_bound else item
-                                        for item in new_params.row_items()])
-            f = replace(f, params=new_params)
-            return f
+            return replace(f,
+                           type_params=tuple(v for v in f.type_params if v not in binding.bound_typevars),
+                           params=subtract_indices(typed_dict(binding.unbound_params),
+                                                   typed_dict(binding.bound_params.keys())),
+                           return_type=bind_typevars(f.return_type, binding.bound_typevars))
+        case Union(items):
+            return union([partial(item, args) for item in items])
         case Class(class_dict=class_dict), arg:
             dunder = subscr(class_dict, literal('__call__'))
             return partial(dunder, arg)
@@ -726,9 +835,27 @@ def partial(callable: TypeExpr, args: Intersection) -> TypeExpr:
             assert False, f'Cannot call {callable} with {args}'
 
 
+def bind_self_function(f: FunctionType, selftype: TypeExpr) -> FunctionType:
+    return partial(f, typed_dict([make_row(0, 'self', selftype)]))
+
+
+def bind_self(attr: Overloaded, selftype: TypeExpr) -> Overloaded:
+    if isinstance(selftype, Module):
+        return attr
+    match attr:
+        case Overloaded(items):
+            return overload([bind_self_function(item, selftype) for item in items])
+        case FunctionType() as attr:
+            return overload([bind_self_function(attr, selftype)])
+        case Union(items):
+            return join_all(bind_self(item, selftype) for item in items)
+        case _:
+            return attr
+
+
 def get_return(callable: TypeExpr) -> TypeExpr:
     match callable:
-        case Intersection(items):
+        case Overloaded(items):
             return meet_all(get_return(item) for item in items)
         case Union(items):
             return join_all(get_return(item) for item in items)
@@ -742,13 +869,19 @@ def subscr(selftype: TypeExpr, index: TypeExpr) -> TypeExpr:
     if attr_type == TOP:
         # non-existent attribute
         return BOTTOM
-    elif isinstance(attr_type, Intersection):
+    elif isinstance(attr_type, Overloaded):
         attr_type = attr_type.squeeze()
     res = bind_self(attr_type, selftype)
+    if isinstance(res, FunctionType):
+        res = overload([res])
+    if isinstance(res, Overloaded):
+        if any(f.is_property for f in res.items):
+            assert all(f.is_property for f in res.items)
+            return union(f.return_type for f in res.items)
     return res
 
 
-def call(callable: TypeExpr, args: Intersection) -> TypeExpr:
+def call(callable: TypeExpr, args: TypedDict) -> TypeExpr:
     resolved = partial(callable, args)
     res = get_return(resolved)
     return res
@@ -757,20 +890,20 @@ def call(callable: TypeExpr, args: Intersection) -> TypeExpr:
 def make_list_constructor() -> TypeExpr:
     args = TypeVar('Args', is_args=True)
     return_type = literal([args])
-    return FunctionType(params=intersect([make_row(0, 'self', args)]),
+    return FunctionType(params=typed_dict([make_row(0, 'self', args)]),
                         return_type=return_type,
                         side_effect=SideEffect(new=not is_immutable(return_type)),
-                        property=False,
+                        is_property=False,
                         type_params=(args,))
 
 
 def make_tuple_constructor() -> TypeExpr:
     args = TypeVar('Args', is_args=True)
     return_type = Instantiation(Ref('builtins.tuple'), (args,))
-    return FunctionType(params=intersect([make_row(0, 'self', args)]),
+    return FunctionType(params=typed_dict([make_row(0, 'self', args)]),
                         return_type=return_type,
                         side_effect=SideEffect(new=not is_immutable(return_type)),
-                        property=False,
+                        is_property=False,
                         type_params=(args,))
 
 
@@ -779,11 +912,11 @@ def make_slice_constructor() -> TypeExpr:
     NONE = literal(None)
     INT = Ref('builtins.int')
     both = union([NONE, INT])
-    return FunctionType(params=intersect([make_row(0, 'start', both),
-                                          make_row(1, 'end', both)]),
+    return FunctionType(params=typed_dict([make_row(0, 'start', both),
+                                           make_row(1, 'end', both)]),
                         return_type=return_type,
                         side_effect=SideEffect(new=True),
-                        property=False,
+                        is_property=False,
                         type_params=())
 
 
@@ -827,12 +960,17 @@ def unop_to_dunder_method(op: str) -> str:
 def get_binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     lop, rop = binop_to_dunder_method(op)
     left_ops = access(left, literal(lop))
+    if left_ops == TOP:
+        return TOP
     if isinstance(left_ops, FunctionType):
-        left_ops = intersect([left_ops])
+        left_ops = overload([left_ops])
+    assert isinstance(left_ops, Overloaded), f'{left_ops!r}'
     right_ops = access(right, literal(rop))
+    if right_ops == TOP:
+        return TOP
     if isinstance(right_ops, FunctionType):
-        right_ops = intersect([right_ops])
-    assert isinstance(right_ops, Intersection), f'{right_ops!r}'
+        right_ops = overload([right_ops])
+    assert isinstance(right_ops, Overloaded), f'{right_ops!r}'
     right_ops = meet_all(swap_binop_params(rf) for rf in right_ops.items)
     ops = meet(left_ops, right_ops)
     return bind_self(ops, left)
@@ -841,8 +979,8 @@ def get_binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
 def swap_binop_params(rf: FunctionType) -> FunctionType:
     assert len(rf.params.items) == 2
     left, right = sorted(rf.params.items)
-    right_ops = replace(rf, params=intersect([replace(right, index=index_from_literal(0)),
-                                              replace(left, index=index_from_literal(1))]))
+    right_ops = replace(rf, params=typed_dict([replace(right, index=index_from_literal(0)),
+                                               replace(left, index=index_from_literal(1))]))
     return right_ops
 
 
@@ -851,7 +989,7 @@ def binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     if binop_func == BOTTOM:
         # assume there is an implementation.
         return TOP
-    return call(binop_func, intersect([make_row(0, None, right)]))
+    return call(binop_func, typed_dict([make_row(0, None, right)]))
 
 
 def get_unop(left: TypeExpr, op: str) -> TypeExpr:
@@ -883,14 +1021,18 @@ def infer_self(row: Row) -> Row:
         self_type = TypeVar('Self')
         self_arg_row = replace(self_arg_row, type=self_type)
         type_params = (self_type, *type_params)
-    g = FunctionType(intersect([self_arg_row, *other_args.row_items()]), function.return_type,
-                     function.side_effect, function.property, type_params)
+    g = replace(function,
+                params=typed_dict([self_arg_row, *other_args.row_items()]),
+                type_params=type_params)
     return Row(row.index, g)
 
 
 def pretty_print_type(t: Module | TypeExpr, indent: int = 0) -> None:
     match t:
-        case Intersection(items):
+        case TypedDict(items):
+            for row in items:
+                pretty_print_type(row, indent)
+        case Overloaded(items):
             for row in items:
                 pretty_print_type(row, indent)
         case Row(index, typeexpr):
@@ -898,10 +1040,10 @@ def pretty_print_type(t: Module | TypeExpr, indent: int = 0) -> None:
                 print(' ' * indent, end='')
             else:
                 print(' ' * indent, index.name, '=', end='', sep='')
-            if isinstance(typeexpr, Intersection):
+            if isinstance(typeexpr, (Overloaded, TypedDict)):
                 print()
             pretty_print_type(typeexpr, indent)
-        case FunctionType(params, return_type, side_effect, property, type_params):
+        case FunctionType(params, return_type, side_effect, is_property, type_params):
             # pretty_params = ', '.join(f'{row.index.name}: {row.type}'
             #                           for row in sorted(params.row_items(), key=lambda x: x.index))
             pretty_type_params = ', '.join(str(x) for x in type_params)
@@ -1016,20 +1158,20 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                             raise NotImplementedError(f'{base!r}')
 
                 metaclass = Class(f'__{name}_metaclass__',
-                                  intersect([
-                                      make_row(0, '__call__', FunctionType(intersect([
+                                  typed_dict([
+                                      make_row(0, '__call__', FunctionType(typed_dict([
                                           make_row(0, 'cls', TypeVar('Infer')),
                                       ]), Ref('type'),
                                           side_effect=SideEffect(new=True),
-                                          property=False,
+                                          is_property=False,
                                           type_params=())),
                                   ]),
                                   inherits=(Ref('builtins.type'),),
                                   protocol=False,
                                   type_params=())
 
-                class_dict = intersect([infer_self(row) for index, stmt in enumerate(body)
-                                        for row in stmt_to_rows(stmt, index)])
+                class_dict = typed_dict([infer_self(row) for index, stmt in enumerate(body)
+                                         for row in stmt_to_rows(stmt, index)])
                 res = Class(name, class_dict, inherits=tuple(base_classes_list), protocol=protocol,
                             type_params=type_params)
 
@@ -1050,13 +1192,17 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                     new='new' in name_decorators and not is_immutable(returns),
                     update=update_type
                 )
-                property = 'property' in name_decorators
+                is_property = 'property' in name_decorators
                 type_params = tuple(generic_vars[x] for x in freevars if x in generic_vars)
-                params = intersect(
+                params = typed_dict(
                     [make_row(index, arg.arg, expr_to_type(arg.annotation))
                      for index, arg in enumerate(fdef.args.args)]
                 )
-                f = FunctionType(params, returns, side_effect=side_effect, property=property, type_params=type_params)
+                f = FunctionType(params=params,
+                                 return_type=returns,
+                                 side_effect=side_effect,
+                                 is_property=is_property,
+                                 type_params=type_params)
 
                 yield make_row(index, fdef.name, f)
             case ast.If():
@@ -1075,15 +1221,15 @@ def module_to_type(module: ast.Module, name: str) -> Module:
     global_aliases = {name.asname: name.name
                       for node in module.body if isinstance(node, ast.Import)
                       for name in node.names if name.asname is not None}
-    class_dict = intersect([row for index, stmt in enumerate(module.body)
-                            if not isinstance(stmt, ast.Assign)
-                            for row in stmt_to_rows(stmt, index)])
+    class_dict = typed_dict([row for index, stmt in enumerate(module.body)
+                             if not isinstance(stmt, ast.Assign)
+                             for row in stmt_to_rows(stmt, index)])
     return Module(name, class_dict)
 
 
 def is_immutable(value: TypeExpr) -> bool:
     match value:
-        case Intersection(items):
+        case Overloaded(items) | TypedDict(items) | Union(items):
             return all(is_immutable(x) for x in items)
         case Instantiation(generic, items):
             return is_immutable(generic) and all(is_immutable(x) for x in items)
@@ -1115,8 +1261,8 @@ def parse_file(path: str) -> Module:
 
 TYPESHED_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../typeshed_mini'))
 MODULES = Module('typeshed',
-                 intersect([make_row(index, file.split('.')[0], parse_file(f'{TYPESHED_DIR}/{file}'))
-                            for index, file in enumerate(os.listdir(TYPESHED_DIR))]))
+                 typed_dict([make_row(index, file.split('.')[0], parse_file(f'{TYPESHED_DIR}/{file}'))
+                             for index, file in enumerate(os.listdir(TYPESHED_DIR))]))
 
 
 def main() -> None:

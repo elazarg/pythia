@@ -4,7 +4,7 @@ import enum
 import typing
 
 from pythia import type_system as ts, tac, analysis_domain as domain
-from pythia.analysis_domain import InvariantMap, MapDomain, VarLattice
+from pythia.analysis_domain import InvariantMap, VarMapDomain, VarLattice
 from pythia.analysis_types import TypeLattice
 from pythia.graph_utils import Location
 
@@ -20,17 +20,17 @@ Allocation: typing.TypeAlias = AllocationType
 
 
 class AllocationChecker:
-    type_invariant_map: InvariantMap[MapDomain[ts.TypeExpr]]
+    type_invariant_map: InvariantMap[VarMapDomain[ts.TypeExpr]]
     type_lattice: VarLattice[ts.TypeExpr]
     backward = False
 
-    def __init__(self, type_invariant_map: InvariantMap[MapDomain[ts.TypeExpr]], type_lattice: VarLattice[ts.TypeExpr]) -> None:
+    def __init__(self, type_invariant_map: InvariantMap[VarMapDomain[ts.TypeExpr]], type_lattice: VarLattice[ts.TypeExpr]) -> None:
         super().__init__()
         self.type_invariant_map = type_invariant_map
         self.type_lattice = type_lattice
 
     def __call__(self, ins: tac.Tac, location: Location) -> AllocationType:
-        type_invariant: MapDomain[ts.TypeExpr] = self.type_invariant_map[location]
+        type_invariant: VarMapDomain[ts.TypeExpr] = self.type_invariant_map[location]
         if isinstance(type_invariant, domain.Bottom):
             return Allocation.UNKNOWN
         if isinstance(ins, tac.Assign):

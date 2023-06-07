@@ -6,7 +6,7 @@ from typing import TypeAlias
 from pythia import tac, analysis_domain as domain
 from pythia.graph_utils import Location
 from pythia.analysis_allocation import AllocationType
-from pythia.analysis_domain import InvariantMap, InstructionLattice, Bottom, BOTTOM, MapDomain
+from pythia.analysis_domain import InvariantMap, InstructionLattice, Bottom, BOTTOM, VarMapDomain
 from pythia.analysis_liveness import Liveness
 from pythia.analysis_pointer import Graph, Object, LOCALS, object_to_location, find_reachable
 
@@ -69,7 +69,7 @@ class DirtyLattice(InstructionLattice[Dirty]):
         return values
 
 
-def find_reaching_locals(ptr: Graph, liveness: MapDomain[Liveness], dirty_objects: Dirty) -> typing.Iterator[str]:
+def find_reaching_locals(ptr: Graph, liveness: VarMapDomain[Liveness], dirty_objects: Dirty) -> typing.Iterator[str]:
     assert not isinstance(liveness, domain.Bottom)
     assert not isinstance(dirty_objects, domain.Bottom)
 

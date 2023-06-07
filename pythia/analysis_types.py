@@ -1,84 +1,85 @@
-# Data flow analysis and stuff.
-
 from __future__ import annotations as _
 
-from typing import Iterable
+import typing
 
 import pythia.type_system as ts
+from pythia.type_system import TypeExpr
 from pythia import tac
 from pythia.tac import Predefined, UnOp
 from pythia.analysis_domain import ValueLattice
 
 
-class TypeLattice(ValueLattice[ts.TypeExpr]):
+class TypeLattice(ValueLattice[TypeExpr]):
     """
     Abstract domain for type analysis with lattice operations.
     """
     def __init__(self, this_function: str, this_module: ts.Module):
         this_signature = ts.subscr(this_module, ts.literal(this_function))
-        assert isinstance(this_signature, ts.FunctionType)
-        self.annotations: dict[tac.Var, ts.TypeExpr] = {tac.Var(row.index.name, is_stackvar=False): row.type
+        assert isinstance(this_signature, ts.Overloaded), f"Expected overloaded type, got {this_signature}"
+        assert len(this_signature.items) == 1, f"Expected single signature, got {this_signature}"
+        [this_signature] = this_signature.items
+        self.annotations: dict[tac.Var, TypeExpr] = {tac.Var(row.index.name, is_stackvar=False): row.type
                                                         for row in this_signature.params.row_items()
                                                         if row.index.name is not None}
         self.annotations[tac.Var('return', is_stackvar=False)] = this_signature.return_type
         self.globals = this_module
         self.builtins = ts.resolve_static_ref(ts.Ref('builtins'))
 
-    def annotation(self, name: tac.Var, t: str) -> ts.TypeExpr:
+    def annotation(self, name: tac.Var, t: str) -> TypeExpr:
         return self.annotations[name]
 
     def name(self) -> str:
         return "Type"
 
-    def join(self, left: ts.TypeExpr, right: ts.TypeExpr) -> ts.TypeExpr:
+    def join(self, left: TypeExpr, right: TypeExpr) -> TypeExpr:
         return ts.join(left, right)
 
-    def meet(self, left: ts.TypeExpr, right: ts.TypeExpr) -> ts.TypeExpr:
+    def meet(self, left: TypeExpr, right: TypeExpr) -> TypeExpr:
         return ts.meet(left, right)
 
-    def top(self) -> ts.TypeExpr:
+    def top(self) -> TypeExpr:
         return ts.TOP
 
-    def is_top(self, elem: ts.TypeExpr) -> bool:
+    def is_top(self, elem: TypeExpr) -> bool:
         return elem == ts.TOP
 
-    def is_bottom(self, elem: ts.TypeExpr) -> bool:
+    def is_bottom(self, elem: TypeExpr) -> bool:
         return elem == ts.BOTTOM
 
-    def bottom(self) -> ts.TypeExpr:
+    def bottom(self) -> TypeExpr:
         return ts.BOTTOM
 
-    def copy(self, values: ts.TypeExpr) -> ts.TypeExpr:
+    def copy(self, values: TypeExpr) -> TypeExpr:
         return values
 
-    def is_less_than(self, left: ts.TypeExpr, right: ts.TypeExpr) -> bool:
+    def is_less_than(self, left: TypeExpr, right: TypeExpr) -> bool:
         return ts.is_subtype(left, right)
 
-    def resolve(self, ref: ts.TypeExpr) -> ts.TypeExpr:
+    def resolve(self, ref: TypeExpr) -> TypeExpr:
         if isinstance(ref, ts.Ref):
             if '.' in ref.name:
                 module, name = ref.name.split('.', 1)
                 if module == self.globals.name:
                     return ts.subscr(self.globals, ts.literal(name))
             ref = ts.resolve_static_ref(ref)
-        assert isinstance(ref, (ts.TypeExpr, ts.Module, ts.Class)), ref
+        assert isinstance(ref, (TypeExpr, ts.Module, ts.Class)), ref
         return ref
 
-    def join_all(self, types: Iterable[ts.TypeExpr]) -> ts.TypeExpr:
+    def join_all(self, types: typing.Iterable[TypeExpr]) -> TypeExpr:
         return ts.join_all(types)
 
-    def call(self, function: ts.TypeExpr, args: list[ts.TypeExpr]) -> ts.TypeExpr:
-        return ts.call(self.resolve(function), ts.intersect([ts.make_row(index, None, self.resolve(arg))
-                                                             for index, arg in enumerate(args)]))
+    def call(self, function: TypeExpr, args: list[TypeExpr]) -> TypeExpr:
+        return ts.call(self.resolve(function), ts.typed_dict([ts.make_row(index, None, self.resolve(arg))
+                                                              for index, arg in enumerate(args)]))
 
-    def binary(self, left: ts.TypeExpr, right: ts.TypeExpr, op: str) -> ts.TypeExpr:
+    def binary(self, left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
         result = ts.binop(left, right, op)
         # Shorthand for: "we assume that there is an implementation"
         if self.is_bottom(result):
             return self.top()
         return result
 
-    def get_unary_attribute(self, value: ts.TypeExpr, op: UnOp) -> ts.TypeExpr:
+    def get_unary_attribute(self, value: TypeExpr, op: UnOp) -> TypeExpr:
         return ts.get_unop(value, self.unop_to_str(op))
 
     def unop_to_str(self, op: UnOp) -> str:
@@ -93,11 +94,11 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
             case _:
                 raise NotImplementedError(f"UnOp.{op.name}")
 
-    def unary(self, value: ts.TypeExpr, op: UnOp) -> ts.TypeExpr:
+    def unary(self, value: TypeExpr, op: UnOp) -> TypeExpr:
         f = self.get_unary_attribute(value, op)
         return self.call(f, [])
 
-    def predefined(self, name: Predefined) -> ts.TypeExpr:
+    def predefined(self, name: Predefined) -> TypeExpr:
         match name:
             case Predefined.LIST: return ts.make_list_constructor()
             case Predefined.TUPLE: return ts.make_tuple_constructor()
@@ -108,10 +109,10 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
             case Predefined.CONST_KEY_MAP: return self.top()
         assert False, name
 
-    def const(self, value: object) -> ts.TypeExpr:
+    def const(self, value: object) -> TypeExpr:
         return ts.literal(value)
 
-    def attribute(self, var: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
+    def attribute(self, var: TypeExpr, attr: tac.Var) -> TypeExpr:
         mod = self.resolve(var)
         assert mod != ts.TOP, f'Cannot resolve {attr} in {var}'
         try:
@@ -126,10 +127,10 @@ class TypeLattice(ValueLattice[ts.TypeExpr]):
                 return ts.subscr(self.builtins, ts.literal(attr.name))
             raise
 
-    def subscr(self, array: ts.TypeExpr, index: ts.TypeExpr) -> ts.TypeExpr:
+    def subscr(self, array: TypeExpr, index: TypeExpr) -> TypeExpr:
         return ts.subscr(self.resolve(array), self.resolve(index))
 
-    def imported(self, modname: str) -> ts.TypeExpr:
+    def imported(self, modname: str) -> TypeExpr:
         assert isinstance(modname, str)
         return ts.resolve_static_ref(ts.Ref(modname))
 

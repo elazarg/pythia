@@ -10,7 +10,7 @@ from pythia.graph_utils import Location
 from pythia import analysis_domain as domain
 from pythia import analysis_liveness
 from pythia.analysis_allocation import AllocationType
-from pythia.analysis_domain import InstructionLattice, InvariantMap, BOTTOM, MapDomain
+from pythia.analysis_domain import InstructionLattice, InvariantMap, BOTTOM, VarMapDomain
 from pythia.analysis_liveness import Liveness
 
 
@@ -27,8 +27,8 @@ NONLOCALS: Final[Object] = Object('NONLOCALS')
 
 GLOBALS: Final[Object] = Object('globals()')
 
-
-Graph: TypeAlias = dict[Object, dict[tac.Var, frozenset[Object]]]
+Fields: TypeAlias = domain.Map[tac.Var, frozenset[Object]]
+Graph: TypeAlias = domain.Map[Object, Fields]
 
 
 def pretty_print_pointers(pointers: Graph) -> str:
@@ -41,19 +41,28 @@ def pretty_print_pointers(pointers: Graph) -> str:
 
 
 def copy_graph(graph: Graph) -> Graph:
-    return {obj: {field: target_obj.copy() for field, target_obj in obj_fields.items()}
-            for obj, obj_fields in graph.items()}
+    return graph.copy()
+
+
+def make_fields(d: typing.Optional[dict[tac.Var, Object]] = None) -> Fields:
+    d = d or {}
+    return domain.Map(default=frozenset(), d=d)
+
+
+def make_graph(d: typing.Optional[dict[Object, Fields]] = None) -> Graph:
+    d = d or {}
+    return domain.Map(default=make_fields(), d=d)
 
 
 class PointerLattice(InstructionLattice[Graph]):
     allocation_invariant_map: InvariantMap[AllocationType]
-    liveness: InvariantMap[MapDomain[analysis_liveness.Liveness]]
+    liveness: InvariantMap[VarMapDomain[analysis_liveness.Liveness]]
     backward: bool = False
 
     def name(self) -> str:
         return "Pointer"
 
-    def __init__(self, allocation_invariant_map: InvariantMap[AllocationType], liveness: InvariantMap[MapDomain[analysis_liveness.Liveness]]) -> None:
+    def __init__(self, allocation_invariant_map: InvariantMap[AllocationType], liveness: InvariantMap[VarMapDomain[analysis_liveness.Liveness]]) -> None:
         super().__init__()
         self.allocation_invariant_map = allocation_invariant_map
         self.liveness = liveness
@@ -63,15 +72,14 @@ class PointerLattice(InstructionLattice[Graph]):
         return self.join(left, right) == right
 
     def copy(self, values: Graph) -> Graph:
-        return {obj: {field: targets.copy() for field, targets in fields.items() if targets}
-                for obj, fields in values.items()}
-
+        return values.copy()
+    
     def initial(self, annotations: dict[tac.Var, str]) -> Graph:
-        return {LOCALS: {k: frozenset({Object(f'param {k}')}) for k in annotations},
-                GLOBALS: {}}
+        return make_graph({LOCALS: make_fields({k: frozenset({Object(f'param {k}')}) for k in annotations}),
+                           GLOBALS: make_fields()})
 
     def bottom(self) -> Graph:
-        return {}
+        return make_graph()
 
     def top(self) -> Graph:
         raise NotImplementedError
@@ -87,9 +95,10 @@ class PointerLattice(InstructionLattice[Graph]):
         for obj, fields in right.items():
             if obj in pointers:
                 for field, values in fields.items():
-                    pointers[obj][field] = pointers[obj].get(field, frozenset()) | values
+                    pointers[obj][field] = pointers[obj][field] | values
             else:
-                pointers[obj] = {field: targets.copy() for field, targets in fields.items() if targets}
+                pointers[obj] = make_fields({field: targets.copy()
+                                             for field, targets in fields.items() if targets})
         return pointers
 
     def transfer(self, values: Graph, ins: tac.Tac, location: Location) -> Graph:
@@ -100,7 +109,7 @@ class PointerLattice(InstructionLattice[Graph]):
         def eval(expr: tac.Expr) -> frozenset[Object]:
             match expr:
                 case tac.Var():
-                    return values[LOCALS].get(expr, frozenset()).copy()
+                    return values[LOCALS][expr]
                 case tac.Call() | tac.Unary() | tac.Binary():
                     if allocated:
                         return frozenset({location_object})
@@ -109,9 +118,9 @@ class PointerLattice(InstructionLattice[Graph]):
                     if allocated:
                         return frozenset({location_object})
                     if expr.var.name == 'GLOBALS':
-                        return values[GLOBALS].get(expr.field, frozenset()).copy()
+                        return values[GLOBALS][expr.field]
                     else:
-                        return frozenset(chain.from_iterable(values.get(obj, {}).get(expr.field, frozenset()).copy()
+                        return frozenset(chain.from_iterable(values[obj][expr.field]
                                                              for obj in eval(expr.var)))
                 case _: return frozenset()
 
@@ -129,10 +138,10 @@ class PointerLattice(InstructionLattice[Graph]):
                         activation[ins.lhs] = val
                     case tac.Attribute():
                         for obj in eval(ins.lhs.var):
-                            values.setdefault(obj, {})[ins.lhs.field] = val
+                            values[obj][ins.lhs.field] = val
                     case tac.Subscript():
                         for obj in eval(ins.lhs.var):
-                            values.setdefault(obj, {})[tac.Var('*')] = val
+                            values[obj][tac.Var('*')] = val
             case tac.Return():
                 val = eval(ins.value)
                 activation[tac.Var('return')] = val
@@ -174,7 +183,7 @@ def find_reachable(ptr: Graph, alive: set[tac.Var], params: set[tac.Var],
 
 def update_allocation_invariants(allocation_invariants: InvariantMap[AllocationType],
                                  ptr: Graph,
-                                 liveness: MapDomain[Liveness],
+                                 liveness: VarMapDomain[Liveness],
                                  annotations: dict[tac.Var, str]) -> None:
     assert not isinstance(liveness, domain.Bottom)
 

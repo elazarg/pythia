@@ -28,7 +28,7 @@ from typing import TypeVar
 
 from pythia import tac
 from pythia.analysis_domain import Top, Bottom, TOP, BOTTOM, \
-    MapDomain, Lattice, Map, normalize, InstructionLattice
+    VarMapDomain, Lattice, Map, normalize, InstructionLattice
 from pythia.graph_utils import Location
 
 T = TypeVar('T')
@@ -82,7 +82,7 @@ class LivenessLattice(Lattice[Liveness]):
         return "Liveness"
 
 
-class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
+class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
     lattice: LivenessLattice
     backward: bool = True
 
@@ -93,29 +93,29 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
     def name(self) -> str:
         return f"{self.lattice.name()}"
 
-    def is_less_than(self, left: MapDomain[Liveness], right: MapDomain[Liveness]) -> bool:
+    def is_less_than(self, left: VarMapDomain[Liveness], right: VarMapDomain[Liveness]) -> bool:
         return self.join(left, right) == right
 
-    def copy(self, values: MapDomain[Liveness]) -> MapDomain[Liveness]:
+    def copy(self, values: VarMapDomain[Liveness]) -> VarMapDomain[Liveness]:
         return values.copy()
 
     def is_top(self, elem: T) -> bool:
         return isinstance(elem, Top)
 
-    def is_bottom(self, values: MapDomain[Liveness]) -> bool:
+    def is_bottom(self, values: VarMapDomain[Liveness]) -> bool:
         return isinstance(values, Bottom)
 
-    def make_map(self, d: typing.Optional[dict[tac.Var, Liveness]] = None) -> Map[Liveness]:
+    def make_map(self, d: typing.Optional[dict[tac.Var, Liveness]] = None) -> Map[tac.Var, Liveness]:
         d = d or {}
         return Map(default=self.lattice.default(), d=d)
 
-    def top(self) -> Map[Liveness]:
+    def top(self) -> Map[tac.Var, Liveness]:
         return self.make_map()
 
-    def bottom(self) -> MapDomain[Liveness]:
+    def bottom(self) -> VarMapDomain[Liveness]:
         return BOTTOM
 
-    def join(self, left: MapDomain[Liveness], right: MapDomain[Liveness]) -> MapDomain[Liveness]:
+    def join(self, left: VarMapDomain[Liveness], right: VarMapDomain[Liveness]) -> VarMapDomain[Liveness]:
         match left, right:
             case (Bottom(), _): return right
             case (_, Bottom()): return left
@@ -126,7 +126,7 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
                 return normalize(res)
         return self.top()
 
-    def back_transfer(self, values: MapDomain[Liveness], ins: tac.Tac, location: Location) -> MapDomain[Liveness]:
+    def back_transfer(self, values: VarMapDomain[Liveness], ins: tac.Tac, location: Location) -> VarMapDomain[Liveness]:
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()
@@ -136,7 +136,7 @@ class LivenessVarLattice(InstructionLattice[MapDomain[Liveness]]):
             values[v] = TOP
         return values
 
-    def transfer(self, values: MapDomain[Liveness], ins: tac.Tac, location: Location) -> MapDomain[Liveness]:
+    def transfer(self, values: VarMapDomain[Liveness], ins: tac.Tac, location: Location) -> VarMapDomain[Liveness]:
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()
