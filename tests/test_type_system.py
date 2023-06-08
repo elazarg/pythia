@@ -232,6 +232,11 @@ def test_getitem_numpy():
     assert x == ts.BOTTOM
 
 
+def test_operator_numpy():
+    x = ts.binop(ARRAY, ARRAY, '+')
+    assert x == ARRAY
+
+
 def test_list_constructor():
     constructor = ts.make_list_constructor()
     args = make_rows(INT)

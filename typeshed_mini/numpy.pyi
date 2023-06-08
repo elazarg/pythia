@@ -33,6 +33,10 @@
 #     })),
 # }))
 #
+T = TypeVar('T')
+Q = TypeVar('Q')
+Args = TypeVarTuple('Args')
+N = TypeVar('N', Literal[int])
 
 class ndarray:
     @property
@@ -107,4 +111,3 @@ class linalg:
     def norm(self, a: ndarray, axis: int) -> ndarray: ...
 @new
 def array(object) -> ndarray: ...
-

@@ -61,7 +61,7 @@ class TypeLattice(ValueLattice[TypeExpr]):
                 module, name = ref.name.split('.', 1)
                 if module == self.globals.name:
                     return ts.subscr(self.globals, ts.literal(name))
-            ref = ts.resolve_static_ref(ref)
+            # ref = ts.resolve_static_ref(ref)
         assert isinstance(ref, (TypeExpr, ts.Module, ts.Class)), ref
         return ref
 

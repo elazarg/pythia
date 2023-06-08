@@ -777,6 +777,10 @@ def subtract_type_underapprox(argtype: TypeExpr, paramtype: TypeExpr) -> TypeExp
 
 
 def partial(callable: TypeExpr, args: TypedDict) -> TypeExpr:
+    if callable == TOP:
+        return TOP
+    if callable == BOTTOM:
+        return BOTTOM
     match callable:
         case Overloaded(items):
             # This returns a union of cases, so defaults to TOP.
@@ -848,6 +852,8 @@ def bind_self_function(f: FunctionType, selftype: TypeExpr) -> FunctionType:
 def bind_self(attr: Overloaded, selftype: TypeExpr) -> Overloaded:
     if isinstance(selftype, Module):
         return attr
+    if isinstance(selftype, Ref) and isinstance(resolve_static_ref(selftype), Module):
+        return attr
     match attr:
         case Overloaded(items):
             return overload([bind_self_function(item, selftype) for item in items])
@@ -860,6 +866,10 @@ def bind_self(attr: Overloaded, selftype: TypeExpr) -> Overloaded:
 
 
 def get_return(callable: TypeExpr) -> TypeExpr:
+    if callable == TOP:
+        return TOP
+    if callable == BOTTOM:
+        return BOTTOM
     match callable:
         case Overloaded(items):
             return meet_all(get_return(item) for item in items)
@@ -871,6 +881,10 @@ def get_return(callable: TypeExpr) -> TypeExpr:
 
 
 def subscr(selftype: TypeExpr, index: TypeExpr) -> TypeExpr:
+    if selftype == TOP:
+        return TOP
+    if selftype == BOTTOM:
+        return BOTTOM
     attr_type = access(selftype, index)
     if attr_type == TOP:
         # non-existent attribute
@@ -971,6 +985,8 @@ def get_binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     if isinstance(left_ops, FunctionType):
         left_ops = overload([left_ops])
     assert isinstance(left_ops, Overloaded), f'{left_ops!r}'
+    if left == right:
+        return bind_self(left_ops, left)
     right_ops = access(right, literal(rop))
     if right_ops == TOP:
         return TOP

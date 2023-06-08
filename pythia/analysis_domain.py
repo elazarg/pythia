@@ -372,26 +372,32 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
             return BOTTOM
         if isinstance(ins, tac.For):
             ins = ins.as_call()
-        updated = self.make_map()
+        to_update = self.make_map()
 
         match ins:
             case tac.Assign():
                 assigned = self.transformer_expr(values, ins.expr)
-                updated = self.transformer_signature(assigned, ins.lhs)
+                to_update = self.transformer_signature(assigned, ins.lhs)
             case tac.Return():
                 assigned = self.transformer_expr(values, ins.value)
-                updated = self.make_map({
+                to_update = self.make_map({
                     tac.Var('return'): assigned
                 })
-        assert not any(self.lattice.is_bottom(v) for v in updated.values())
-        return updated
+        assert not any(self.lattice.is_bottom(v) for v in to_update.values())
+        return to_update
 
     def transfer(self, values: VarMapDomain[T], ins: tac.Tac, location: Location) -> VarMapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()
         try:
+            print(f'values: {values}')
+            print(f'{location}: {ins}')
+            if location == (215, 0):
+                pass
             to_update = self.forward_transfer(values, ins)
+            print(f'updated: {to_update}')
+            print()
         except Exception as e:
             e.add_note(f'while processing {ins} at {location}')
             raise
