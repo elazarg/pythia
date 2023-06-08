@@ -337,13 +337,13 @@ def overload(functions: typing.Iterable[FunctionType | Overloaded]) -> Overloade
         else:
             assert isinstance(f, FunctionType), f
             collect.append(f)
-    assert len(collect) > 0
+    # assert len(collect) > 0
     return Overloaded(tuple(collect))
 
 
 def union(items: typing.Iterable[TypeExpr], squeeze=True) -> TypeExpr:
     items = frozenset(items)
-    assert len(items) > 0
+    # assert len(items) > 0
     res = Union(items)
     if squeeze:
         return res.squeeze()
@@ -541,7 +541,8 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
                 return None
             mid_context = unify(type_params, typed_dict([make_row(i, None, p) for i, p in enumerate(param.type_args)]),
                                              typed_dict([make_row(i, None, p) for i, p in enumerate(arg.type_args)]))
-            return mid_context
+            assert mid_context is not None
+            return mid_context.bound_typevars
         case Instantiation() as param, Literal(tuple() as value, ref):
             if param.generic != ref:
                 return None
@@ -557,7 +558,8 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
                 assert isinstance(arg.value, tuple)
                 mid_context = unify(type_params, typed_dict([make_row(i, None, p) for i, p in enumerate(param.value)]),
                                                  typed_dict([make_row(i, None, p) for i, p in enumerate(arg.value)]))
-                return mid_context
+                assert mid_context is not None
+                return mid_context.bound_typevars
             return None
         case Row() as param, Row() as arg:
             if match_index(param.index, arg.index):
@@ -583,7 +585,6 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
 class Binding:
     bound_typevars: dict[TypeVar, TypeExpr]
     bound_params: dict[Row, Row]
-    bound_varparam: typing.Optional[tuple[Row, list[Row]]]
     unbound_params: set[Row]
 
 
@@ -595,7 +596,7 @@ def unify(type_params: tuple[TypeVar, ...], params: TypedDict, args: TypedDict) 
     varparam: typing.Optional[Row] = None
     for param in sorted(params.row_items()):
         if isinstance(param.type, TypeVar) and param.type.is_args:
-            varparam = varparam
+            varparam = param
             continue
         matching_args = {arg for arg in unbound_args if match_index(param.index, arg.index)}
         if not matching_args:
@@ -618,7 +619,6 @@ def unify(type_params: tuple[TypeVar, ...], params: TypedDict, args: TypedDict) 
             else:
                 bound_types[k] = join(bound_types.get(k, BOTTOM),
                                       binding.get(k, BOTTOM))
-    bound_varparam = None
     if varparam is not None:
         # varparam is never removed from unbound_params, since it can continue matching
         elements: list[TypeExpr] = []
@@ -627,6 +627,7 @@ def unify(type_params: tuple[TypeVar, ...], params: TypedDict, args: TypedDict) 
             for arg in unbound_args:
                 assert arg.index.number is not None
                 by_index.setdefault(arg.index.number, []).append(arg.type)
+            unbound_args.clear()
             minimal_index = min(by_index)
             maximal_index = max(by_index)
             for i in range(minimal_index, maximal_index + 1):
@@ -639,13 +640,12 @@ def unify(type_params: tuple[TypeVar, ...], params: TypedDict, args: TypedDict) 
         assert isinstance(varparam.type, TypeVar)
         elements = [bind_typevars(e, bound_types) for e in elements]
         bound_types[varparam.type] = Star(tuple(elements))
-        bound_varparam = (varparam, elements)
+        bound_params[varparam] = Row(index=varparam.index, type=Star(tuple(elements)))
     if unbound_args:
         return None
     return Binding(
         bound_typevars=bound_types,
         bound_params={k: bind_typevars(v, bound_types) for k, v in bound_params.items()},
-        bound_varparam=bound_varparam,
         unbound_params=unbound_params,
     )
 
@@ -676,6 +676,11 @@ def access(t: TypeExpr, arg: TypeExpr) -> Overloaded | Module:
         case Class() as t, arg:
             getter = access(t, literal('__getitem__'))
             getter_as_property = partial(getter, typed_dict([make_row(1, None, arg)]))
+            if getter_as_property == BOTTOM:
+                return BOTTOM
+            if isinstance(getter_as_property, Union):
+                assert len(getter_as_property.items) == 1, f'{getter_as_property!r}'
+                [getter_as_property] = getter_as_property.items
             assert isinstance(getter_as_property, Overloaded), f'{getter_as_property!r}'
             return overload([replace(g, is_property=True) for g in getter_as_property.items])
         case Module() as t, arg:
@@ -803,7 +808,8 @@ def partial(callable: TypeExpr, args: TypedDict) -> TypeExpr:
                                     return_type=bind_typevars(f.return_type, binding.bound_typevars))
                         overloaded.append(f)
                 del f
-
+                if not overloaded:
+                    continue
                 applied.append(overload(overloaded))
 
                 if first_bound_params is None:

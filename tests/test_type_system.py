@@ -152,7 +152,7 @@ def test_bind_self_tuple():
                 params=make_rows(N),
                 return_type=ts.Access(tuple_star, N),
                 type_params=(N,))
-    assert ts.bind_self(ts.overload([f]), tuple_named) == g
+    assert ts.bind_self(ts.overload([f]), tuple_named) == ts.overload([g])
 
 
 def test_tuple():
@@ -171,7 +171,7 @@ def test_tuple():
                         is_property=False,
                         side_effect=ts.SideEffect(new=False),
                         type_params=(N,))
-    assert g == f
+    assert g == ts.overload([f])
     x = ts.call(g, make_rows(FIRST))
     assert x == INT
 
