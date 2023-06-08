@@ -65,8 +65,8 @@ class AllocationChecker:
 
 
 def make_rows(*types: ts.TypeExpr) -> ts.Intersection:
-    return ts.intersect([ts.make_row(index, None, t)
-                         for index, t in enumerate(types)])
+    return ts.typed_dict([ts.make_row(index, None, t)
+                          for index, t in enumerate(types)])
 
 
 def join(left: Allocation, right: Allocation) -> Allocation:
@@ -89,7 +89,7 @@ def from_function(function: ts.TypeExpr, returns: ts.TypeExpr) -> Allocation:
                 return AllocationType.STACK
             else:
                 return AllocationType.NONE
-        if isinstance(function, ts.Intersection):
+        if isinstance(function, ts.Overloaded):
             result = AllocationType.NONE
             for t in function.items:
                 result = join(result, from_function(t))

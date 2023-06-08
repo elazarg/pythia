@@ -6,7 +6,6 @@ import os
 import typing
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import List
 
 
 @dataclass(frozen=True)
@@ -517,6 +516,10 @@ def match_index(param: Index, arg: Index) -> bool:
 def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeExpr) -> typing.Optional[dict[TypeVar, TypeExpr]]:
     if param == arg:
         return {}
+    if arg == BOTTOM:
+        return {x: BOTTOM for x in (set(type_params) & free_vars_expr(param))}
+    if param == TOP:
+        return {}
     match param, arg:
         case Ref('typing.Any'), _:
             return {}
@@ -539,8 +542,9 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
         case Instantiation() as param, Instantiation() as arg:
             if param.generic != arg.generic:
                 return None
-            mid_context = unify(type_params, typed_dict([make_row(i, None, p) for i, p in enumerate(param.type_args)]),
-                                             typed_dict([make_row(i, None, p) for i, p in enumerate(arg.type_args)]))
+            ps = typed_dict([make_row(i, None, p) for i, p in enumerate(param.type_args)])
+            args = typed_dict([make_row(i, None, p) for i, p in enumerate(arg.type_args)])
+            mid_context = unify(type_params, ps, args)
             assert mid_context is not None
             return mid_context.bound_typevars
         case Instantiation() as param, Literal(tuple() as value, ref):
@@ -672,10 +676,13 @@ def access(t: TypeExpr, arg: TypeExpr) -> Overloaded | Module:
                     return t
             if not types and isinstance(t, Module) and t.name not in ['builtins', 'numpy']:
                 return TOP
-            return overload(types)
+            result = overload(types)
+            assert free_vars_expr(result) == set(), f'{result!r}'
+            return result
         case Class() as t, arg:
             getter = access(t, literal('__getitem__'))
             getter_as_property = partial(getter, typed_dict([make_row(1, None, arg)]))
+            assert free_vars_expr(getter_as_property) == set(), f'{getter_as_property!r}'
             if getter_as_property == BOTTOM:
                 return BOTTOM
             if isinstance(getter_as_property, Union):
@@ -742,26 +749,42 @@ def split_params_by_arg_indices(params: TypedDict, args: TypedDict) -> tuple[lis
     return bound_params, typed_dict(unbound_params)
 
 
+def union_all(iterable: typing.Iterable[set]) -> set:
+    result = set()
+    for item in iterable:
+        result |= item
+    return result
+
+
 def free_vars_expr(t: TypeExpr) -> set[TypeVar]:
     match t:
         case TypeVar() as t:
             return {t}
+        case Star() as t:
+            return union_all(free_vars_expr(item) for item in t.items)
+        case Access(t, arg):
+            return free_vars_expr(t) | free_vars_expr(arg)
         case Ref() | Literal():
             return set()
         case Union(items):
-            return set.union(*[free_vars_expr(item) for item in items])
+            return union_all(free_vars_expr(item) for item in items)
         case Instantiation(generic, args):
-            return free_vars_expr(generic).union(set.union(*[free_vars_expr(arg) for arg in args]))
-        case TypedDict(): assert False
-        case FunctionType(): assert False
-        case Class(): assert False
-        case Module(): assert False
-        case Overloaded(): assert False
-        case _: assert False, f'{t=}'
+            return free_vars_expr(generic) | union_all(free_vars_expr(arg) for arg in args)
+        case TypedDict() as t:
+            return free_vars_typed_dict(t)
+        case FunctionType() as f:
+            result = free_vars_expr(f.return_type) | free_vars_expr(f.params)
+            result -= set(f.type_params) & free_vars_expr(f.params)
+            return result
+        case Class(): return set()
+        case Module(): return set()
+        case Overloaded() as t:
+            return union_all(free_vars_expr(item) for item in t.items)
+        case _: assert False, f'{t!r} {type(t)!r}'
 
 
 def free_vars_typed_dict(t: TypedDict) -> set[TypeVar]:
-    return set.union(*[free_vars_expr(item.type) for item in t.row_items()])
+    return union_all(free_vars_expr(item.type) for item in t.row_items())
 
 
 def subtract_type_underapprox(argtype: TypeExpr, paramtype: TypeExpr) -> TypeExpr:
@@ -891,20 +914,22 @@ def subscr(selftype: TypeExpr, index: TypeExpr) -> TypeExpr:
         return BOTTOM
     elif isinstance(attr_type, Overloaded):
         attr_type = attr_type.squeeze()
-    res = bind_self(attr_type, selftype)
-    if isinstance(res, FunctionType):
-        res = overload([res])
-    if isinstance(res, Overloaded):
-        if any(f.is_property for f in res.items):
-            assert all(f.is_property for f in res.items)
-            return union(f.return_type for f in res.items)
-    return res
+    result = bind_self(attr_type, selftype)
+    if isinstance(result, FunctionType):
+        result = overload([result])
+    if isinstance(result, Overloaded):
+        if any(f.is_property for f in result.items):
+            assert all(f.is_property for f in result.items)
+            return union(f.return_type for f in result.items)
+    assert not free_vars_expr(result), f'{result!r}'
+    return result
 
 
 def call(callable: TypeExpr, args: TypedDict) -> TypeExpr:
     resolved = partial(callable, args)
-    res = get_return(resolved)
-    return res
+    result = get_return(resolved)
+    assert not free_vars_expr(result), f'{result!r}'
+    return result
 
 
 def make_list_constructor() -> TypeExpr:
@@ -995,7 +1020,9 @@ def get_binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     assert isinstance(right_ops, Overloaded), f'{right_ops!r}'
     right_ops = meet_all(swap_binop_params(rf) for rf in right_ops.items)
     ops = meet(left_ops, right_ops)
-    return bind_self(ops, left)
+    result = bind_self(ops, left)
+    assert not free_vars_expr(result), f'{result!r}'
+    return result
 
 
 def swap_binop_params(rf: FunctionType) -> FunctionType:

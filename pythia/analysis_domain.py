@@ -191,14 +191,6 @@ MapDomain: typing.TypeAlias = Map[K, T] | Bottom
 VarMapDomain: typing.TypeAlias = MapDomain[tac.Var, T]
 
 
-def normalize(values: VarMapDomain[T]) -> VarMapDomain[T]:
-    if isinstance(values, Bottom):
-        return BOTTOM
-    if any(isinstance(v, Bottom) for v in values.values()):
-        return BOTTOM
-    return values
-
-
 class InstructionLattice(Lattice[T], typing.Protocol[T]):
     backward: bool
 
@@ -296,6 +288,13 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
     def bottom(self) -> VarMapDomain[T]:
         return BOTTOM
 
+    def normalize(self, values: VarMapDomain[T]) -> VarMapDomain[T]:
+        if isinstance(values, Bottom):
+            return BOTTOM
+        if any(self.lattice.is_bottom(v) for v in values.values()):
+            return BOTTOM
+        return values
+
     def join(self, left: VarMapDomain[T], right: VarMapDomain[T]) -> VarMapDomain[T]:
         match left, right:
             case (Bottom(), _): return right
@@ -304,19 +303,19 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
                 res: Map[tac.Var, T] = self.top()
                 for k in left.keys() | right.keys():
                     res[k] = self.lattice.join(left[k], right[k])
-                return normalize(res)
+                return self.normalize(res)
         return self.top()
 
     def transformer_expr(self, values: Map[tac.Var, T], expr: tac.Expr) -> T:
         def eval(expr: tac.Var | tac.Predefined) -> T:
             res = self.transformer_expr(values, expr)
-            assert not self.lattice.is_bottom(res)
+            # assert not self.lattice.is_bottom(res)
             return res
 
         match expr:
             case tac.Var():
                 res = self.lattice.var(values[expr])
-                assert not self.lattice.is_bottom(res)
+                # assert not self.lattice.is_bottom(res)
                 return res
             case tac.Attribute():
                 val = eval(expr.var)
@@ -383,7 +382,7 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
                 to_update = self.make_map({
                     tac.Var('return'): assigned
                 })
-        assert not any(self.lattice.is_bottom(v) for v in to_update.values())
+        # assert not any(self.lattice.is_bottom(v) for v in to_update.values())
         return to_update
 
     def transfer(self, values: VarMapDomain[T], ins: tac.Tac, location: Location) -> VarMapDomain[T]:
@@ -412,4 +411,4 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
             for var in set(values.keys()):
                 if var.is_stackvar and here[var] is BOTTOM:
                     del values[var]
-        return normalize(values)
+        return self.normalize(values)

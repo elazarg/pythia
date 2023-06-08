@@ -28,7 +28,7 @@ from typing import TypeVar
 
 from pythia import tac
 from pythia.analysis_domain import Top, Bottom, TOP, BOTTOM, \
-    VarMapDomain, Lattice, Map, normalize, InstructionLattice
+    VarMapDomain, Lattice, Map, InstructionLattice
 from pythia.graph_utils import Location
 
 T = TypeVar('T')
@@ -105,6 +105,13 @@ class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
     def is_bottom(self, values: VarMapDomain[Liveness]) -> bool:
         return isinstance(values, Bottom)
 
+    def normalize(self, values: VarMapDomain[T]) -> VarMapDomain[T]:
+        if isinstance(values, Bottom):
+            return BOTTOM
+        if any(isinstance(v, Bottom) for v in values.values()):
+            return BOTTOM
+        return values
+
     def make_map(self, d: typing.Optional[dict[tac.Var, Liveness]] = None) -> Map[tac.Var, Liveness]:
         d = d or {}
         return Map(default=self.lattice.default(), d=d)
@@ -123,7 +130,7 @@ class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
                 res = self.top()
                 for k in left.keys() | right.keys():
                     res[k] = self.lattice.join(left[k], right[k])
-                return normalize(res)
+                return self.normalize(res)
         return self.top()
 
     def back_transfer(self, values: VarMapDomain[Liveness], ins: tac.Tac, location: Location) -> VarMapDomain[Liveness]:
@@ -147,4 +154,4 @@ class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
             if var in values:
                 del values[var]
         values.update(to_update)
-        return normalize(values)
+        return self.normalize(values)
