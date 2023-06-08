@@ -44,7 +44,7 @@ def copy_graph(graph: Graph) -> Graph:
     return graph.copy()
 
 
-def make_fields(d: typing.Optional[dict[tac.Var, Object]] = None) -> Fields:
+def make_fields(d: typing.Optional[dict[tac.Var, set[Object]]] = None) -> Fields:
     d = d or {}
     return domain.Map(default=frozenset(), d=d)
 
@@ -169,7 +169,7 @@ def find_reachable(ptr: Graph, alive: set[tac.Var], params: set[tac.Var],
         root = worklist.pop()
         if '.' in root.location:
             yield object_to_location(root)
-        for edge, objects in ptr.get(root, {}).items():
+        for edge, objects in ptr[root].items():
             if root == LOCALS and edge not in alive:
                 # We did not remove non-stack variables from the pointer lattice, so we need to filter them out here.
                 continue

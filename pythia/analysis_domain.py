@@ -144,8 +144,8 @@ class Map(typing.Generic[K, T]):
             if key in self._map:
                 del self._map[key]
         else:
-            assert not isinstance(value, dict)
-            assert not isinstance(value, Map)
+            # assert not isinstance(value, dict)
+            # assert not isinstance(value, Map)
             self._map[key] = value
 
     def update(self, dictionary: dict[K, T] | Map) -> None:

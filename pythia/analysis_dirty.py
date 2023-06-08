@@ -62,10 +62,10 @@ class DirtyLattice(InstructionLattice[Dirty]):
             case tac.For():
                 values.clear()
             case tac.Assign(lhs=tac.Attribute(var=tac.Var() as var) | tac.Subscript(var=tac.Var() as var)):
-                values.update(self.pointer_map[location][LOCALS].get(var, set()))
+                values.update(self.pointer_map[location][LOCALS][var])
             case tac.Assign(lhs=tac.Var() as var):
                 if self.allocation_invariant_map[location] != AllocationType.NONE:
-                    values.update(self.pointer_map[location][LOCALS].get(var, set()))
+                    values.update(self.pointer_map[location][LOCALS][var])
         return values
 
 
