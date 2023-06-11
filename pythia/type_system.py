@@ -118,6 +118,8 @@ class Literal(TypeExpr):
     ref: Ref
 
     def __repr__(self) -> str:
+        if isinstance(self.value, tuple):
+            return f'Literal({list(self.value)})'
         return f'Literal({self.value!r})'
 
 
@@ -342,6 +344,9 @@ def overload(functions: typing.Iterable[FunctionType | Overloaded]) -> Overloade
 
 def union(items: typing.Iterable[TypeExpr], squeeze=True) -> TypeExpr:
     items = frozenset(items)
+    if any(isinstance(x, Literal) for x in items):
+        if any(isinstance(x, Ref) for x in items):
+            pass
     # assert len(items) > 0
     res = Union(items)
     if squeeze:
@@ -351,6 +356,7 @@ def union(items: typing.Iterable[TypeExpr], squeeze=True) -> TypeExpr:
 
 TOP = typed_dict([])
 BOTTOM = Union(frozenset())
+ANY = Ref('typing.Any')
 
 
 def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
@@ -504,6 +510,10 @@ class Action(enum.Enum):
 
 
 def is_subtype(left: TypeExpr, right: TypeExpr) -> bool:
+    if right == ANY:
+        return True
+    if left == ANY:
+        return True
     return join(left, right) == right
 
 
@@ -523,7 +533,7 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
     if param == TOP:
         return {}
     match param, arg:
-        case Ref('typing.Any'), _:
+        case (Ref('typing.Any'), _) | (_, Ref('typing.Any')):
             return {}
         case Union(items), arg:
             res = [unified for item in items if (unified := unify_argument(type_params, item, arg)) is not None]
@@ -1019,9 +1029,12 @@ def get_binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
         return TOP
     if isinstance(right_ops, FunctionType):
         right_ops = overload([right_ops])
-    assert isinstance(right_ops, Overloaded), f'{right_ops!r}'
-    right_ops = meet_all(swap_binop_params(rf) for rf in right_ops.items)
-    ops = meet(left_ops, right_ops)
+    if right_ops != BOTTOM:
+        assert isinstance(right_ops, Overloaded), f'{right_ops!r}'
+        right_ops = overload(swap_binop_params(rf) for rf in right_ops.items)
+        ops = overload([left_ops, right_ops])
+    else:
+        ops = left_ops
     result = bind_self(ops, left)
     assert not free_vars_expr(result), f'{result!r}'
     return result
@@ -1068,7 +1081,7 @@ def infer_self(row: Row) -> Row:
     self_args, other_args = params.split_by_index(0)
     [self_arg_row] = self_args.row_items()
     type_params = function.type_params
-    if self_arg_row.type == Ref('typing.Any'):
+    if self_arg_row.type == ANY:
         self_type = TypeVar('Self')
         self_arg_row = replace(self_arg_row, type=self_type)
         type_params = (self_type, *type_params)
@@ -1129,7 +1142,7 @@ def module_to_type(module: ast.Module, name: str) -> Module:
     def expr_to_type(expr: typing.Optional[ast.expr]) -> TypeExpr:
         match expr:
             case None:
-                return Ref(f'typing.Any')
+                return ANY
             case ast.Constant(value):
                 return literal(value)
             case ast.Name(id=id):

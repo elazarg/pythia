@@ -237,6 +237,14 @@ def test_operator_numpy():
     assert x == ARRAY
 
 
+def test_right_operator_numpy():
+    x = ts.binop(FLOAT, ARRAY, '+')
+    assert x == ARRAY
+
+    x = ts.binop(FLOAT, ARRAY, '*')
+    assert x == ARRAY
+
+
 def test_list_constructor():
     constructor = ts.make_list_constructor()
     args = make_rows(INT)

@@ -399,6 +399,7 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
             # print()
         except Exception as e:
             e.add_note(f'while processing {ins} at {location}')
+            e.add_note(f'values: {values}')
             raise
         for var in tac.gens(ins):
             if var in values:
