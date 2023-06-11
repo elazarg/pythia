@@ -44,7 +44,7 @@ def copy_graph(graph: Graph) -> Graph:
     return graph.copy()
 
 
-def make_fields(d: typing.Optional[dict[tac.Var, set[Object]]] = None) -> Fields:
+def make_fields(d: typing.Optional[dict[tac.Var, frozenset[Object]]] = None) -> Fields:
     d = d or {}
     return domain.Map(default=frozenset(), d=d)
 
@@ -122,6 +122,10 @@ class PointerLattice(InstructionLattice[Graph]):
                     else:
                         return frozenset(chain.from_iterable(values[obj][expr.field]
                                                              for obj in eval(expr.var)))
+                case tac.Subscript():
+                    if allocated:
+                        return frozenset({location_object})
+                    return frozenset()
                 case _: return frozenset()
 
         activation = values[LOCALS]
