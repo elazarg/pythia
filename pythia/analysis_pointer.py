@@ -151,8 +151,9 @@ class PointerLattice(InstructionLattice[Graph]):
             return values
 
         for var in set(activation.keys()):
-            if var.is_stackvar and here[var] is BOTTOM:
-                del activation[var]
+            if var.is_stackvar:
+                if here[var] == BOTTOM:
+                    del activation[var]
 
         return values
 

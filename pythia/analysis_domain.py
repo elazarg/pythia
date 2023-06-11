@@ -410,6 +410,7 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
         here = self.liveness[location]
         if not isinstance(here, Bottom):
             for var in set(values.keys()):
-                if var.is_stackvar and here[var] is BOTTOM:
-                    del values[var]
+                if var.is_stackvar:
+                    if here[var] == BOTTOM:
+                        del values[var]
         return self.normalize(values)
