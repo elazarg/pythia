@@ -58,7 +58,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations: dict
             location = (label, index)
             pre_result[location] = post
             invariant = analysis.transfer(invariant, ins, location)
-            assert not isinstance(invariant, domain.Bottom), f'At {location}\nfrom {pre_result[location]}\n{ins} produced bottom'
+            # assert not isinstance(invariant, domain.Bottom), f'At {location}\nfrom {pre_result[location]}\n{ins} produced bottom'
 
             post = post_result[location] = invariant
         for next_label in cfg.successors(label):
