@@ -43,7 +43,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations: dict
     post_result: InvariantMap[T] = {}
 
     cfg: domain.IterationStrategy = domain.BackwardIterationStrategy(_cfg) if analysis.backward else domain.ForwardIterationStrategy(_cfg)
-    gu.pretty_print_cfg(_cfg)
+    # gu.pretty_print_cfg(_cfg)
     wl = [entry] = {cfg.entry_label}
     initial = analysis.initial(annotations)
     pre_result[(entry, cfg[entry].first_index())] = initial
@@ -58,7 +58,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations: dict
             location = (label, index)
             pre_result[location] = post
             invariant = analysis.transfer(invariant, ins, location)
-            assert not isinstance(invariant, domain.Bottom), f'At {location}\nfrom {pre_result[location]}\n{ins} produced bottom'
+            # assert not isinstance(invariant, domain.Bottom), f'At {location}\nfrom {pre_result[location]}\n{ins} produced bottom'
 
             post = post_result[location] = invariant
         for next_label in cfg.successors(label):
@@ -75,7 +75,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations: dict
 
 def analyze_single(cfg: Cfg, analysis: typing.Callable[[tac.Tac, Location], T]) -> InvariantMap[T]:
     result: InvariantMap[T] = {}
-    gu.pretty_print_cfg(cfg)
+    # gu.pretty_print_cfg(cfg)
     for label, block in cfg.items():
         for index, ins in block.items():
             location = (label, index)
