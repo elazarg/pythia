@@ -363,6 +363,14 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
     if t1 == TOP or t2 == TOP:
         return TOP
     match t1, t2:
+        case Union(items1), Union(items2):
+            return Union(items1 | items2).squeeze()
+        case (Union(items), other) | (other, Union(items)):  # type: ignore
+            return Union(items | {other}).squeeze()
+        case (Overloaded(), Overloaded()):
+            return union([t1, t2])
+        case (Overloaded(), _) | (_, Overloaded()):
+            return TOP
         case (Literal() as l1, Literal() as l2):
             if l1.ref == l2.ref:
                 if isinstance(l1.value, tuple):
@@ -381,12 +389,6 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             return join(inst, Instantiation(ref, value))
         case (TypedDict(items1), TypedDict(items2)):  # type: ignore
             return TypedDict(items1.intersection(items2))
-        case (Overloaded(), _):
-            return TOP
-        case Union(items1), Union(items2):
-            return Union(items1 | items2).squeeze()
-        case (Union(items), other) | (other, Union(items)):  # type: ignore
-            return Union(items | {other}).squeeze()
         case (Ref() as ref, other) | (other, Ref() as ref):  # type: ignore
             if resolve_static_ref(ref) == other:
                 return ref
@@ -848,7 +850,7 @@ def partial(callable: TypeExpr, args: TypedDict) -> TypeExpr:
                 )
                 if any(arg.type == BOTTOM for arg in args.row_items()):
                     break
-            return union(applied)
+            return join_all(applied)
         case FunctionType() as f:
             binding = unify(f.type_params, f.params, args)
             # This returns a single case, so defaults to BOTTOM.

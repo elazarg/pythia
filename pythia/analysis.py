@@ -65,6 +65,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations: dict
             next_location = (next_label, cfg[next_label].first_index())
             next_pre = pre_result.get(next_location, analysis.bottom())
             if not analysis.is_less_than(post, next_pre):
+                # print("At label", label, "next label", next_label, "next pre", next_pre, "post", post)
                 pre_result[next_location] = analysis.join(post, next_pre)
                 wl.add(next_label)
 
@@ -105,6 +106,8 @@ def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], property_map:
                 else:
                     print(f'\t{name}:', post_invariant)
             print()
+        print("Successors:", list(cfg.successors(label)))
+        print()
 
 
 def find_first_for_loop(cfg: Cfg) -> tuple[Location, Location]:

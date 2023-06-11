@@ -10,7 +10,11 @@ Cfg = gu.Cfg[Instruction]
 
 def is_sequencer(ins: Instruction) -> bool:
     return ins.opname in (
-        'RETURN_VALUE', 'CONTINUE_LOOP', 'BREAK_LOOP', 'RAISE_VARARGS', 'JUMP_FORWARD', 'JUMP_ABSOLUTE')
+        'RETURN_VALUE',
+        'CONTINUE_LOOP', 'BREAK_LOOP',
+        'RAISE_VARARGS',
+        'JUMP_BACKWARD', 'JUMP_FORWARD', 'JUMP_ABSOLUTE'
+    )
 
 
 def is_return(ins: Instruction) -> bool:

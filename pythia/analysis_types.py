@@ -32,7 +32,10 @@ class TypeLattice(ValueLattice[TypeExpr]):
         return "Type"
 
     def join(self, left: TypeExpr, right: TypeExpr) -> TypeExpr:
-        return ts.join(left, right)
+        if left == right:
+            return left
+        result = ts.join(left, right)
+        return result
 
     def meet(self, left: TypeExpr, right: TypeExpr) -> TypeExpr:
         return ts.meet(left, right)

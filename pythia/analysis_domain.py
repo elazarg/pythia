@@ -390,13 +390,13 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
             return BOTTOM
         values = values.copy()
         try:
-            print(f'values: {values}')
-            print(f'{location}: {ins}')
+            # print(f'values: {values}')
+            # print(f'{location}: {ins}')
             if location == (215, 0):
                 pass
             to_update = self.forward_transfer(values, ins)
-            print(f'updated: {to_update}')
-            print()
+            # print(f'updated: {to_update}')
+            # print()
         except Exception as e:
             e.add_note(f'while processing {ins} at {location}')
             raise
