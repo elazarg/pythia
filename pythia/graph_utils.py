@@ -127,6 +127,7 @@ class Cfg(Generic[T]):
             for label in sources:
                 self.graph.add_edge(source, label)
         else:
+            assert len(sources) == 1, sources
             [source] = sources
         assert {sink, source} == {self.exit_label, self.entry_label}, {sink, source}
         self.annotator = lambda tup, x: ''
@@ -194,6 +195,7 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
          into  >[---]<
     The label of the chain is the label of its first element.
     """
+    # pretty_print_cfg(cfg)
     g = cfg.graph
     starts = set(chain((n for n in g if g.in_degree(n) != 1),
                        chain.from_iterable(g.successors(n) for n in g
@@ -209,7 +211,7 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
             if g.out_degree(n) != 1:
                 break
             next_n = next(iter(g.successors(n)))
-            if g.in_degree(next_n) != 1:
+            if instructions and g.in_degree(next_n) != 1:
                 break
             if len(instructions) and type(instructions[-1]).__name__ == 'Jump':
                 del instructions[-1]
@@ -233,9 +235,10 @@ def refine_to_chain(cfg: Cfg) -> Cfg:
     for n in g.nodes():
         block = g.nodes[n][BLOCK_NAME]
         size = len(block)
+        assert size or n == math.inf, n
         path = nx.path_graph(size, create_using=nx.DiGraph())
         nx.relabel_nodes(path, mapping={x: n + x for x in path.nodes()}, copy=False)
-        path.add_edges_from((n + size - 1, s) for s in g.successors(n))
+        path.add_edges_from((n + max(0, size - 1), s) for s in g.successors(n))
         paths.append(path)
     blocks = {n + i: [block]
               for n in g.nodes()
