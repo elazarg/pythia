@@ -77,8 +77,9 @@ class TypeLattice(ValueLattice[TypeExpr]):
 
     def binary(self, left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
         result = ts.binop(left, right, op)
-        # Shorthand for: "we assume that there is an implementation"
         if self.is_bottom(result):
+            assert False, f"Cannot resolve {op} on {left} and {right}"
+            # Shorthand for: "we assume that there is an implementation"
             return self.top()
         return result
 

@@ -115,4 +115,6 @@ def all(x) -> bool: pass
 def any(x) -> bool: pass
 def sorted(x) -> list: pass
 
+def zip(x: Iterable[T], y: Iterable[Q]) -> Iterable[tuple[T, Q]]: pass
+
 def enumerate(xs: T) -> Iterable[tuple[int, T]]: pass
