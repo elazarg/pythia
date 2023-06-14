@@ -880,7 +880,7 @@ def partial(callable: TypeExpr, args: TypedDict) -> TypeExpr:
             assert False, f'Cannot call {callable} with {args}'
 
 
-def partial_positional(f: TypeExpr, args: tuple[TypeExpr]) -> TypeExpr:
+def partial_positional(f: TypeExpr, args: tuple[TypeExpr, ...]) -> TypeExpr:
     return partial(f, typed_dict([make_row(i, None, arg) for i, arg in enumerate(args)]))
 
 

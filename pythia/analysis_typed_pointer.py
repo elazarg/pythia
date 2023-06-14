@@ -3,10 +3,9 @@ from __future__ import annotations as _
 import enum
 import typing
 from dataclasses import dataclass
-from itertools import chain
 from typing import TypeAlias, Final
 
-from analysis_types import TypeLattice
+from pythia.analysis_types import TypeLattice
 from pythia import tac
 from pythia.graph_utils import Location
 from pythia import analysis_domain as domain
@@ -16,23 +15,42 @@ from pythia.analysis_liveness import Liveness
 import pythia.type_system as ts
 
 
+# Abstract location can be either:
+# 1. line of code where it is allocated
+# 2. parameter
+# 3. immutable value of a certain type
+# 4. Scope: Globals, locals*
+
 @dataclass(frozen=True)
-class Object:
-    location: str
+class Param:
     param: typing.Optional[tac.Var] = None
 
     def __repr__(self) -> str:
-        return f'@{self.location}{self.param if self.param else ""}'
+        return f'@param {self.param}'
 
 
-def param_object(p: tac.Var) -> Object:
-    return Object('param ', p)
+@dataclass(frozen=True)
+class Immutable:
+    type: ts.TypeExpr
+
+    def __repr__(self) -> str:
+        return f'@type {self.type}'
 
 
-LOCALS: Final[Object] = Object('locals()')
-NONLOCALS: Final[Object] = Object('NONLOCALS')
+@dataclass(frozen=True)
+class Scope:
+    name: str
 
-GLOBALS: Final[Object] = Object('globals()')
+    def __repr__(self) -> str:
+        return f'@scope {self.name}'
+
+
+Object: TypeAlias = typing.Union[Location, Param, Immutable, Scope]
+
+
+LOCALS: Final[Object] = Scope('locals')
+GLOBALS: Final[Object] = Scope('globals')
+
 
 Fields: TypeAlias = domain.Map[tac.Var, frozenset[Object]]
 Graph: TypeAlias = domain.Map[Object, Fields]
@@ -56,11 +74,16 @@ def make_type_map(d: typing.Optional[dict[Object, ts.TypeExpr]] = None) -> domai
 class Pointer:
     graph: Graph
 
+    def __repr__(self):
+        return f'Pointer({self.graph})'
+
     def __init__(self, graph: Graph):
         self.graph = graph.copy()
 
     def is_less_than(self, other: Pointer) -> bool:
-        return self.join(other) == other
+        return all(self.graph[obj][field] <= other.graph[obj][field]
+                   for obj in self.graph
+                   for field in self.graph[obj])
 
     def copy(self) -> Pointer:
         return Pointer(self.graph)
@@ -95,14 +118,14 @@ class Pointer:
 
     def __setitem__(self, key: Object | tuple[Object, tac.Var], value: Fields | frozenset[Object]) -> None:
         match key, value:
-            case (Object() as obj, tac.Var() as var), (frozenset() as values):
+            case (Param() | Immutable() | Scope() | Location() as obj, tac.Var() as var), (frozenset() as values):
                 self.graph[obj][var] = values
-            case Object() as obj, (domain.Map() as values):
+            case Param() | Immutable() | Scope() | Location() as obj, (domain.Map() as values):
                 self.graph[obj] = values
             case _:
                 raise ValueError(f'Invalid key {key} or value {value}')
 
-    def pretty_print(self) -> str:
+    def __str__(self) -> str:
         join = lambda target_obj: "{" + ", ".join(str(x) for x in target_obj) + "}"
         return ', '.join((f'{source_obj}:' if source_obj is not LOCALS else '') + f'{field}->{join(target_obj)}'
                          for source_obj in self.graph
@@ -119,14 +142,19 @@ class Pointer:
 class TypeMap:
     map: domain.Map[Object, ts.TypeExpr]
 
+    def __repr__(self):
+        return f'TypeMap({self.map})'
+
     def __init__(self, map: domain.Map[Object, ts.TypeExpr]):
         self.map = map.copy()
 
     def is_less_than(self, other: TypeMap) -> bool:
-        return self.join(other) == other
+        # TODO: check
+        return all(ts.is_subtype(self.map[obj], other.map[obj])
+                   for obj in self.map)
 
     def copy(self) -> TypeMap:
-        return self
+        return TypeMap(self.map.copy())
 
     @staticmethod
     def bottom() -> TypeMap:
@@ -144,18 +172,28 @@ class TypeMap:
 
     def __getitem__(self, obj: Object | frozenset[Object]) -> ts.TypeExpr:
         match obj:
-            case Object(): return self.map[obj]
-            case frozenset(): return ts.join_all(self[x] for x in obj)
+            case frozenset():
+                return ts.join_all(self[x] for x in obj)
+            case obj:
+                return self.map[obj]
+
+    def __setitem__(self, key: Object | frozenset[Object], value: ts.TypeExpr) -> None:
+        match key:
+            case frozenset():
+                for x in key:
+                    self.map[x] = value
+            case obj:
+                self.map[obj] = value
 
     def join(self, other: TypeMap) -> TypeMap:
         left = self.map
         right = other.map
-        res: domain.Map[Object, ts.TypeExpr] = self.top().map
+        res: domain.Map[Object, ts.TypeExpr] = TypeMap.bottom().map
         for k in left.keys() | right.keys():
             res[k] = ts.join(left[k], right[k])
         return TypeMap(res)
 
-    def pretty_print(self) -> str:
+    def __str__(self) -> str:
         return ','.join(f'{obj}: {type_expr}' for obj, type_expr in self.map.items())
 
     @staticmethod
@@ -178,8 +216,11 @@ class TypedPointer:
     pointers: Pointer
     types: TypeMap
 
+    def __repr__(self):
+        return f'TP:\n {self.pointers}\n {self.types}\n'
+
     def is_less_than(self: TypedPointer, other: TypedPointer) -> bool:
-        return self.join(other) == other
+        return self.pointers.is_less_than(other.pointers) and self.types.is_less_than(other.types)
 
     def copy(self: TypedPointer) -> TypedPointer:
         return TypedPointer(self.pointers.copy(),
@@ -204,8 +245,8 @@ class TypedPointer:
         return typed_pointer(self.pointers.join(right.pointers),
                              self.types.join(right.types))
 
-    def pretty_print(self) -> str:
-        return self.pointers.pretty_print() + '\n' + self.types.pretty_print()
+    def __str__(self) -> str:
+        return str(self.pointers) + '\n' + str(self.types)
 
     @staticmethod
     def initial(annotations: domain.Map[Object, ts.TypeExpr]) -> TypedPointer:
@@ -225,10 +266,10 @@ def parse_annotations(this_function: str, this_module: ts.Module) -> TypeMap:
     assert isinstance(this_signature, ts.Overloaded), f"Expected overloaded type, got {this_signature}"
     assert len(this_signature.items) == 1, f"Expected single signature, got {this_signature}"
     [this_signature] = this_signature.items
-    annotations = {param_object(tac.Var(row.index.name)): row.type
+    annotations = {Param(tac.Var(row.index.name)): row.type
                    for row in this_signature.params.row_items()
                    if row.index.name is not None}
-    annotations[Object('return')] = this_signature.return_type
+    annotations[Param(tac.Var('return'))] = this_signature.return_type
     return TypeMap(make_type_map(annotations))
 
 
@@ -245,12 +286,12 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     def name(self) -> str:
         return "TypedPointer"
 
-    def __init__(self, type_lattice: TypeLattice,
+    def __init__(self,
                  liveness: InvariantMap[VarMapDomain[analysis_liveness.Liveness]],
                  this_function: str, this_module: ts.Module) -> None:
         super().__init__()
         self.annotations = parse_annotations(this_function, this_module)
-        self.type_lattice = type_lattice
+        self.type_lattice = TypeLattice(this_function, this_module)
         self.liveness = liveness
         self.backward = False
 
@@ -278,21 +319,28 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     def join(self, left: TypedPointer, right: TypedPointer) -> TypedPointer:
         return left.join(right)
 
-    def expr(self, tp: TypedPointer, expr: tac.Expr, location: Object) -> frozenset[Object]:
+    def expr(self, tp: TypedPointer, expr: tac.Expr, location: Object) -> tuple[frozenset[Object], ts.TypeExpr]:
         match expr:
+            case tac.Const(value):
+                t = self.type_lattice.const(value)
+                return (frozenset({Immutable(t)}), t)
             case tac.Var() as var:
                 objs = tp.pointers[LOCALS][var]
-                return objs
+                types = tp.types[objs]
+                return (objs, types)
             case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
                 var_objs = tp.pointers[LOCALS][var]
-                direct_objs = [tp.pointers[var_obj][field] for var_obj in var_objs]
+                direct_objs = flatten(tp.pointers[var_obj][field] for var_obj in var_objs)
+                types = self.type_lattice.attribute(tp.types[var_objs], field)
                 # TODO: class through type
-                return flatten(direct_objs)
+                return (direct_objs, types)
             case tac.Subscript(var=tac.Var() as var, index=tac.Var() as index):
                 var_objs = tp.pointers[LOCALS][var]
-                direct_objs = [tp.pointers[var_obj][tac.Var("*")] for var_obj in var_objs]
+                index_objs = tp.pointers[LOCALS][index]
+                direct_objs = flatten(tp.pointers[var_obj][tac.Var("*")] for var_obj in var_objs)
+                types = self.type_lattice.subscr(tp.types[var_objs], tp.types[index_objs])
                 # TODO: class through type
-                return flatten(direct_objs)
+                return (direct_objs, types)
             case tac.Call(tac.Var() as var, tuple() as args):
                 objects = tp.pointers[LOCALS][var]
                 func_type = tp.types[objects]
@@ -301,76 +349,67 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 applied = ts.partial_positional(func_type, arg_types)
                 assert isinstance(applied, ts.FunctionType)
                 if applied.new():
-                    return frozenset([location])
-                return frozenset()
+                    objects = frozenset([location])
+                else:
+                    objects = frozenset()
+                return (objects, ts.get_return(applied))
             case tac.Call(tac.Predefined() as func, tuple() as args):
-                raise NotImplementedError
+                assert func == tac.Predefined.LIST
+                func_type = self.type_lattice.predefined(func)
+                arg_objects = [tp.pointers[LOCALS][var] for var in args]
+                arg_types = tuple([tp.types[obj] for obj in arg_objects])
+                applied = ts.partial_positional(func_type, arg_types)
+                assert isinstance(applied, ts.FunctionType)
+                objects = frozenset([location])
+                return (objects, ts.get_return(applied))
             case tac.Unary(var=tac.Var() as var, op=tac.UnOp() as op):
                 raise NotImplementedError
             case tac.Binary(left=tac.Var() as left, right=tac.Var() as right, op=str() as op):
                 raise NotImplementedError
+            case _:
+                raise NotImplementedError(expr)
         assert False
 
-    def transfer(self, tp: TypedPointer, ins: tac.Tac, location: Location) -> TypedPointer:
-        tp = tp.copy()
-        location_object = Object(f'{location[0]}.{location[1]}')
-        allocation = AllocationType.NONE
-        if self.is_bottom(tp):
-            allocation = Allocation.UNKNOWN
-        if isinstance(ins, tac.Assign):
-            self.expr(ins.expr)
-        def eval(expr: tac.Expr) -> frozenset[Object]:
-            match expr:
-                case tac.Var():
-                    return tp.pointers[LOCALS][expr]
-                case tac.Call() | tac.Unary() | tac.Binary():
-                    if allocated:
-                        return frozenset({location_object})
-                    return frozenset()
-                case tac.Attribute():
-                    if allocated:
-                        return frozenset({location_object})
-                    if expr.var.name == 'GLOBALS':
-                        return tp.pointers[GLOBALS][expr.field]
-                    else:
-                        return frozenset(chain.from_iterable(tp.pointers[obj][expr.field]
-                                                             for obj in eval(expr.var)))
-                case tac.Subscript():
-                    if allocated:
-                        return frozenset({location_object})
-                    return frozenset()
-                case _: return frozenset()
+    def signature(self, tp: TypedPointer, signature: tac.Signature, pointed: frozenset[Object], t: ts.TypeExpr) -> None:
+        match signature:
+            case tuple() as signature:  # type: ignore
+                raise NotImplementedError
+            case tac.Var() as var:
+                tp.pointers[LOCALS, var] = pointed
+                tp.types[pointed] = t
+            case tac.Attribute(var, field):
+                for obj in tp.pointers[LOCALS][var]:
+                    tp.pointers[obj, field] = pointed
+            case tac.Subscript(var, index):
+                for obj in tp.pointers[LOCALS][var]:
+                    tp.pointers[obj, tac.Var('*')] = pointed
+            case _:
+                assert False, f'unexpected signature {signature}'
 
-        activation = tp.pointers[LOCALS]
+    def transfer(self, prev_tp: TypedPointer, ins: tac.Tac, location: Location) -> TypedPointer:
+        tp = prev_tp.copy()
 
+        # FIX: this removes pointers and make it "bottom" instead of "top"
         for var in tac.gens(ins):
-            if var in activation:
-                del activation[var]
+            if var in tp.pointers[LOCALS]:
+                del tp.pointers[LOCALS][var]
 
         match ins:
-            case tac.Assign():
-                val = eval(ins.expr)
-                match ins.lhs:
-                    case tac.Var():
-                        activation[ins.lhs] = val
-                    case tac.Attribute():
-                        for obj in eval(ins.lhs.var):
-                            tp.pointers[obj, ins.lhs.field] = val
-                    case tac.Subscript():
-                        for obj in eval(ins.lhs.var):
-                            tp.pointers[obj, tac.Var('*')] = val
-            case tac.Return():
-                val = eval(ins.value)
-                activation[tac.Var('return')] = val
+            case tac.Assign(lhs, expr):
+                (pointed, types) = self.expr(prev_tp, expr, location)
+                self.signature(tp, lhs, pointed, types)
+            case tac.Return(var):
+                val = tp.pointers[LOCALS][var]
+                tp.pointers[LOCALS, tac.Var('return')] = val
 
         here = self.liveness[location]
         if isinstance(here, domain.Bottom):
             return tp
 
-        for var in set(activation.keys()):
+        for var in set(tp.pointers[LOCALS].keys()):
             if var.is_stackvar:
                 if here[var] == BOTTOM:
-                    del activation[var]
+                    del tp.pointers[LOCALS][var]
 
         return tp
 
