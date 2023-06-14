@@ -1,5 +1,9 @@
 import numpy as np
 
+def empty() -> None:
+    x = 1
+    y = [1]
+
 def iterate(x: int):
     for i in range(x): pass
 

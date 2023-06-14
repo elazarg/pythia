@@ -1,7 +1,4 @@
 # Data flow analysis and stuff.
-
-from __future__ import annotations as _
-
 import math
 import typing
 from dataclasses import dataclass
@@ -13,11 +10,9 @@ import pythia.type_system as ts
 from pythia import disassemble, ast_transform
 from pythia import tac
 from pythia.analysis_allocation import AllocationType, AllocationChecker
-from pythia.analysis_constant import ConstLattice
-from pythia.analysis_dirty import DirtyLattice, find_reaching_locals
 from pythia.analysis_domain import InvariantMap
 from pythia.analysis_liveness import LivenessVarLattice
-from pythia.analysis_pointer import PointerLattice, pretty_print_pointers, update_allocation_invariants
+from pythia.analysis_typed_pointer import TypedPointerLattice
 from pythia.analysis_types import TypeLattice
 from pythia.graph_utils import Location
 
@@ -64,6 +59,14 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T]) -> InvariantPair[
         for next_label in cfg.successors(label):
             next_location = (next_label, cfg[next_label].first_index())
             next_pre = pre_result.get(next_location, analysis.bottom())
+
+            # print('---')
+            # print('post', post)
+            # print('next_pre', next_pre)
+            # print(analysis.is_less_than(post, next_pre))
+            # print(analysis.join(post, next_pre))
+            # print('====')
+            # print()
             if not analysis.is_less_than(post, next_pre):
                 # print("At label", label, "next label", next_label, "next pre", next_pre, "post", post)
                 pre_result[next_location] = analysis.join(post, next_pre)
@@ -84,7 +87,8 @@ def analyze_single(cfg: Cfg, analysis: typing.Callable[[tac.Tac, Location], T]) 
     return result
 
 
-def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], property_map: InvariantMap[AllocationType], print_invariants: bool = True) -> None:
+def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair],
+                   print_invariants: bool = True) -> None:
     for label, block in sorted(cfg.items()):
         if math.isinf(label):
             continue
@@ -92,19 +96,15 @@ def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], property_map:
             print('Pre:')
             for name, invariant_pair in invariants.items():
                 pre_invariant = invariant_pair.pre[(label, block.first_index())]
-                if name == 'Pointer':
-                    print(f'\t{name}:', pretty_print_pointers(pre_invariant))
-                else:
-                    print(f'\t{name}:', pre_invariant)
-        gu.print_block(label, block, cfg.annotator, lambda location, ins: property_map[location])
+                print(f'\t{name}:')
+                print(str(pre_invariant))
+        gu.print_block(label, block, cfg.annotator)
         if print_invariants:
             print('Post:')
             for name, invariant_pair in invariants.items():
                 post_invariant = invariant_pair.post[(label, block.last_index())]
-                if name == 'Pointer':
-                    print(f'\t{name}:', pretty_print_pointers(post_invariant))
-                else:
-                    print(f'\t{name}:', post_invariant)
+                print(f'\t{name}:')
+                print(str(post_invariant))
             print()
         print("Successors:", list(cfg.successors(label)))
         print()
@@ -119,40 +119,30 @@ def find_first_for_loop(cfg: Cfg) -> tuple[Location, Location]:
     return ((first_label, 0), (after, cfg[after].last_index()))
 
 
-def run(cfg: Cfg, annotations: dict[tac.Var, str], module_type: ts.Module, function_name: str) -> tuple[InvariantMap[AllocationType], set[str], dict[str, InvariantPair]]:
+def run(cfg: Cfg, annotations: dict[tac.Var, str], module_type: ts.Module, function_name: str) -> dict[str, InvariantPair]:
 
     liveness_invariants = analyze(cfg, LivenessVarLattice())
 
-    type_analysis: domain.VarLattice[ts.TypeExpr] = domain.VarLattice[ts.TypeExpr](TypeLattice(function_name, module_type),
-                                                                                   liveness_invariants.post)
-    type_invariants = analyze(cfg, type_analysis)
-    allocation_invariants: InvariantMap[AllocationType] = analyze_single(cfg, AllocationChecker(type_invariants.pre, type_analysis))
-
-    pointer_analysis = PointerLattice(allocation_invariants, liveness_invariants.post)
-    pointer_invariants = analyze(cfg, pointer_analysis)
-
-    dirty_analysis = DirtyLattice(pointer_invariants.post, allocation_invariants)
-    dirty_invariants = analyze(cfg, dirty_analysis)
-
-    for_location, loop_end = find_first_for_loop(cfg)
-
-    update_allocation_invariants(allocation_invariants,
-                                 pointer_invariants.post[for_location],
-                                 liveness_invariants.post[for_location],
-                                 annotations)
-
-    dirty_locals = set(find_reaching_locals(pointer_invariants.post[loop_end],
-                                            liveness_invariants.post[loop_end],
-                                            dirty_invariants.post[loop_end]))
+    typed_pointer_analysis = TypedPointerLattice(liveness_invariants.post, function_name, module_type)
+    typed_pointer_invariants = analyze(cfg, typed_pointer_analysis)
+    #
+    # for_location, loop_end = find_first_for_loop(cfg)
+    #
+    # update_allocation_invariants(allocation_invariants,
+    #                              pointer_invariants.post[for_location],
+    #                              liveness_invariants.post[for_location],
+    #                              annotations)
+    #
+    # dirty_locals = set(find_reaching_locals(pointer_invariants.post[loop_end],
+    #                                         liveness_invariants.post[loop_end],
+    #                                         dirty_invariants.post[loop_end]))
 
     invariant_pairs: dict[str, InvariantPair] = {
         "Liveness": liveness_invariants,
-        "Type": type_invariants,
-        "Pointer": pointer_invariants,
-        "Dirty": dirty_invariants,
+        "TypedPointer": typed_pointer_invariants,
     }
 
-    return allocation_invariants, dirty_locals, invariant_pairs
+    return invariant_pairs
 
 
 def analyze_function(filename: str, *function_names: str, print_invariants: bool, outfile: str, simplify: bool) -> None:
@@ -167,14 +157,14 @@ def analyze_function(filename: str, *function_names: str, print_invariants: bool
         if not simplify:
             cfg = gu.refine_to_chain(cfg)
         annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
-        allocation_invariants, dirty_locals, invariant_pairs = run(cfg, annotations,
-                                                                   module_type=module_type,
-                                                                   function_name=function_name)
+        invariant_pairs = run(cfg, annotations,
+                              module_type=module_type,
+                              function_name=function_name)
 
         if print_invariants:
-            print_analysis(cfg, invariant_pairs, allocation_invariants)
+            print_analysis(cfg, invariant_pairs)
 
-        dirty_map[function_name] = dirty_locals
+        # dirty_map[function_name] = dirty_locals
 
     output = ast_transform.transform(filename, dirty_map)
     if outfile is None:
