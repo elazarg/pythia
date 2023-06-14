@@ -38,14 +38,14 @@ class InvariantPair(typing.Generic[T]):
     post: InvariantMap[T]
 
 
-def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T], annotations: dict[tac.Var, str]) -> InvariantPair[T]:
+def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T]) -> InvariantPair[T]:
     pre_result: InvariantMap[T] = {}
     post_result: InvariantMap[T] = {}
 
     cfg: domain.IterationStrategy = domain.BackwardIterationStrategy(_cfg) if analysis.backward else domain.ForwardIterationStrategy(_cfg)
     # gu.pretty_print_cfg(_cfg)
     wl = [entry] = {cfg.entry_label}
-    initial = analysis.initial(annotations)
+    initial = analysis.initial()
     pre_result[(entry, cfg[entry].first_index())] = initial
     while wl:
         label = wl.pop()
@@ -121,18 +121,18 @@ def find_first_for_loop(cfg: Cfg) -> tuple[Location, Location]:
 
 def run(cfg: Cfg, annotations: dict[tac.Var, str], module_type: ts.Module, function_name: str) -> tuple[InvariantMap[AllocationType], set[str], dict[str, InvariantPair]]:
 
-    liveness_invariants = analyze(cfg, LivenessVarLattice(), annotations)
+    liveness_invariants = analyze(cfg, LivenessVarLattice())
 
     type_analysis: domain.VarLattice[ts.TypeExpr] = domain.VarLattice[ts.TypeExpr](TypeLattice(function_name, module_type),
                                                                                    liveness_invariants.post)
-    type_invariants = analyze(cfg, type_analysis, annotations)
+    type_invariants = analyze(cfg, type_analysis)
     allocation_invariants: InvariantMap[AllocationType] = analyze_single(cfg, AllocationChecker(type_invariants.pre, type_analysis))
 
     pointer_analysis = PointerLattice(allocation_invariants, liveness_invariants.post)
-    pointer_invariants = analyze(cfg, pointer_analysis, annotations)
+    pointer_invariants = analyze(cfg, pointer_analysis)
 
     dirty_analysis = DirtyLattice(pointer_invariants.post, allocation_invariants)
-    dirty_invariants = analyze(cfg, dirty_analysis, annotations)
+    dirty_invariants = analyze(cfg, dirty_analysis)
 
     for_location, loop_end = find_first_for_loop(cfg)
 

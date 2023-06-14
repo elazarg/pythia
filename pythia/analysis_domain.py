@@ -197,7 +197,7 @@ class InstructionLattice(Lattice[T], typing.Protocol[T]):
     def transfer(self, values: T, ins: tac.Tac, location: Location) -> T:
         raise NotImplementedError
 
-    def initial(self, annotations: dict[tac.Var, str]) -> T:
+    def initial(self) -> T:
         return self.top()
 
 
@@ -270,14 +270,6 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
     def make_map(self, d: typing.Optional[dict[tac.Var, T]] = None) -> Map[tac.Var, T]:
         d = d or {}
         return Map(default=self.lattice.default(), d=d)
-
-    def initial(self, annotations: dict[tac.Var, str]) -> VarMapDomain[T]:
-        result = self.make_map()
-        result.update({
-            name: self.lattice.annotation(name, t)
-            for name, t in annotations.items()
-        })
-        return result
 
     def top(self) -> Map[tac.Var, T]:
         return self.make_map()

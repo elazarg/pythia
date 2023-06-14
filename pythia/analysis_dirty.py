@@ -29,7 +29,7 @@ class DirtyLattice(InstructionLattice[Dirty]):
     def copy(self, values: Dirty) -> Dirty:
         return values.copy()
 
-    def initial(self, annotations: dict[tac.Var, str]) -> Dirty:
+    def initial(self) -> Dirty:
         return set()
 
     def bottom(self) -> Dirty:
