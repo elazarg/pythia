@@ -63,8 +63,10 @@ class PointerLattice(InstructionLattice[Graph]):
         return "Pointer"
 
     def __init__(self, allocation_invariant_map: InvariantMap[AllocationType],
-                 liveness: InvariantMap[VarMapDomain[analysis_liveness.Liveness]]) -> None:
+                 liveness: InvariantMap[VarMapDomain[analysis_liveness.Liveness]],
+                 annotations: typing.Iterable[Object]) -> None:
         super().__init__()
+        self.annotations = make_fields({k: frozenset({Object(f'param {k}')}) for k in annotations})
         self.allocation_invariant_map = allocation_invariant_map
         self.liveness = liveness
         self.backward = False
@@ -75,8 +77,8 @@ class PointerLattice(InstructionLattice[Graph]):
     def copy(self, values: Graph) -> Graph:
         return values.copy()
     
-    def initial(self, annotations: dict[tac.Var, str]) -> Graph:
-        return make_graph({LOCALS: make_fields({k: frozenset({Object(f'param {k}')}) for k in annotations}),
+    def initial(self) -> Graph:
+        return make_graph({LOCALS: self.annotations,
                            GLOBALS: make_fields()})
 
     def bottom(self) -> Graph:

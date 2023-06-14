@@ -9,19 +9,24 @@ from pythia.tac import Predefined, UnOp
 from pythia.analysis_domain import ValueLattice
 
 
+def parse_annotations(this_function: str, this_module: ts.Module):
+    this_signature = ts.subscr(this_module, ts.literal(this_function))
+    assert isinstance(this_signature, ts.Overloaded), f"Expected overloaded type, got {this_signature}"
+    assert len(this_signature.items) == 1, f"Expected single signature, got {this_signature}"
+    [this_signature] = this_signature.items
+    annotations = {tac.Var(row.index.name, is_stackvar=False): row.type
+                   for row in this_signature.params.row_items()
+                   if row.index.name is not None}
+    annotations[tac.Var('return', is_stackvar=False)] = this_signature.return_type
+    return annotations
+
+
 class TypeLattice(ValueLattice[TypeExpr]):
     """
     Abstract domain for type analysis with lattice operations.
     """
     def __init__(self, this_function: str, this_module: ts.Module):
-        this_signature = ts.subscr(this_module, ts.literal(this_function))
-        assert isinstance(this_signature, ts.Overloaded), f"Expected overloaded type, got {this_signature}"
-        assert len(this_signature.items) == 1, f"Expected single signature, got {this_signature}"
-        [this_signature] = this_signature.items
-        self.annotations: dict[tac.Var, TypeExpr] = {tac.Var(row.index.name, is_stackvar=False): row.type
-                                                        for row in this_signature.params.row_items()
-                                                        if row.index.name is not None}
-        self.annotations[tac.Var('return', is_stackvar=False)] = this_signature.return_type
+        self.annotations: dict[tac.Var, TypeExpr] = parse_annotations(this_function, this_module)
         self.globals = this_module
         self.builtins = ts.resolve_static_ref(ts.Ref('builtins'))
 
