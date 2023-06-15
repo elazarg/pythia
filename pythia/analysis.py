@@ -38,7 +38,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T]) -> InvariantPair[
     post_result: InvariantMap[T] = {}
 
     cfg: domain.IterationStrategy = domain.BackwardIterationStrategy(_cfg) if analysis.backward else domain.ForwardIterationStrategy(_cfg)
-    gu.pretty_print_cfg(_cfg)
+    # gu.pretty_print_cfg(_cfg)
     wl = [entry] = {cfg.entry_label}
     initial = analysis.initial()
     pre_result[(entry, cfg[entry].first_index())] = initial
@@ -166,9 +166,9 @@ def analyze_function(filename: str, *function_names: str, print_invariants: bool
 
         # dirty_map[function_name] = dirty_locals
 
-    output = ast_transform.transform(filename, dirty_map)
-    if outfile is None:
-        print(output)
-    else:
-        with open(outfile, 'w', encoding='utf-8') as f:
-            print(output, file=f)
+    # output = ast_transform.transform(filename, dirty_map)
+    # if outfile is None:
+    #     print(output)
+    # else:
+    #     with open(outfile, 'w', encoding='utf-8') as f:
+    #         print(output, file=f)
