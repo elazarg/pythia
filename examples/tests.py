@@ -3,8 +3,9 @@ import numpy as np
 
 def empty() -> None:
     x = []
-    x.append(2)
-    x.append(3)
+    # x.append(2)
+    # x.append(3)
+    x.extend([4, 5])
 
 def iterate(x: int):
     for i in range(x): pass
