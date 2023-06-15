@@ -1058,12 +1058,12 @@ def swap_binop_params(rf: FunctionType) -> FunctionType:
     return right_ops
 
 
-def binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
+def partial_binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     binop_func = get_binop(left, right, op)
     if binop_func == BOTTOM:
         # assume there is an implementation.
         return TOP
-    return call(binop_func, typed_dict([make_row(0, None, right)]))
+    return partial(binop_func, typed_dict([make_row(0, None, right)]))
 
 
 def get_unop(left: TypeExpr, op: str) -> TypeExpr:

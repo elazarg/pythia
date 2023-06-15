@@ -395,11 +395,13 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     for obj in objects:
                         new_tp.types[prev_tp.pointers[obj][tac.Var("self")]] = side_effect.update
 
+                objects = frozenset({})
                 if any(f.new() for f in applied.items):
-                    objects = frozenset([location])
-                else:
-                    objects = frozenset()
-                return (objects, ts.get_return(applied))
+                    objects |= frozenset([location])
+                t = ts.get_return(applied)
+                if ts.is_immutable(t):
+                    objects |= frozenset({Immutable(t)})
+                return (objects, t)
             case tac.Call(tac.Predefined() as func, tuple() as args):
                 assert func == tac.Predefined.LIST
                 func_type = self.type_lattice.predefined(func)
@@ -410,9 +412,35 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 objects = frozenset([location])
                 return (objects, ts.get_return(applied))
             case tac.Unary(var=tac.Var() as var, op=tac.UnOp() as op):
-                raise NotImplementedError
+                value_objects = prev_tp.pointers[LOCALS][var]
+                arg_type = prev_tp.types[value_objects]
+                applied = ts.get_unop(arg_type, self.type_lattice.unop_to_str(op))
+                assert isinstance(applied, ts.Overloaded), f"Expected overloaded type, got {applied}"
+
+                objects = frozenset({})
+                if any(f.new() for f in applied.items):
+                    objects |= frozenset([location])
+                t = ts.get_return(applied)
+                if ts.is_immutable(t):
+                    objects |= frozenset({Immutable(t)})
+
+                return (objects, t)
             case tac.Binary(left=tac.Var() as left, right=tac.Var() as right, op=str() as op):
-                raise NotImplementedError
+                left_objects = prev_tp.pointers[LOCALS][left]
+                right_objects = prev_tp.pointers[LOCALS][right]
+                left_type = prev_tp.types[left_objects]
+                right_type = prev_tp.types[right_objects]
+                applied = ts.partial_binop(left_type, right_type, op)
+                assert isinstance(applied, ts.Overloaded), f"Expected overloaded type, got {applied}"
+
+                objects = frozenset({})
+                if any(f.new() for f in applied.items):
+                    objects |= frozenset([location])
+                t = ts.get_return(applied)
+                if ts.is_immutable(t):
+                    objects |= frozenset({Immutable(t)})
+
+                return (objects, t)
             case _:
                 raise NotImplementedError(expr)
         assert False
