@@ -52,7 +52,13 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T]) -> InvariantPair[
         for index, ins in block.items():
             location = (label, index)
             pre_result[location] = post
-            invariant = analysis.transfer(invariant, ins, location)
+            try:
+                invariant = analysis.transfer(invariant, ins, location)
+            except Exception as e:
+                e.add_note(f"At {location}")
+                e.add_note(f"from {ins}")
+                e.add_note(f"pre: {pre_result[location]}")
+                raise e
             # assert not isinstance(invariant, domain.Bottom), f'At {location}\nfrom {pre_result[location]}\n{ins} produced bottom'
 
             post = post_result[location] = invariant

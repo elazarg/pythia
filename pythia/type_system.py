@@ -374,19 +374,25 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             return Union(items1 | items2).squeeze()
         case (Union(items), other) | (other, Union(items)):  # type: ignore
             return Union(items | {other}).squeeze()
-        case (Overloaded(), Overloaded()):
+        case (Overloaded() as f, Overloaded() as g):
+            if len(f.items) == 1 and len(g.items) == 1:
+                res = join(f.items[0], g.items[0])
+                if isinstance(res, FunctionType):
+                    return overload([res])
             return union([t1, t2])
         case (Overloaded(), _) | (_, Overloaded()):
             return TOP
         case (FunctionType() as f1, FunctionType() as f2):
-            if (f1.is_property, f1.side_effect, f1.type_params) == (f2.is_property, f2.side_effect, f2.type_params):
+            if (f1.is_property, f1.type_params) == (f2.is_property, f2.type_params):
+                # TODO: check that f1.params and f2.params are compatible
                 new_params = meet(f1.params, f2.params)
                 if isinstance(new_params, Row):
                     new_params = typed_dict([new_params])
                 assert isinstance(new_params, TypedDict)
                 return replace(f1,
                                params=new_params,
-                               return_type=join(f1.return_type, f2.return_type))
+                               return_type=join(f1.return_type, f2.return_type),
+                               side_effect=join(f1.side_effect, f2.side_effect))
             return union([f1, f2])
         case (Literal() as l1, Literal() as l2):
             if l1.ref == l2.ref:
@@ -425,6 +431,12 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             return TOP
         case (Class(name="int") | Ref('builtins.int') as c, Literal(int())) | (Literal(int()), Class(name="int") | Ref('builtins.int') as c):
             return c
+        case (SideEffect(new1, bound_method1, update1), SideEffect(new2, bound_method2, update2)):
+            return SideEffect(
+                new=new1 | new2,
+                bound_method=bound_method1 | bound_method2,
+                update=join(update1, update2),
+            )
         case x, y:
             return union([x, y])
     raise NotImplementedError(f'{t1!r}, {t2!r}')

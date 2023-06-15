@@ -63,6 +63,7 @@ class list(Generic[T]):
     @update(list[T|Q])
     def __setitem__(self: list[T], index: N, value: Q) -> None: ...
 
+    @new
     def __iter__(self: list[T]) -> SupportsNext[T]: ...
 
     @new
@@ -114,7 +115,6 @@ def sum(x) -> int: pass
 def all(x) -> bool: pass
 def any(x) -> bool: pass
 def sorted(x) -> list: pass
-
 def zip(x: Iterable[T], y: Iterable[Q]) -> Iterable[tuple[T, Q]]: pass
 
 def enumerate(xs: T) -> Iterable[tuple[int, T]]: pass

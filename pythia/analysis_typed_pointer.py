@@ -280,7 +280,10 @@ class TypedPointer:
         return typed_pointer(Pointer.initial(annotations),
                              TypeMap.initial(annotations))
 
-    def collect_garbage(self, alive):
+    def collect_garbage(self, alive) -> None:
+        if isinstance(alive, domain.Bottom):
+            return
+
         for var in set(self.pointers[LOCALS].keys()):
             if var.is_stackvar:
                 if alive[var] == BOTTOM:
@@ -306,7 +309,7 @@ def parse_annotations(this_function: str, this_module: ts.Module) -> TypeMap:
     annotations = {Param(tac.Var(row.index.name)): row.type
                    for row in this_signature.params.row_items()
                    if row.index.name is not None}
-    annotations[Param(tac.Var('return'))] = this_signature.return_type
+    # annotations[Param(tac.Var('return'))] = this_signature.return_type
     return TypeMap(make_type_map(annotations))
 
 
@@ -366,6 +369,12 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 objs = prev_tp.pointers[LOCALS][var]
                 types = prev_tp.types[objs]
                 return (objs, types)
+            case tac.Attribute(var=tac.Predefined.GLOBALS, field=tac.Var() as field):
+                global_objs = prev_tp.pointers[GLOBALS][field]
+                assert not global_objs
+                t = ts.resolve_static_ref(ts.Ref(f'builtins.{field}'))
+                # TODO: class through type
+                return (frozenset({Immutable(t)}), t)
             case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
                 var_objs = prev_tp.pointers[LOCALS][var]
                 t = self.type_lattice.attribute(prev_tp.types[var_objs], field)
@@ -413,6 +422,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 return (objects, ts.get_return(applied))
             case tac.Unary(var=tac.Var() as var, op=tac.UnOp() as op):
                 value_objects = prev_tp.pointers[LOCALS][var]
+                assert value_objects, f"Expected objects for {var}"
                 arg_type = prev_tp.types[value_objects]
                 applied = ts.get_unop(arg_type, self.type_lattice.unop_to_str(op))
                 assert isinstance(applied, ts.Overloaded), f"Expected overloaded type, got {applied}"
@@ -465,6 +475,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         tp = prev_tp.copy()
         location = LocationObject(_location)
 
+        if isinstance(ins, tac.For):
+            ins = ins.as_call()
+
         # FIX: this removes pointers and make it "bottom" instead of "top"
         for var in tac.gens(ins):
             if var in tp.pointers[LOCALS]:
@@ -478,10 +491,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 val = tp.pointers[LOCALS][var]
                 tp.pointers[LOCALS, tac.Var('return')] = val
 
-        alive = self.liveness[location.location]
-        if isinstance(alive, domain.Bottom):
-            return tp
-        tp.collect_garbage(alive)
+        tp.collect_garbage(self.liveness[location.location])
 
         return tp
 

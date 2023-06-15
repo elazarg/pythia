@@ -19,12 +19,18 @@ FIRST = ts.literal(0)
 SECOND = ts.literal(1)
 
 
-def make_function(return_type: ts.TypeExpr, params: ts.TypedDict, type_params=(), update=None) -> ts.FunctionType:
+def binop(left: ts.TypeExpr, right: ts.TypeExpr, op: str) -> ts.TypeExpr:
+    return ts.get_return(ts.partial_binop(left, right, op))
+
+
+def make_function(return_type: ts.TypeExpr, params: ts.TypedDict, type_params=(), update=None, new=None) -> ts.FunctionType:
+    if new is None:
+        new = not ts.is_immutable(return_type)
     return ts.FunctionType(params, return_type,
                            is_property=False,
                            type_params=type_params,
                            side_effect=ts.SideEffect(
-                               new=not ts.is_immutable(return_type),
+                               new=new,
                                update=update))
 
 
@@ -45,6 +51,25 @@ def test_join():
     t1 = INT
     t2 = ts.literal(1)
     assert ts.join(t1, t2) == t1
+
+
+def test_join_typevar_and_int():
+    t = ts.TypeVar('T')
+
+    t1 = t
+    t2 = INT
+    expected = ts.union([t, t2])
+    assert ts.join(t1, t2) == expected
+
+    t1 = ts.Instantiation(LIST, (t,))
+    t2 = ts.Instantiation(LIST, (INT,))
+    expected = ts.Instantiation(LIST, (ts.union([t, INT]),))
+    assert ts.join(t1, t2) == expected
+
+    t1 = make_function(t, make_rows(t), type_params=(t,), new=False)
+    t2 = make_function(INT, make_rows(t), type_params=(t,), new=False)
+    expected = make_function(ts.union([t, INT]), make_rows(t), type_params=(t,), new=False)
+    assert ts.join(t1, t2) == expected
 
 
 def test_join_literals():
@@ -233,15 +258,15 @@ def test_getitem_numpy():
 
 
 def test_operator_numpy():
-    x = ts.binop(ARRAY, ARRAY, '+')
+    x = binop(ARRAY, ARRAY, '+')
     assert x == ARRAY
 
 
 def test_right_operator_numpy():
-    x = ts.binop(FLOAT, ARRAY, '+')
+    x = binop(FLOAT, ARRAY, '+')
     assert x == ARRAY
 
-    x = ts.binop(FLOAT, ARRAY, '*')
+    x = binop(FLOAT, ARRAY, '*')
     assert x == ARRAY
 
 
