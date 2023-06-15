@@ -146,7 +146,7 @@ def test_bind_self_tuple():
     f = ts.FunctionType(params=make_rows(tuple_param, N),
                         return_type=ts.Access(Args, N),
                         is_property=False,
-                        side_effect=ts.SideEffect(new=False),
+                        side_effect=ts.SideEffect(new=False, bound_method=True),
                         type_params=(N, Args))
     g = replace(f,
                 params=make_rows(N),
@@ -169,7 +169,7 @@ def test_tuple():
     f = ts.FunctionType(params=ts.typed_dict([ts.make_row(0, 'item', N)]),
                         return_type=ts.Access(tuple_star, N),
                         is_property=False,
-                        side_effect=ts.SideEffect(new=False),
+                        side_effect=ts.SideEffect(new=False, bound_method=True),
                         type_params=(N,))
     assert g == ts.overload([f])
     x = ts.call(g, make_rows(FIRST))
