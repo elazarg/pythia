@@ -137,7 +137,7 @@ class Map(typing.Generic[K, T]):
             self.update(d)
 
     def __getitem__(self, key: K) -> T:
-        return self._map.get(key, self.default)
+        return self._map.get(key, deepcopy(self.default))
 
     def __setitem__(self, key: K, value: T) -> None:
         if value == self.default:

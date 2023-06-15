@@ -38,7 +38,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T]) -> InvariantPair[
     post_result: InvariantMap[T] = {}
 
     cfg: domain.IterationStrategy = domain.BackwardIterationStrategy(_cfg) if analysis.backward else domain.ForwardIterationStrategy(_cfg)
-    # gu.pretty_print_cfg(_cfg)
+    gu.pretty_print_cfg(_cfg)
     wl = [entry] = {cfg.entry_label}
     initial = analysis.initial()
     pre_result[(entry, cfg[entry].first_index())] = initial

@@ -179,11 +179,6 @@ class Overloaded(TypeExpr):
     def __repr__(self) -> str:
         return f'Overloaded({self.items})'
 
-    def squeeze(self: Overloaded) -> Overloaded | FunctionType:
-        if len(self.items) == 1:
-            return next(iter(self.items))
-        return self
-
 
 @dataclass(frozen=True)
 class Class(TypeExpr):
@@ -209,6 +204,7 @@ class Module(TypeExpr):
 @dataclass(frozen=True)
 class SideEffect(TypeExpr):
     new: bool
+    bound_method: bool = False
     update: typing.Optional[TypeExpr] = None
 
 
@@ -280,11 +276,6 @@ def bind_typevars(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
             return typed_dict(bind_typevars(item, context) for item in items)
         case Overloaded(items):
             return overload(bind_typevars(item, context) for item in items)
-        case Union(items):
-            return join_all(bind_typevars(item, context) for item in items)
-        case Row() as row:
-            return replace(row,
-                           type=bind_typevars(row.type, context))
         case FunctionType() as f:
             context = {k: v for k, v in context.items() if k not in f.type_params}
             if not context:
@@ -296,6 +287,11 @@ def bind_typevars(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
                            params=new_params,
                            return_type=new_return_type,
                            side_effect=new_side_effect)
+        case Union(items):
+            return join_all(bind_typevars(item, context) for item in items)
+        case Row() as row:
+            return replace(row,
+                           type=bind_typevars(row.type, context))
         case SideEffect() as s:
             if s.update is None:
                 return s
@@ -319,6 +315,11 @@ def bind_typevars(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
             if isinstance(choices, Star) and isinstance(actual_arg, Literal) and isinstance(actual_arg.value, int):
                 return choices.items[actual_arg.value]
             return Access(choices, actual_arg)
+        case SideEffect() as s:
+            if s.update is None:
+                return s
+            return replace(s,
+                           update=bind_typevars(s.update, context))
     raise NotImplementedError(f'{t!r}, {type(t)}')
 
 
@@ -377,6 +378,16 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             return union([t1, t2])
         case (Overloaded(), _) | (_, Overloaded()):
             return TOP
+        case (FunctionType() as f1, FunctionType() as f2):
+            if (f1.is_property, f1.side_effect, f1.type_params) == (f2.is_property, f2.side_effect, f2.type_params):
+                new_params = meet(f1.params, f2.params)
+                if isinstance(new_params, Row):
+                    new_params = typed_dict([new_params])
+                assert isinstance(new_params, TypedDict)
+                return replace(f1,
+                               params=new_params,
+                               return_type=join(f1.return_type, f2.return_type))
+            return union([f1, f2])
         case (Literal() as l1, Literal() as l2):
             if l1.ref == l2.ref:
                 if isinstance(l1.value, tuple):
@@ -410,16 +421,6 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
         case (Row(_, t1), (Instantiation(Ref('builtins.tuple'), type_args))) | (Instantiation(Ref('builtins.tuple'), type_args), Row(_, t1)):
             # not exact; should only join at the index of the row
             return Instantiation(Ref('builtins.tuple'), tuple(join(t1, t) for t in type_args))
-        case (FunctionType() as f1, FunctionType() as f2):
-            if (f1.is_property, f1.side_effect, f1.type_params) == (f2.is_property, f2.side_effect, f2.type_params):
-                new_params = meet(f1.params, f2.params)
-                if isinstance(new_params, Row):
-                    new_params = typed_dict([new_params])
-                assert isinstance(new_params, TypedDict)
-                return replace(f1,
-                               params=new_params,
-                               return_type=join(f1.return_type, f2.return_type))
-            return union([f1, f2])
         case Class(), Class():
             return TOP
         case (Class(name="int") | Ref('builtins.int') as c, Literal(int())) | (Literal(int()), Class(name="int") | Ref('builtins.int') as c):
@@ -499,8 +500,6 @@ def meet_all(items: typing.Iterable[TypeExpr]) -> TypeExpr:
     res: TypeExpr = TOP
     for t in unpack_star(items):
         res = meet(res, t)
-    if isinstance(res, Overloaded):
-        return res.squeeze()
     return res
 
 
@@ -844,7 +843,9 @@ def partial(callable: TypeExpr, args: TypedDict) -> TypeExpr:
                                     type_params=tuple(v for v in f.type_params if v not in binding.bound_typevars),
                                     params=subtract_indices(typed_dict(binding.unbound_params),
                                                             typed_dict(binding.bound_params.keys())),
-                                    return_type=bind_typevars(f.return_type, binding.bound_typevars))
+                                    return_type=bind_typevars(f.return_type, binding.bound_typevars),
+                                    side_effect=bind_typevars(f.side_effect, binding.bound_typevars),
+                                    )
                         overloaded.append(f)
                 del f
                 if not overloaded:
@@ -870,7 +871,8 @@ def partial(callable: TypeExpr, args: TypedDict) -> TypeExpr:
                            type_params=tuple(v for v in f.type_params if v not in binding.bound_typevars),
                            params=subtract_indices(typed_dict(binding.unbound_params),
                                                    typed_dict(binding.bound_params.keys())),
-                           return_type=bind_typevars(f.return_type, binding.bound_typevars))
+                           return_type=bind_typevars(f.return_type, binding.bound_typevars),
+                           side_effect=bind_typevars(f.side_effect, binding.bound_typevars))
         case Union(items):
             return union([partial(item, args) for item in items])
         case Class(class_dict=class_dict), arg:
@@ -885,7 +887,13 @@ def partial_positional(f: TypeExpr, args: tuple[TypeExpr, ...]) -> TypeExpr:
 
 
 def bind_self_function(f: FunctionType, selftype: TypeExpr) -> FunctionType:
-    return partial(f, typed_dict([make_row(0, 'self', selftype)]))
+    res = partial(f, typed_dict([make_row(0, 'self', selftype)]))
+    if isinstance(res, FunctionType):
+        res = replace(res, side_effect=replace(res.side_effect, bound_method=True))
+    elif isinstance(res, Overloaded):
+        res = overload(replace(item, side_effect=replace(item.side_effect, bound_method=True))
+                       for item in res.items)
+    return res
 
 
 def bind_self(attr: Overloaded, selftype: TypeExpr) -> Overloaded:
@@ -928,8 +936,6 @@ def subscr(selftype: TypeExpr, index: TypeExpr) -> TypeExpr:
     if attr_type == TOP:
         # non-existent attribute
         return BOTTOM
-    elif isinstance(attr_type, Overloaded):
-        attr_type = attr_type.squeeze()
     result = bind_self(attr_type, selftype)
     if isinstance(result, FunctionType):
         result = overload([result])
@@ -948,37 +954,37 @@ def call(callable: TypeExpr, args: TypedDict) -> TypeExpr:
     return result
 
 
-def make_list_constructor() -> TypeExpr:
+def make_list_constructor() -> Overloaded:
     args = TypeVar('Args', is_args=True)
     return_type = literal([args])
-    return FunctionType(params=typed_dict([make_row(0, 'self', args)]),
-                        return_type=return_type,
-                        side_effect=SideEffect(new=not is_immutable(return_type)),
-                        is_property=False,
-                        type_params=(args,))
+    return overload([FunctionType(params=typed_dict([make_row(0, 'self', args)]),
+                                  return_type=return_type,
+                                  side_effect=SideEffect(new=not is_immutable(return_type)),
+                                  is_property=False,
+                                  type_params=(args,))])
 
 
-def make_tuple_constructor() -> TypeExpr:
+def make_tuple_constructor() -> Overloaded:
     args = TypeVar('Args', is_args=True)
     return_type = Instantiation(Ref('builtins.tuple'), (args,))
-    return FunctionType(params=typed_dict([make_row(0, 'self', args)]),
-                        return_type=return_type,
-                        side_effect=SideEffect(new=not is_immutable(return_type)),
-                        is_property=False,
-                        type_params=(args,))
+    return overload([FunctionType(params=typed_dict([make_row(0, 'self', args)]),
+                                  return_type=return_type,
+                                  side_effect=SideEffect(new=not is_immutable(return_type)),
+                                  is_property=False,
+                                  type_params=(args,))])
 
 
-def make_slice_constructor() -> TypeExpr:
+def make_slice_constructor() -> Overloaded:
     return_type = Ref('builtins.slice')
     NONE = literal(None)
     INT = Ref('builtins.int')
     both = union([NONE, INT])
-    return FunctionType(params=typed_dict([make_row(0, 'start', both),
-                                           make_row(1, 'end', both)]),
-                        return_type=return_type,
-                        side_effect=SideEffect(new=True),
-                        is_property=False,
-                        type_params=())
+    return overload([FunctionType(params=typed_dict([make_row(0, 'start', both),
+                                                     make_row(1, 'end', both)]),
+                                  return_type=return_type,
+                                  side_effect=SideEffect(new=True),
+                                  is_property=False,
+                                  type_params=())])
 
 
 def binop_to_dunder_method(op: str) -> tuple[str, typing.Optional[str]]:
@@ -1335,3 +1341,18 @@ MODULES = Module('typeshed',
 
 def main() -> None:
     pretty_print_type(MODULES)
+
+
+def is_bound_method(t: TypeExpr) -> bool:
+    return (
+        isinstance(t, FunctionType) and t.side_effect.bound_method or
+        isinstance(t, Overloaded) and any(is_bound_method(x) for x in t.items)
+    )
+
+
+def get_side_effect(applied: Overloaded) -> SideEffect:
+    return SideEffect(
+        new=any(x.side_effect.new for x in applied.items),
+        update=join_all(x.side_effect.update for x in applied.items),
+        bound_method=any(is_bound_method(x) for x in applied.items),
+    )
