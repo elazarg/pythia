@@ -1,12 +1,11 @@
 import numpy as np
 
 
-def empty() -> list[int]:
+def empty(y: list[int]) -> list[int]:
     x = []
-    # x.append(2)
-    # x.append(3)
-    x.extend([4, 5])
-    return x + x
+    for i in y:
+        x.append(i)
+    return x
 
 def iterate(x: int):
     for i in range(x): pass
