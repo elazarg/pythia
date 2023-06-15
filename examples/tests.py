@@ -1,8 +1,10 @@
 import numpy as np
 
+
 def empty() -> None:
-    x = 1
-    y = [1]
+    x = []
+    x.append(2)
+    x.append(3)
 
 def iterate(x: int):
     for i in range(x): pass

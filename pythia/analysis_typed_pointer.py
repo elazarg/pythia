@@ -45,7 +45,15 @@ class Scope:
         return f'@scope {self.name}'
 
 
-Object: TypeAlias = typing.Union[Location, Param, Immutable, Scope]
+@dataclass(frozen=True)
+class LocationObject:
+    location: Location
+
+    def __repr__(self) -> str:
+        return f'@location {self.location}'
+
+
+Object: TypeAlias = typing.Union[LocationObject, Param, Immutable, Scope]
 
 
 LOCALS: Final[Object] = Scope('locals')
@@ -118,9 +126,12 @@ class Pointer:
 
     def __setitem__(self, key: Object | tuple[Object, tac.Var], value: Fields | frozenset[Object]) -> None:
         match key, value:
-            case (Param() | Immutable() | Scope() | Location() as obj, tac.Var() as var), (frozenset() as values):
-                self.graph[obj][var] = values
-            case Param() | Immutable() | Scope() | Location() as obj, (domain.Map() as values):
+            case (Param() | Immutable() | Scope() | LocationObject() as obj, tac.Var() as var), (frozenset() as values):
+                if obj not in self.graph:
+                    self.graph[obj] = make_fields({var: values})
+                else:
+                    self.graph[obj][var] = values
+            case Param() | Immutable() | Scope() | LocationObject() as obj, (domain.Map() as values):
                 self.graph[obj] = values
             case _:
                 raise ValueError(f'Invalid key {key} or value {value}')
@@ -319,36 +330,46 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     def join(self, left: TypedPointer, right: TypedPointer) -> TypedPointer:
         return left.join(right)
 
-    def expr(self, tp: TypedPointer, expr: tac.Expr, location: Object) -> tuple[frozenset[Object], ts.TypeExpr]:
+    def expr(self, prev_tp: TypedPointer, expr: tac.Expr, location: LocationObject,
+             new_tp: TypedPointer) -> tuple[frozenset[Object], ts.TypeExpr]:
         match expr:
             case tac.Const(value):
                 t = self.type_lattice.const(value)
                 return (frozenset({Immutable(t)}), t)
             case tac.Var() as var:
-                objs = tp.pointers[LOCALS][var]
-                types = tp.types[objs]
+                objs = prev_tp.pointers[LOCALS][var]
+                types = prev_tp.types[objs]
                 return (objs, types)
             case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
-                var_objs = tp.pointers[LOCALS][var]
-                direct_objs = flatten(tp.pointers[var_obj][field] for var_obj in var_objs)
-                types = self.type_lattice.attribute(tp.types[var_objs], field)
+                var_objs = prev_tp.pointers[LOCALS][var]
+                t = self.type_lattice.attribute(prev_tp.types[var_objs], field)
+                direct_objs = flatten(prev_tp.pointers[var_obj][field] for var_obj in var_objs)
+                if ts.is_bound_method(t):
+                    new_tp.pointers[location, tac.Var("self")] = var_objs
+                    return (frozenset({location}) | direct_objs, t)
                 # TODO: class through type
-                return (direct_objs, types)
+                return (direct_objs, t)
             case tac.Subscript(var=tac.Var() as var, index=tac.Var() as index):
-                var_objs = tp.pointers[LOCALS][var]
-                index_objs = tp.pointers[LOCALS][index]
-                direct_objs = flatten(tp.pointers[var_obj][tac.Var("*")] for var_obj in var_objs)
-                types = self.type_lattice.subscr(tp.types[var_objs], tp.types[index_objs])
+                var_objs = prev_tp.pointers[LOCALS][var]
+                index_objs = prev_tp.pointers[LOCALS][index]
+                direct_objs = flatten(prev_tp.pointers[var_obj][tac.Var("*")] for var_obj in var_objs)
+                types = self.type_lattice.subscr(prev_tp.types[var_objs], prev_tp.types[index_objs])
                 # TODO: class through type
                 return (direct_objs, types)
             case tac.Call(tac.Var() as var, tuple() as args):
-                objects = tp.pointers[LOCALS][var]
-                func_type = tp.types[objects]
-                arg_objects = [tp.pointers[LOCALS][var] for var in args]
-                arg_types = tuple([tp.types[obj] for obj in arg_objects])
+                objects = prev_tp.pointers[LOCALS][var]
+                func_type = prev_tp.types[objects]
+                assert isinstance(func_type, ts.Overloaded), f"Expected Overloaded type, got {func_type}"
+                arg_objects = [prev_tp.pointers[LOCALS][var] for var in args]
+                arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
                 applied = ts.partial_positional(func_type, arg_types)
-                assert isinstance(applied, ts.FunctionType)
-                if applied.new():
+                assert isinstance(applied, ts.Overloaded), f"Expected Overloaded type, got {applied}"
+                side_effect = ts.get_side_effect(applied)
+                if side_effect.update is not None:
+                    for obj in objects:
+                        new_tp.types[prev_tp.pointers[obj][tac.Var("self")]] = side_effect.update
+
+                if any(f.new() for f in applied.items):
                     objects = frozenset([location])
                 else:
                     objects = frozenset()
@@ -356,10 +377,10 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Call(tac.Predefined() as func, tuple() as args):
                 assert func == tac.Predefined.LIST
                 func_type = self.type_lattice.predefined(func)
-                arg_objects = [tp.pointers[LOCALS][var] for var in args]
-                arg_types = tuple([tp.types[obj] for obj in arg_objects])
+                arg_objects = [prev_tp.pointers[LOCALS][var] for var in args]
+                arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
                 applied = ts.partial_positional(func_type, arg_types)
-                assert isinstance(applied, ts.FunctionType)
+                assert isinstance(applied, ts.Overloaded), f"Expected overloaded type, got {applied}"
                 objects = frozenset([location])
                 return (objects, ts.get_return(applied))
             case tac.Unary(var=tac.Var() as var, op=tac.UnOp() as op):
@@ -386,8 +407,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case _:
                 assert False, f'unexpected signature {signature}'
 
-    def transfer(self, prev_tp: TypedPointer, ins: tac.Tac, location: Location) -> TypedPointer:
+    def transfer(self, prev_tp: TypedPointer, ins: tac.Tac, _location: Location) -> TypedPointer:
         tp = prev_tp.copy()
+        location = LocationObject(_location)
 
         # FIX: this removes pointers and make it "bottom" instead of "top"
         for var in tac.gens(ins):
@@ -396,13 +418,13 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
 
         match ins:
             case tac.Assign(lhs, expr):
-                (pointed, types) = self.expr(prev_tp, expr, location)
+                (pointed, types) = self.expr(prev_tp, expr, location, tp)
                 self.signature(tp, lhs, pointed, types)
             case tac.Return(var):
                 val = tp.pointers[LOCALS][var]
                 tp.pointers[LOCALS, tac.Var('return')] = val
 
-        here = self.liveness[location]
+        here = self.liveness[location.location]
         if isinstance(here, domain.Bottom):
             return tp
 
