@@ -88,6 +88,9 @@ class Pointer:
     def __init__(self, graph: Graph):
         self.graph = graph.copy()
 
+    def __iter__(self) -> typing.Iterator[Object]:
+        return iter(self.graph.keys())
+
     def is_less_than(self, other: Pointer) -> bool:
         return all(self.graph[obj][field] <= other.graph[obj][field]
                    for obj in self.graph
@@ -135,6 +138,11 @@ class Pointer:
                 self.graph[obj] = values
             case _:
                 raise ValueError(f'Invalid key {key} or value {value}')
+
+    def keep_keys(self, keys: typing.Iterable[Object]) -> None:
+        for obj in set(self):
+            if obj not in keys:
+                del self.graph[obj]
 
     def __str__(self) -> str:
         join = lambda target_obj: "{" + ", ".join(str(x) for x in target_obj) + "}"
@@ -195,6 +203,14 @@ class TypeMap:
                     self.map[x] = value
             case obj:
                 self.map[obj] = value
+
+    def keep_keys(self, keys: typing.Iterable[Object]) -> None:
+        for obj in set(self):
+            if obj not in keys:
+                del self.map[obj]
+
+    def __iter__(self) -> typing.Iterator[Object]:
+        return iter(self.map)
 
     def join(self, other: TypeMap) -> TypeMap:
         left = self.map
@@ -263,6 +279,16 @@ class TypedPointer:
     def initial(annotations: domain.Map[Object, ts.TypeExpr]) -> TypedPointer:
         return typed_pointer(Pointer.initial(annotations),
                              TypeMap.initial(annotations))
+
+    def collect_garbage(self, alive):
+        for var in set(self.pointers[LOCALS].keys()):
+            if var.is_stackvar:
+                if alive[var] == BOTTOM:
+                    del self.pointers[LOCALS][var]
+
+        reachable = find_reachable_from_vars(self.pointers)
+        self.pointers.keep_keys(reachable)
+        self.types.keep_keys(reachable)
 
 
 def typed_pointer(pointers: Pointer, types: TypeMap) -> TypedPointer:
@@ -424,16 +450,23 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 val = tp.pointers[LOCALS][var]
                 tp.pointers[LOCALS, tac.Var('return')] = val
 
-        here = self.liveness[location.location]
-        if isinstance(here, domain.Bottom):
+        alive = self.liveness[location.location]
+        if isinstance(alive, domain.Bottom):
             return tp
-
-        for var in set(tp.pointers[LOCALS].keys()):
-            if var.is_stackvar:
-                if here[var] == BOTTOM:
-                    del tp.pointers[LOCALS][var]
+        tp.collect_garbage(alive)
 
         return tp
+
+
+def find_reachable_from_vars(ptr: Pointer) -> set[Object]:
+    worklist = {LOCALS}
+    reachable = set(worklist)
+    while worklist:
+        root = worklist.pop()
+        for edge, objects in ptr[root].items():
+            worklist.update(objects)
+            reachable.update(objects)
+    return reachable
 
 
 def object_to_location(obj: Object) -> Location:
