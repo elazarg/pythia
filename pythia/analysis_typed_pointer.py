@@ -404,21 +404,33 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     for obj in objects:
                         new_tp.types[prev_tp.pointers[obj][tac.Var("self")]] = side_effect.update
 
+
+                t = ts.get_return(applied)
                 objects = frozenset({})
                 if any(f.new() for f in applied.items):
                     objects |= frozenset([location])
-                t = ts.get_return(applied)
-                if ts.is_immutable(t):
+                    if side_effect.points_to_args:
+                        new_tp.pointers[location, tac.Var("*")] = frozenset(ts.union_all(set(x) for x in arg_objects))
+                elif ts.is_immutable(t):
                     objects |= frozenset({Immutable(t)})
                 return (objects, t)
             case tac.Call(tac.Predefined() as func, tuple() as args):
-                assert func == tac.Predefined.LIST
                 func_type = self.type_lattice.predefined(func)
                 arg_objects = [prev_tp.pointers[LOCALS][var] for var in args]
                 arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
                 applied = ts.partial_positional(func_type, arg_types)
                 assert isinstance(applied, ts.Overloaded), f"Expected overloaded type, got {applied}"
-                objects = frozenset([location])
+
+                side_effect = ts.get_side_effect(applied)
+                t = ts.get_return(applied)
+                objects = frozenset({})
+                if any(f.new() for f in applied.items):
+                    objects |= frozenset([location])
+                    if side_effect.points_to_args:
+                        new_tp.pointers[location, tac.Var("*")] = frozenset(ts.union_all(set(x) for x in arg_objects))
+                elif ts.is_immutable(t):
+                    objects |= frozenset({Immutable(t)})
+
                 return (objects, ts.get_return(applied))
             case tac.Unary(var=tac.Var() as var, op=tac.UnOp() as op):
                 value_objects = prev_tp.pointers[LOCALS][var]
@@ -427,11 +439,11 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 applied = ts.get_unop(arg_type, self.type_lattice.unop_to_str(op))
                 assert isinstance(applied, ts.Overloaded), f"Expected overloaded type, got {applied}"
 
+                t = ts.get_return(applied)
                 objects = frozenset({})
                 if any(f.new() for f in applied.items):
                     objects |= frozenset([location])
-                t = ts.get_return(applied)
-                if ts.is_immutable(t):
+                elif ts.is_immutable(t):
                     objects |= frozenset({Immutable(t)})
 
                 return (objects, t)
@@ -443,11 +455,11 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 applied = ts.partial_binop(left_type, right_type, op)
                 assert isinstance(applied, ts.Overloaded), f"Expected overloaded type, got {applied}"
 
+                t = ts.get_return(applied)
                 objects = frozenset({})
                 if any(f.new() for f in applied.items):
                     objects |= frozenset([location])
-                t = ts.get_return(applied)
-                if ts.is_immutable(t):
+                elif ts.is_immutable(t):
                     objects |= frozenset({Immutable(t)})
 
                 return (objects, t)

@@ -206,6 +206,7 @@ class SideEffect(TypeExpr):
     new: bool
     bound_method: bool = False
     update: typing.Optional[TypeExpr] = None
+    points_to_args: bool = False
 
 
 @dataclass(frozen=True)
@@ -431,11 +432,12 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             return TOP
         case (Class(name="int") | Ref('builtins.int') as c, Literal(int())) | (Literal(int()), Class(name="int") | Ref('builtins.int') as c):
             return c
-        case (SideEffect(new1, bound_method1, update1), SideEffect(new2, bound_method2, update2)):
+        case (SideEffect() as s1, SideEffect() as s2):
             return SideEffect(
-                new=new1 | new2,
-                bound_method=bound_method1 | bound_method2,
-                update=join(update1, update2),
+                new=s1.new | s2.new,
+                bound_method=s1.bound_method | s2.bound_method,
+                update=join(s1.update, s2.update),
+                points_to_args=s1.points_to_args | s2.points_to_args,
             )
         case x, y:
             return union([x, y])
@@ -971,7 +973,7 @@ def make_list_constructor() -> Overloaded:
     return_type = literal([args])
     return overload([FunctionType(params=typed_dict([make_row(0, 'self', args)]),
                                   return_type=return_type,
-                                  side_effect=SideEffect(new=not is_immutable(return_type)),
+                                  side_effect=SideEffect(new=True, points_to_args=True),
                                   is_property=False,
                                   type_params=(args,))])
 
@@ -981,7 +983,7 @@ def make_tuple_constructor() -> Overloaded:
     return_type = Instantiation(Ref('builtins.tuple'), (args,))
     return overload([FunctionType(params=typed_dict([make_row(0, 'self', args)]),
                                   return_type=return_type,
-                                  side_effect=SideEffect(new=not is_immutable(return_type)),
+                                  side_effect=SideEffect(new=True, points_to_args=True),
                                   is_property=False,
                                   type_params=(args,))])
 
@@ -1276,7 +1278,8 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                     update_type = None
                 side_effect = SideEffect(
                     new='new' in name_decorators and not is_immutable(returns),
-                    update=update_type
+                    update=update_type,
+                    points_to_args='points_to_args' in name_decorators,
                 )
                 is_property = 'property' in name_decorators
                 type_params = tuple(generic_vars[x] for x in freevars if x in generic_vars)
@@ -1367,4 +1370,5 @@ def get_side_effect(applied: Overloaded) -> SideEffect:
         new=any(x.side_effect.new for x in applied.items),
         update=join_all(x.side_effect.update for x in applied.items),
         bound_method=any(is_bound_method(x) for x in applied.items),
+        points_to_args=any(x.side_effect.points_to_args for x in applied.items),
     )
