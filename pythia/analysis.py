@@ -9,11 +9,9 @@ import pythia.graph_utils as gu
 import pythia.type_system as ts
 from pythia import disassemble, ast_transform
 from pythia import tac
-from pythia.analysis_allocation import AllocationType, AllocationChecker
 from pythia.analysis_domain import InvariantMap
 from pythia.analysis_liveness import LivenessVarLattice
 from pythia.analysis_typed_pointer import TypedPointerLattice
-from pythia.analysis_types import TypeLattice
 from pythia.graph_utils import Location
 
 T = TypeVar('T')
