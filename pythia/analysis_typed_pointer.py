@@ -91,6 +91,9 @@ class Pointer:
     def __iter__(self) -> typing.Iterator[Object]:
         return iter(self.graph.keys())
 
+    def items(self) -> typing.Iterable[tuple[Object, Fields]]:
+        return self.graph.items()
+
     def is_less_than(self, other: Pointer) -> bool:
         return all(self.graph[obj][field] <= other.graph[obj][field]
                    for obj in self.graph
@@ -391,9 +394,13 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 types = self.type_lattice.subscr(prev_tp.types[var_objs], prev_tp.types[index_objs])
                 # TODO: class through type
                 return (direct_objs, types)
-            case tac.Call(tac.Var() as var, tuple() as args):
-                objects = prev_tp.pointers[LOCALS][var]
-                func_type = prev_tp.types[objects]
+            case tac.Call(var, tuple() as args):
+                if isinstance(var, tac.Var):
+                    func_objects = prev_tp.pointers[LOCALS][var]
+                    func_type = prev_tp.types[func_objects]
+                else:
+                    func_objects = frozenset({})
+                    func_type = self.type_lattice.predefined(var)
                 assert isinstance(func_type, ts.Overloaded), f"Expected Overloaded type, got {func_type}"
                 arg_objects = [prev_tp.pointers[LOCALS][var] for var in args]
                 arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
@@ -401,37 +408,32 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 assert isinstance(applied, ts.Overloaded), f"Expected Overloaded type, got {applied}"
                 side_effect = ts.get_side_effect(applied)
                 if side_effect.update is not None:
-                    for obj in objects:
-                        new_tp.types[prev_tp.pointers[obj][tac.Var("self")]] = side_effect.update
+                    if len(func_objects) != 1:
+                        raise RuntimeError("Cannot handle update with multiple function objects")
+                    [func_obj] = func_objects
+                    self_objects = prev_tp.pointers[func_obj][tac.Var("self")]
+                    if len(self_objects) != 1:
+                        raise RuntimeError("Cannot handle update with multiple self objects")
+                    [self_obj] = self_objects
 
+                    aliasing_pointers = {obj for obj, fields in prev_tp.pointers.items() for f, targets in fields.items()
+                                         if self_obj in targets} - {func_obj, LOCALS}
+                    monomorophized = [obj for obj in aliasing_pointers if ts.is_monomorphized(prev_tp.types[obj])]
+                    # Expected two objects: self argument and locals
+                    if monomorophized:
+                        raise RuntimeError(f"Cannot handle update with aliased objects: {aliasing_pointers}")
+                    new_tp.types[self_obj] = side_effect.update
 
                 t = ts.get_return(applied)
-                objects = frozenset({})
+                objects: frozenset[Object] = frozenset([])
                 if any(f.new() for f in applied.items):
                     objects |= frozenset([location])
                     if side_effect.points_to_args:
                         new_tp.pointers[location, tac.Var("*")] = frozenset(ts.union_all(set(x) for x in arg_objects))
                 elif ts.is_immutable(t):
                     objects |= frozenset({Immutable(t)})
+
                 return (objects, t)
-            case tac.Call(tac.Predefined() as func, tuple() as args):
-                func_type = self.type_lattice.predefined(func)
-                arg_objects = [prev_tp.pointers[LOCALS][var] for var in args]
-                arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
-                applied = ts.partial_positional(func_type, arg_types)
-                assert isinstance(applied, ts.Overloaded), f"Expected overloaded type, got {applied}"
-
-                side_effect = ts.get_side_effect(applied)
-                t = ts.get_return(applied)
-                objects = frozenset({})
-                if any(f.new() for f in applied.items):
-                    objects |= frozenset([location])
-                    if side_effect.points_to_args:
-                        new_tp.pointers[location, tac.Var("*")] = frozenset(ts.union_all(set(x) for x in arg_objects))
-                elif ts.is_immutable(t):
-                    objects |= frozenset({Immutable(t)})
-
-                return (objects, ts.get_return(applied))
             case tac.Unary(var=tac.Var() as var, op=tac.UnOp() as op):
                 value_objects = prev_tp.pointers[LOCALS][var]
                 assert value_objects, f"Expected objects for {var}"

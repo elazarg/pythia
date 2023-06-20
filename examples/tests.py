@@ -3,10 +3,11 @@ import numpy as np
 
 def empty(y: list[int]) -> list[int]:
     x = []
-    a = (x, 1)
+    # a = [x]
     for i in y:
         x.append(i)
     return x
+
 
 def iterate(x: int):
     for i in range(x): pass
