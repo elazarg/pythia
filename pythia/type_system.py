@@ -1372,3 +1372,37 @@ def get_side_effect(applied: Overloaded) -> SideEffect:
         bound_method=any(is_bound_method(x) for x in applied.items),
         points_to_args=any(x.side_effect.points_to_args for x in applied.items),
     )
+
+
+def iter_children(t: TypeExpr) -> typing.Iterator[TypeExpr]:
+    yield t
+    match t:
+        case TypeVar(): pass
+        case Ref(): pass
+        case Literal() as x:
+            yield from iter_children(x.ref)
+        case Overloaded() as x:
+            yield from iter_children(x.items)
+        case Union() as x:
+            yield from iter_children(x.items)
+        case TypedDict() as x:
+            yield from iter_children(x.items)
+        case Instantiation() as x:
+            yield from iter_children(x.type_params)
+            yield from iter_children(x.generic)
+        case Row() as x:
+            yield from iter_children(x.type)
+        case FunctionType() as x:
+            yield from iter_children(x.params)
+            yield from iter_children(x.return_type)
+            yield from iter_children(x.side_effect)
+        case _:
+            raise NotImplementedError(t)
+
+
+def is_monomorphized(t: TypeExpr) -> bool:
+    for x in iter_children(t):
+        if isinstance(x, Instantiation):
+            if any(not isinstance(type_param, TypeVar) for type_param in x.type_args):
+                return True
+    return False
