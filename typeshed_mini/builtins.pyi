@@ -104,6 +104,7 @@ class Iterator(Protocol[T]):
     @new
     def __next__(self: Iterator[T]) -> T: ...
 
+@new
 def range(start: int) -> Iterable[int]: ...
 def abs(x: int) -> int: pass
 def len(x) -> int: pass
@@ -114,7 +115,12 @@ def max(x, y) -> int: pass
 def sum(x) -> int: pass
 def all(x) -> bool: pass
 def any(x) -> bool: pass
+@new
 def sorted(x) -> list: pass
 def zip(x: Iterable[T], y: Iterable[Q]) -> Iterable[tuple[T, Q]]: pass
+
+@new
+def iter(xs: list[T]) -> SupportsNext[T]: ...
+def next(xs: SupportsNext[T]) -> T: ...
 
 def enumerate(xs: T) -> Iterable[tuple[int, T]]: pass

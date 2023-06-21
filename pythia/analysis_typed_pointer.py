@@ -390,20 +390,25 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Subscript(var=tac.Var() as var, index=tac.Var() as index):
                 var_objs = prev_tp.pointers[LOCALS][var]
                 index_objs = prev_tp.pointers[LOCALS][index]
+                index_type = prev_tp.types[index_objs]
+                var_type = prev_tp.types[var_objs]
+                t = self.type_lattice.subscr(var_type, index_type)
                 direct_objs = flatten(prev_tp.pointers[var_obj][tac.Var("*")] for var_obj in var_objs)
-                types = self.type_lattice.subscr(prev_tp.types[var_objs], prev_tp.types[index_objs])
                 # TODO: class through type
-                return (direct_objs, types)
+                if not direct_objs and ts.is_immutable(t):
+                    return (frozenset([Immutable(t)]), t)
+                return (direct_objs, t)
             case tac.Call(var, tuple() as args):
                 if isinstance(var, tac.Var):
                     func_objects = prev_tp.pointers[LOCALS][var]
                     func_type = prev_tp.types[func_objects]
                 else:
-                    func_objects = frozenset({})
+                    func_objects = frozenset()
                     func_type = self.type_lattice.predefined(var)
                 assert isinstance(func_type, ts.Overloaded), f"Expected Overloaded type, got {func_type}"
                 arg_objects = [prev_tp.pointers[LOCALS][var] for var in args]
                 arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
+                assert all(arg != frozenset() for arg in arg_objects), f"Expected non-empty arg objects, got {arg_objects}"
                 applied = ts.partial_positional(func_type, arg_types)
                 assert isinstance(applied, ts.Overloaded), f"Expected Overloaded type, got {applied}"
                 side_effect = ts.get_side_effect(applied)
@@ -425,13 +430,24 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     new_tp.types[self_obj] = side_effect.update
 
                 t = ts.get_return(applied)
-                objects: frozenset[Object] = frozenset([])
+                assert t != ts.BOTTOM, f"Expected non-bottom return type for {locals()}"
+
+                pointed_objects: frozenset[Object] = frozenset()
+                if side_effect.points_to_args:
+                    pointed_objects = frozenset(ts.union_all(set(x) for x in arg_objects))
+
+                objects: frozenset[Object] = frozenset()
                 if any(f.new() for f in applied.items):
                     objects |= frozenset([location])
                     if side_effect.points_to_args:
-                        new_tp.pointers[location, tac.Var("*")] = frozenset(ts.union_all(set(x) for x in arg_objects))
+                        new_tp.pointers[location, tac.Var("*")] = pointed_objects
                 elif ts.is_immutable(t):
                     objects |= frozenset({Immutable(t)})
+                else:
+                    # TODO: actually "returns args"
+                    if side_effect.points_to_args:
+                        objects |= pointed_objects
+                assert objects
 
                 return (objects, t)
             case tac.Unary(var=tac.Var() as var, op=tac.UnOp() as op):
@@ -442,7 +458,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 assert isinstance(applied, ts.Overloaded), f"Expected overloaded type, got {applied}"
 
                 t = ts.get_return(applied)
-                objects = frozenset({})
+                objects = frozenset()
                 if any(f.new() for f in applied.items):
                     objects |= frozenset([location])
                 elif ts.is_immutable(t):
@@ -458,7 +474,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 assert isinstance(applied, ts.Overloaded), f"Expected overloaded type, got {applied}"
 
                 t = ts.get_return(applied)
-                objects = frozenset({})
+                objects = frozenset()
                 if any(f.new() for f in applied.items):
                     objects |= frozenset([location])
                 elif ts.is_immutable(t):
