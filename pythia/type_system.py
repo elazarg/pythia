@@ -1381,6 +1381,9 @@ def iter_children(t: TypeExpr) -> typing.Iterator[TypeExpr]:
         case Ref(): pass
         case Literal() as x:
             yield from iter_children(x.ref)
+            if isinstance(x.value, tuple):
+                for item in x.value:
+                    yield from iter_children(item)
         case Overloaded() as x:
             yield from iter_children(x.items)
         case Union() as x:
@@ -1402,6 +1405,9 @@ def iter_children(t: TypeExpr) -> typing.Iterator[TypeExpr]:
 
 def is_monomorphized(t: TypeExpr) -> bool:
     for x in iter_children(t):
+        if isinstance(x, Literal) and isinstance(x.value, tuple):
+            # Special case for tuple and lists
+            return True
         if isinstance(x, Instantiation):
             if any(not isinstance(type_param, TypeVar) for type_param in x.type_args):
                 return True

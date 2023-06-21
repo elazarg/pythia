@@ -4,7 +4,7 @@ import numpy as np
 def empty(y: list[int]) -> list[int]:
     x = []
     # a = [x]
-    for i in y:
+    for i in range(len(y)):
         x.append(i)
     return x
 
