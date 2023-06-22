@@ -58,5 +58,6 @@ def destruct():
 
 def test_tuple(a: int, b: float) -> int:
     x = (a, b)
+    (c, d) = x
     y = x[1]
     return y

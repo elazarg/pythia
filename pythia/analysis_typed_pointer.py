@@ -402,9 +402,12 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if isinstance(var, tac.Var):
                     func_objects = prev_tp.pointers[LOCALS][var]
                     func_type = prev_tp.types[func_objects]
-                else:
+                elif isinstance(var, tac.Predefined):
+                    # TODO: point from exact literal when possible
                     func_objects = frozenset()
                     func_type = self.type_lattice.predefined(var)
+                else:
+                    assert False, f"Expected Var or Predefined, got {var}"
                 assert isinstance(func_type, ts.Overloaded), f"Expected Overloaded type, got {func_type}"
                 arg_objects = [prev_tp.pointers[LOCALS][var] for var in args]
                 arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
@@ -440,7 +443,11 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if any(f.new() for f in applied.items):
                     objects |= frozenset([location])
                     if side_effect.points_to_args:
-                        new_tp.pointers[location, tac.Var("*")] = pointed_objects
+                        if var == tac.Predefined.TUPLE:
+                            for i, arg in enumerate(arg_objects):
+                                new_tp.pointers[location, tac.Var(f"{i}")] = arg
+                        else:
+                            new_tp.pointers[location, tac.Var("*")] = pointed_objects
                 elif ts.is_immutable(t):
                     objects |= frozenset({Immutable(t)})
                 else:
@@ -488,7 +495,13 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     def signature(self, tp: TypedPointer, signature: tac.Signature, pointed: frozenset[Object], t: ts.TypeExpr) -> None:
         match signature:
             case tuple() as signature:  # type: ignore
-                raise NotImplementedError
+                indirect_pointed = []
+                for i in range(len(signature)):
+                    pointed_i = flatten(tp.pointers[obj][tac.Var(f"{i}")] for obj in pointed)
+                    pointed_i |= flatten(tp.pointers[obj][tac.Var("*")] for obj in pointed)
+                    indirect_pointed.append(pointed_i)
+                for i, s in enumerate(signature):
+                    self.signature(tp, s, indirect_pointed[i], ts.subscr(t, ts.literal(i)))
             case tac.Var() as var:
                 tp.pointers[LOCALS, var] = pointed
                 tp.types[pointed] = t
