@@ -14,7 +14,7 @@ def zip_arrays(left: np.ndarray, right: np.ndarray) -> list[tuple[float, float]]
     return list(zip(left, right))
 
 
-def log(idx, k):
+def log(idx: int, k: int) -> None:
     print(f'{idx} / {k}', end='\r', flush=True)
 
 

@@ -706,15 +706,15 @@ def access(t: TypeExpr, arg: TypeExpr) -> Overloaded | Module:
             return result
         case Class() as t, arg:
             getter = access(t, literal('__getitem__'))
-            getter_as_property = partial(getter, typed_dict([make_row(1, None, arg)]))
-            assert free_vars_expr(getter_as_property) == set(), f'{getter_as_property!r}'
-            if getter_as_property == BOTTOM:
+            getitem = partial(getter, typed_dict([make_row(1, None, arg)]))
+            assert free_vars_expr(getitem) == set(), f'{getitem!r}'
+            if getitem == BOTTOM:
                 return BOTTOM
-            if isinstance(getter_as_property, Union):
-                assert len(getter_as_property.items) == 1, f'{getter_as_property!r}'
-                [getter_as_property] = getter_as_property.items
-            assert isinstance(getter_as_property, Overloaded), f'{getter_as_property!r}'
-            return overload([replace(g, is_property=True) for g in getter_as_property.items])
+            if isinstance(getitem, Union):
+                assert len(getitem.items) == 1, f'{getitem!r}'
+                [getitem] = getitem.items
+            assert isinstance(getitem, Overloaded), f'{getitem!r}'
+            return overload([replace(g, is_property=True) for g in getitem.items])
         case Module() as t, arg:
             return access(t.class_dict, arg)
         case Ref() as ref, arg:
@@ -953,10 +953,10 @@ def subscr(selftype: TypeExpr, index: TypeExpr) -> TypeExpr:
     result = bind_self(attr_type, selftype)
     if isinstance(result, FunctionType):
         result = overload([result])
-    if isinstance(result, Overloaded):
-        if any(f.is_property for f in result.items):
-            assert all(f.is_property for f in result.items)
-            return union(f.return_type for f in result.items)
+    # if isinstance(result, Overloaded):
+    #     if any(f.is_property for f in result.items):
+    #         assert all(f.is_property for f in result.items)
+    #         return union(f.return_type for f in result.items)
     assert not free_vars_expr(result), f'{result!r}'
     return result
 
