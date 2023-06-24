@@ -2,14 +2,19 @@ import numpy as np
 import argparse
 
 
+def new(f): return f
+
+
 def get_float(array: np.ndarray, idx: float) -> float:
     return array[idx]
 
 
+@new
 def get_ndarray(array: np.ndarray, idx: int) -> np.ndarray:
     return array[idx]
 
 
+@new
 def zip_arrays(left: np.ndarray, right: np.ndarray) -> list[tuple[float, float]]:
     return list(zip(left, right))
 
@@ -37,14 +42,17 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
             X = (X - X.mean()) / X.std()
             X = np.c_[np.ones(X.shape[0]), X]
             theta = np.zeros(X.shape[1])
-            for x in range(10000):
+            for _ in range(10000):
                 m = target.size
                 error = np.dot(X, theta.T) - target
                 theta = theta - (0.1 * (1 / m) * np.dot(X.T, error))
             prediction = np.zeros((len(X), 1))
             for j in range(len(X)):
-                total = 0.0
-                for x, t in zip_arrays(get_ndarray(X, j), theta):
+                total = np.zeros(theta.shape[0])
+                xj = get_ndarray(X, j)
+                for i in range(len(xj)):
+                    x = get_ndarray(xj, i)
+                    t = get_ndarray(theta, i)
                     total = total + x * t
                 prediction[j] = total
         else:
