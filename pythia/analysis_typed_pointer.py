@@ -384,14 +384,20 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
                 var_objs = prev_tp.pointers[LOCALS][var]
                 t = self.type_lattice.attribute(prev_tp.types[var_objs], field)
-                direct_objs = flatten(prev_tp.pointers[var_obj][field] for var_obj in var_objs)
+                new = False
+                if isinstance(t, ts.Overloaded) and any(item.is_property for item in t.items):
+                    assert all(f.is_property for f in t.items)
+                    new = any(f.new() for f in t.items)
+                    t = ts.get_return(t)
                 if ts.is_bound_method(t):
                     new_tp.pointers[location, tac.Var("self")] = var_objs
-                    return (frozenset({location}) | direct_objs, t)
-                # TODO: class through type
-                if not direct_objs and ts.is_immutable(t):
-                    return (frozenset([Immutable(t)]), t)
-                return (direct_objs, t)
+                    new = True
+                objects = flatten(prev_tp.pointers[var_obj][field] for var_obj in var_objs)
+                if new:
+                    objects |= frozenset([location])
+                if not objects and ts.is_immutable(t):
+                    objects |= frozenset([Immutable(t)])
+                return (objects, t)
             case tac.Subscript(var=tac.Var() as var, index=tac.Var() as index):
                 var_objs = prev_tp.pointers[LOCALS][var]
                 index_objs = prev_tp.pointers[LOCALS][index]
@@ -403,6 +409,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     assert all(f.is_property for f in t.items)
                     new = any(f.new() for f in t.items)
                     t = ts.get_return(t)
+                assert t != ts.BOTTOM, f"Subscript {var}[{index}] is BOTTOM"
                 direct_objs = flatten(prev_tp.pointers[var_obj][tac.Var("*")] for var_obj in var_objs)
                 # TODO: class through type
 
@@ -540,8 +547,8 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         for var in tac.gens(ins):
             if var in tp.pointers[LOCALS]:
                 del tp.pointers[LOCALS][var]
-        print(f"Transfer {ins} at {location.location}")
-        print(f"Prev: {prev_tp}")
+        # print(f"Transfer {ins} at {location.location}")
+        # print(f"Prev: {prev_tp}")
         match ins:
             case tac.Assign(lhs, expr):
                 (pointed, types) = self.expr(prev_tp, expr, location, tp)
@@ -549,8 +556,8 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Return(var):
                 val = tp.pointers[LOCALS][var]
                 tp.pointers[LOCALS, tac.Var('return')] = val
-        print(f"New: {tp}")
-        print()
+        # print(f"New: {tp}")
+        # print()
 
         tp.collect_garbage(self.liveness[location.location])
 

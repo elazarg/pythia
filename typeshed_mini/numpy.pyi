@@ -1,38 +1,4 @@
-#
-# NUMPY_MODULE = ObjectType('/numpy', frozendict({
-#     'ndarray': TYPE[NDARRAY],
-#     'array': ARRAY_GEN,
-#     'dot': make_function_type(FLOAT, new=False),
-#     'zeros': ARRAY_GEN,
-#     'ones': ARRAY_GEN,
-#     'concatenate': ARRAY_GEN,
-#     'empty': ARRAY_GEN,
-#     'empty_like': ARRAY_GEN,
-#     'full': ARRAY_GEN,
-#     'full_like': ARRAY_GEN,
-#     'arange': ARRAY_GEN,
-#     'linspace': ARRAY_GEN,
-#     'logspace': ARRAY_GEN,
-#     'geomspace': ARRAY_GEN,
-#     'meshgrid': ARRAY_GEN,
-#     'max': make_function_type(FLOAT, new=False),
-#     'min': make_function_type(FLOAT, new=False),
-#     'sum': make_function_type(FLOAT, new=False),
-#     'setdiff1d': ARRAY_GEN,
-#     'unique': ARRAY_GEN,
-#     'append': ARRAY_GEN,
-#     'random': ObjectType('/numpy.random', frozendict({
-#         'rand': ARRAY_GEN,
-#     })),
-#     'argmax': make_function_type(INT, new=False),
-#     'c_': ObjectType('slice_trick', frozendict({
-#         '__getitem__': make_function_type(NDARRAY),
-#     })),
-#     'r_': ObjectType('slice_trick', frozendict({
-#         '__getitem__': make_function_type(NDARRAY),
-#     })),
-# }))
-#
+
 T = TypeVar('T')
 Q = TypeVar('Q')
 Args = TypeVarTuple('Args')
@@ -41,11 +7,14 @@ N = TypeVar('N', Literal[int])
 class ndarray:
     @property
     def size(self: ndarray) -> int:...
+
     @property
     def ndim(self: ndarray) -> int:...
+
     @property
     @new
     def T(self: ndarray) -> ndarray:...
+
     @new
     def __add__(self: ndarray, other: ndarray) -> ndarray: ...
 
@@ -77,6 +46,7 @@ class ndarray:
 
     @new
     def __lt__(self: ndarray, other) -> ndarray: ...
+
     @new
     def __getitem__(self: ndarray, key: slice) -> ndarray: ...
     @new
@@ -99,6 +69,7 @@ class ndarray:
     def std(self: ndarray) -> float: ...
 
     @property
+    @new
     def shape(self: ndarray) -> list[int]: ...
     def any(self: ndarray) -> bool: ...
     def all(self: ndarray) -> bool: ...
@@ -110,8 +81,11 @@ class ndarray:
     @new
     def reshape(self: ndarray, d1: int, d2: int) -> ndarray: ...
 
-class c_:
-    def __getitem__(self: c_, key: slice | tuple[*Args]) -> ndarray: ...
+# class c_:
+#     def __getitem__(self: c_, key: slice | tuple[*Args]) -> ndarray: ...
+@property
+@new
+def c_() -> ndarray: ...
 
 @new
 def setdiff1d(a: ndarray, b: ndarray) -> ndarray: ...
@@ -155,6 +129,7 @@ class random:
     def choice(self, a: int, size: int) -> ndarray: ...
 
 class linalg:
+    @new
     def norm(self, a: ndarray, axis: int) -> ndarray: ...
 @new
 def array(object) -> ndarray: ...
