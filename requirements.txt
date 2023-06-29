@@ -1,7 +1,7 @@
 networkx==3.1
-numpy==1.24.3
+numpy==1.25.0
 matplotlib==3.7.1
-pytest==7.3.2
+pytest==7.4.0
 pyelftools==0.29
 qemu.qmp==0.0.2
 scikit-learn==1.2.2
