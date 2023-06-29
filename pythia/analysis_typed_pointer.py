@@ -522,8 +522,20 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     pointed_i = flatten(tp.pointers[obj][tac.Var(f"{i}")] for obj in pointed)
                     pointed_i |= flatten(tp.pointers[obj][tac.Var("*")] for obj in pointed)
                     indirect_pointed.append(pointed_i)
-                for i, s in enumerate(signature):
-                    self.signature(tp, s, indirect_pointed[i], ts.subscr(t, ts.literal(i)))
+                for i, var in enumerate(signature):
+                    assert isinstance(var, tac.Var), f"Expected Var, got {var}"
+                    objs = indirect_pointed[i]
+                    ti = ts.subscr(t, ts.literal(i))
+                    if isinstance(ti, ts.Overloaded):
+                        assert all(f.is_property for f in ti.items), f"Expected all properties, got {ti}"
+                        ti = ts.get_return(ti)
+                    if objs:
+                        tp.pointers[LOCALS, var] = objs
+                    else:
+                        assert ts.is_immutable(ti), f"Expected immutable type, got {ti}"
+                        objs = frozenset({Immutable(ti)})
+                    tp.pointers[LOCALS, var] = objs
+                    tp.types[objs] = ti
             case tac.Var() as var:
                 tp.pointers[LOCALS, var] = pointed
                 tp.types[pointed] = t
@@ -547,8 +559,15 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         for var in tac.gens(ins):
             if var in tp.pointers[LOCALS]:
                 del tp.pointers[LOCALS][var]
-        # print(f"Transfer {ins} at {location.location}")
-        # print(f"Prev: {prev_tp}")
+        print(f"Transfer {ins} at {location.location}")
+        for var in tac.free_vars(ins):
+            if var in prev_tp.pointers[LOCALS].keys():
+                p = prev_tp.pointers[LOCALS][var]
+                t = prev_tp.types[p]
+                print(f"  {var} = {p} : {t}")
+            else:
+                print(f"  {var} = <bottom>")
+        print(f"Prev: {prev_tp}")
         match ins:
             case tac.Assign(lhs, expr):
                 (pointed, types) = self.expr(prev_tp, expr, location, tp)
@@ -556,8 +575,15 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Return(var):
                 val = tp.pointers[LOCALS][var]
                 tp.pointers[LOCALS, tac.Var('return')] = val
-        # print(f"New: {tp}")
-        # print()
+        print(f"New: {tp}")
+        for var in tac.gens(ins):
+            if var in tp.pointers[LOCALS].keys():
+                p = tp.pointers[LOCALS][var]
+                t = tp.types[p]
+                print(f"  {var} = {p} : {t}")
+            else:
+                print(f"  {var} = <bottom>")
+        print()
 
         tp.collect_garbage(self.liveness[location.location])
 

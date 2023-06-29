@@ -9,6 +9,12 @@ def empty(y: list[int]) -> list[int]:
     return x
 
 
+def build_list_of_lists(k: int) -> None:
+    clusters = []
+    for _ in range(k):
+        clusters.append([])
+
+
 def iterate(x: int):
     for i in range(x): pass
 

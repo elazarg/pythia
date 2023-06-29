@@ -60,7 +60,7 @@ class tuple(Generic[*Args]):
 
 class list(Generic[T]):
     def __getitem__(self: list[T], index: N) -> T: ...
-    @update(list[T|Q])
+    @update(list[T|Q], "point")
     def __setitem__(self: list[T], index: N, value: Q) -> None: ...
 
     @new
@@ -71,11 +71,11 @@ class list(Generic[T]):
 
     @update(list[Q])
     def clear(self: list[T]) -> None: pass
-    @update(list[T|Q])
+    @update(list[T|Q], "point")
     def append(self: list[T], x: Q) -> None: pass
-    @update(list[T | Q])
+    @update(list[T | Q], "spill")
     def extend(self: list[T], x: list[Q]) -> None: pass
-    @update(list[T | Q])
+    @update(list[T | Q], "point")
     def insert(self: list[T], i: int, x: Q) -> None: pass
 
     def remove(self: list[T], x: T) -> None: pass
@@ -122,5 +122,6 @@ def zip(x: Iterable[T], y: Iterable[Q]) -> Iterable[tuple[T, Q]]: pass
 @new
 def iter(xs: list[T]) -> SupportsNext[T]: ...
 def next(xs: SupportsNext[T]) -> T: ...
+
 
 def enumerate(xs: T) -> Iterable[tuple[int, T]]: pass
