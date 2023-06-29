@@ -1,14 +1,20 @@
 import numpy as np
 
 
+def new(f): return f
+
+
+@new
 def empty_list_of_ndarray() -> list[np.ndarray]:
     return []
 
 
+@new
 def list_of_empty_lists(k) -> list[list[int]]:
     return [[] for _ in range(k)]
 
 
+@new
 def empty_list_of_tuples() -> list[tuple[int, int]]:
     return []
 
@@ -29,28 +35,30 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     samples, features = X.shape
     # Fix: wrapping in np.array to help the analysis
     centroids = np.array(X[np.random.choice(samples, k)])
-    clusters = list_of_empty_lists(k)
+    clusters = []
+    for _ in range(k):
+        clusters.append([])
     # Iterate until convergence or for max iterations
     for i in range(max_iterations):  # type: int
         # print(f"{max_iterations}/{i}", end="\r", flush=True)
         # Assign samples to the closest centroids (create clusters)
         centroid_is = []  # empty_list_of_tuples()
-        for sample_i, sample in enumerate(X):
-            centroid_i = np.argmin(np.linalg.norm(sample - centroids, axis=1))
-            centroid_is = centroid_is + [(centroid_i, sample_i)]
+        for sample_i in range(len(X)):
+            centroid_i = np.argmin(np.linalg.norm(sample[sample_i] - centroids, axis=1))
+            centroid_is.append((centroid_i, sample_i))
         clusters = []
         for _ in range(k):
-            clusters = clusters + [[]]
+            clusters.append([])
         for centroid_i, sample_i in centroid_is:
             # TODO: update type of clusters
-            clusters[centroid_i] = clusters[centroid_i] + [sample_i]
+            clusters[centroid_i].append(sample_i)
 
         # Save current centroids for convergence check
         prev_centroids = centroids
         # Calculate new centroids from the clusters
         res = []  # empty_list_of_ndarray()
         for j in range(len(clusters)):
-            res = res + [np.mean(X[clusters[j]], axis=0)]
+            res.append(np.mean(X[clusters[j]], axis=0))
         centroids = np.array(res)
         # If no centroids have changed => convergence
         diff = centroids - prev_centroids
@@ -58,8 +66,8 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
             break
 
     y_pred = np.zeros(samples)
-    for cluster_i, cluster in enumerate(clusters):
-        for sample_i in cluster:
+    for cluster_i in range(len(clusters)):
+        for sample_i in clusters[cluster_i]:
             y_pred[sample_i] = cluster_i
     return y_pred
 

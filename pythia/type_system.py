@@ -189,7 +189,7 @@ class Class(TypeExpr):
     type_params: tuple[TypeVar, ...]
 
     def __repr__(self) -> str:
-        return f'{self.name}'
+        return f'class {self.name}'
 
 
 @dataclass(frozen=True)
@@ -198,7 +198,7 @@ class Module(TypeExpr):
     class_dict: TypedDict
 
     def __repr__(self) -> str:
-        return f'module {self.name}({self.class_dict})'
+        return f'module {self.name}'
 
 
 @dataclass(frozen=True)
@@ -1159,7 +1159,7 @@ def pretty_print_type(t: Module | TypeExpr, indent: int = 0) -> None:
             raise NotImplementedError(f'{t!r}, {type(t)}')
 
 
-def module_to_type(module: ast.Module, name: str) -> Module:
+def module_to_type(module: ast.Module, module_name: str) -> Module:
     def free_vars(node: ast.expr | ast.arg) -> set[str]:
         return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
 
@@ -1175,7 +1175,7 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                 if id in global_aliases:
                     return Ref(global_aliases[id])
                 if id in global_names:
-                    return Ref(f'{name}.{id}')
+                    return Ref(f'{module_name}.{id}')
                 else:
                     return Ref(f'builtins.{id}')
             case ast.Starred(value=ast.Name(id=id)):
@@ -1229,7 +1229,7 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                     if asname is None:
                         continue
                     yield make_row(index, asname, Ref(alias.name))
-            case ast.ClassDef(name=name, body=body, bases=base_expressions):
+            case ast.ClassDef(name=class_name, body=body, bases=base_expressions, decorator_list=decorator_list):
                 base_classes_list = []
                 protocol = False
                 type_params: tuple[TypeVar, ...] = ()
@@ -1245,7 +1245,7 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                         case _:
                             raise NotImplementedError(f'{base!r}')
 
-                metaclass = Class(f'__{name}_metaclass__',
+                metaclass = Class(f'__{class_name}_metaclass__',
                                   typed_dict([
                                       make_row(0, '__call__', FunctionType(typed_dict([
                                           make_row(0, 'cls', TypeVar('Infer')),
@@ -1258,12 +1258,22 @@ def module_to_type(module: ast.Module, name: str) -> Module:
                                   protocol=False,
                                   type_params=())
 
-                class_dict = typed_dict([infer_self(row) for index, stmt in enumerate(body)
-                                         for row in stmt_to_rows(stmt, index)])
-                res = Class(name, class_dict, inherits=tuple(base_classes_list), protocol=protocol,
-                            type_params=type_params)
+                name_decorators = {decorator.id: decorator for decorator in decorator_list
+                                   if isinstance(decorator, ast.Name)}
+                res: TypeExpr
+                if 'module' in name_decorators:
+                    module_dict = typed_dict([row for index, stmt in enumerate(body)
+                                              for row in stmt_to_rows(stmt, index)])
+                    res = Module(f'{module_name}.{class_name}', module_dict)
+                    print(res)
+                else:
+                    class_dict = typed_dict([infer_self(row) for index, stmt in enumerate(body)
+                                             for row in stmt_to_rows(stmt, index)])
 
-                yield make_row(index, name, res)
+                    res = Class(class_name, class_dict, inherits=tuple(base_classes_list), protocol=protocol,
+                                type_params=type_params)
+
+                yield make_row(index, class_name, res)
             case ast.FunctionDef() as fdef:
                 freevars = {x for node in fdef.args.args for x in free_vars(node)}
                 returns = expr_to_type(fdef.returns)
@@ -1313,11 +1323,13 @@ def module_to_type(module: ast.Module, name: str) -> Module:
     class_dict = typed_dict([row for index, stmt in enumerate(module.body)
                              if not isinstance(stmt, ast.Assign)
                              for row in stmt_to_rows(stmt, index)])
-    return Module(name, class_dict)
+    return Module(module_name, class_dict)
 
 
 def is_immutable(value: TypeExpr) -> bool:
     match value:
+        case Module() as module:
+            return all(is_immutable(x.type) for x in module.class_dict.items)
         case Overloaded(items) | TypedDict(items) | Union(items):
             return all(is_immutable(x) for x in items)
         case Instantiation(generic, items):
