@@ -5,17 +5,7 @@ def new(f): return f
 
 
 @new
-def empty_list_of_ndarray() -> list[np.ndarray]:
-    return []
-
-
-@new
 def empty_list_of_ints() -> list[int]:
-    return []
-
-
-@new
-def empty_list_of_tuples() -> list[tuple[int, int]]:
     return []
 
 
@@ -39,7 +29,7 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     for i in range(max_iterations):  # type: int
         # print(f"{max_iterations}/{i}", end="\r", flush=True)
         # Assign samples to the closest centroids (create clusters)
-        centroid_is = []  # empty_list_of_tuples()
+        centroid_is = []
         for sample_i in range(len(X)):
             centroid_i = np.argmin(np.linalg.norm(X[sample_i] - centroids, axis=1))
             centroid_is.append((centroid_i, sample_i))
@@ -52,7 +42,7 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
         # Save current centroids for convergence check
         prev_centroids = centroids
         # Calculate new centroids from the clusters
-        res = []  # empty_list_of_ndarray()
+        res = []
         for j in range(len(clusters)):
             res.append(np.mean(X[clusters[j]], axis=0))
         centroids = np.array(res)

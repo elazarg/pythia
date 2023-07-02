@@ -415,8 +415,6 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     assert all(f.is_property for f in t.items)
                     new = any(f.new() for f in t.items)
                     t = ts.get_return(t)
-                # if t == ts.BOTTOM:
-                #     return (frozenset(), ts.BOTTOM)
                 assert t != ts.BOTTOM, f"Subscript {var}[{index}] is BOTTOM"
                 direct_objs = flatten(prev_tp.pointers[var_obj][tac.Var("*")] for var_obj in var_objs)
                 # TODO: class through type
@@ -478,11 +476,11 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if any(f.new() for f in applied.items):
                     objects |= frozenset([location])
                     if side_effect.points_to_args:
-                        if var == tac.Predefined.TUPLE:
+                        if var == tac.Predefined.TUPLE and not new_tp.pointers[location][tac.Var("*")]:
                             for i, arg in enumerate(arg_objects):
                                 new_tp.pointers[location, tac.Var(f"{i}")] = arg
                         else:
-                            new_tp.pointers[location, tac.Var("*")] = pointed_objects
+                            new_tp.pointers.update(location, tac.Var("*"), pointed_objects)
                 elif ts.is_immutable(t):
                     objects |= frozenset({Immutable(t)})
                 else:
