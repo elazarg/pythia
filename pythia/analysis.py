@@ -41,7 +41,8 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T]) -> InvariantPair[
     initial = analysis.initial()
     pre_result[(entry, cfg[entry].first_index())] = initial
     while wl:
-        label = wl.pop()
+        label = min(wl)
+        wl.remove(label)
         block = cfg[label]
 
         location = (label, block.first_index())
@@ -124,7 +125,7 @@ def find_first_for_loop(cfg: Cfg) -> tuple[Location, Location]:
 
 
 def run(cfg: Cfg, annotations: dict[tac.Var, str], module_type: ts.Module, function_name: str) -> dict[str, InvariantPair]:
-
+    gu.pretty_print_cfg(cfg)
     liveness_invariants = analyze(cfg, LivenessVarLattice())
 
     typed_pointer_analysis = TypedPointerLattice(liveness_invariants.post, function_name, module_type)
