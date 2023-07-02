@@ -415,6 +415,8 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     assert all(f.is_property for f in t.items)
                     new = any(f.new() for f in t.items)
                     t = ts.get_return(t)
+                # if t == ts.BOTTOM:
+                #     return (frozenset(), ts.BOTTOM)
                 assert t != ts.BOTTOM, f"Subscript {var}[{index}] is BOTTOM"
                 direct_objs = flatten(prev_tp.pointers[var_obj][tac.Var("*")] for var_obj in var_objs)
                 # TODO: class through type
@@ -456,12 +458,14 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                                          if self_obj in targets} - {func_obj, LOCALS}
                     monomorophized = [obj for obj in aliasing_pointers if ts.is_monomorphized(prev_tp.types[obj])]
                     # Expected two objects: self argument and locals
-                    if monomorophized:
-                        raise RuntimeError(f"Cannot handle update with aliased objects: {aliasing_pointers}")
-                    new_tp.types[self_obj] = side_effect.update
-                    if side_effect.name == 'append':
-                        x = arg_objects[0]
-                        new_tp.pointers.update(self_obj, tac.Var("*"), x)
+
+                    if new_tp.types[self_obj] != side_effect.update:
+                        if monomorophized:
+                            raise RuntimeError(f"Cannot handle update with aliased objects: {aliasing_pointers} (not: {func_obj, LOCALS})")
+                        new_tp.types[self_obj] = side_effect.update
+                        if side_effect.name == 'append':
+                            x = arg_objects[0]
+                            new_tp.pointers.update(self_obj, tac.Var("*"), x)
 
                 t = ts.get_return(applied)
                 assert t != ts.BOTTOM, f"Expected non-bottom return type for {locals()}"

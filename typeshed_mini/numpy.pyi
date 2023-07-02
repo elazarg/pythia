@@ -133,8 +133,9 @@ class random:
 
 @module
 class linalg:
+    @staticmethod
     @new
-    def norm(self, a: ndarray, axis: int) -> ndarray: ...
+    def norm(a: ndarray, axis: int) -> ndarray: ...
 
 @new
 def array(object) -> ndarray: ...

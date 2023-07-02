@@ -10,8 +10,8 @@ def empty_list_of_ndarray() -> list[np.ndarray]:
 
 
 @new
-def list_of_empty_lists(k) -> list[list[int]]:
-    return [[] for _ in range(k)]
+def empty_list_of_ints() -> list[int]:
+    return []
 
 
 @new
@@ -32,25 +32,21 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
         not converge before that.
     """
 
-    samples, features = X.shape
-    # Fix: wrapping in np.array to help the analysis
-    centroids = np.array(X[np.random.choice(samples, k)])
+    nsamples, features = X.shape
+    centroids = X[np.random.choice(nsamples, k)]
     clusters = []
-    for _ in range(k):
-        clusters.append([])
     # Iterate until convergence or for max iterations
     for i in range(max_iterations):  # type: int
         # print(f"{max_iterations}/{i}", end="\r", flush=True)
         # Assign samples to the closest centroids (create clusters)
         centroid_is = []  # empty_list_of_tuples()
         for sample_i in range(len(X)):
-            centroid_i = np.argmin(np.linalg.norm(sample[sample_i] - centroids, axis=1))
+            centroid_i = np.argmin(np.linalg.norm(X[sample_i] - centroids, axis=1))
             centroid_is.append((centroid_i, sample_i))
         clusters = []
         for _ in range(k):
-            clusters.append([])
+            clusters.append(empty_list_of_ints())
         for centroid_i, sample_i in centroid_is:
-            # TODO: update type of clusters
             clusters[centroid_i].append(sample_i)
 
         # Save current centroids for convergence check
@@ -65,7 +61,7 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
         if not diff.any():
             break
 
-    y_pred = np.zeros(samples)
+    y_pred = np.zeros(nsamples)
     for cluster_i in range(len(clusters)):
         for sample_i in clusters[cluster_i]:
             y_pred[sample_i] = cluster_i

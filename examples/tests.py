@@ -1,5 +1,12 @@
 import numpy as np
 
+def new(f): return f
+
+
+@new
+def list_of_ints() -> list[int]:
+    return []
+
 
 def empty(y: list[int]) -> list[int]:
     x = []
@@ -13,6 +20,22 @@ def build_list_of_lists(k: int) -> None:
     clusters = []
     for _ in range(k):
         clusters.append([])
+
+
+def build_aliased_list_of_lists(k: int, xs: list[int], i: int) -> None:
+    clusters = []
+    for _ in range(k):
+        clusters.append([])
+    for x in xs:
+        clusters[x].append(i)
+
+
+def build_aliased_list_of_known_lists(k: int, xs: list[int], i: int) -> None:
+    clusters = []
+    for _ in range(k):
+        clusters.append(list_of_ints())
+    for x in xs:
+        clusters[x].append(i)
 
 
 def iterate(x: int):
