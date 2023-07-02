@@ -142,6 +142,12 @@ class Pointer:
             case _:
                 raise ValueError(f'Invalid key {key} or value {value}')
 
+    def update(self, obj: Object, var: tac.Var, values: frozenset[Object]) -> None:
+        if obj not in self.graph:
+            self.graph[obj] = make_fields({var: values})
+        else:
+            self.graph[obj][var] = values
+
     def keep_keys(self, keys: typing.Iterable[Object]) -> None:
         for obj in set(self):
             if obj not in keys:
@@ -453,6 +459,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     if monomorophized:
                         raise RuntimeError(f"Cannot handle update with aliased objects: {aliasing_pointers}")
                     new_tp.types[self_obj] = side_effect.update
+                    if side_effect.name == 'append':
+                        x = arg_objects[0]
+                        new_tp.pointers.update(self_obj, tac.Var("*"), x)
 
                 t = ts.get_return(applied)
                 assert t != ts.BOTTOM, f"Expected non-bottom return type for {locals()}"
