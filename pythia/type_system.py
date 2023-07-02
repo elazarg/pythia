@@ -207,6 +207,7 @@ class SideEffect(TypeExpr):
     bound_method: bool = False
     update: typing.Optional[TypeExpr] = None
     points_to_args: bool = False
+    name: typing.Optional[str] = None  # ad hoc effects
 
 
 @dataclass(frozen=True)
@@ -218,7 +219,7 @@ class FunctionType(TypeExpr):
     type_params: tuple[TypeVar, ...]
 
     def __repr__(self) -> str:
-        if self.is_property == literal(True):
+        if self.is_property:
             return f'->{self.return_type}'
         else:
             type_params = ', '.join(str(x) for x in self.type_params)
@@ -973,7 +974,7 @@ def make_list_constructor() -> Overloaded:
     return_type = literal([args])
     return overload([FunctionType(params=typed_dict([make_row(0, 'self', args)]),
                                   return_type=return_type,
-                                  side_effect=SideEffect(new=True, points_to_args=True),
+                                  side_effect=SideEffect(new=True, points_to_args=True, name='[]'),
                                   is_property=False,
                                   type_params=(args,))])
 
@@ -983,7 +984,7 @@ def make_tuple_constructor() -> Overloaded:
     return_type = Instantiation(Ref('builtins.tuple'), (args,))
     return overload([FunctionType(params=typed_dict([make_row(0, 'self', args)]),
                                   return_type=return_type,
-                                  side_effect=SideEffect(new=True, points_to_args=True),
+                                  side_effect=SideEffect(new=True, points_to_args=True, name='()'),
                                   is_property=False,
                                   type_params=(args,))])
 
@@ -996,7 +997,7 @@ def make_slice_constructor() -> Overloaded:
     return overload([FunctionType(params=typed_dict([make_row(0, 'start', both),
                                                      make_row(1, 'end', both)]),
                                   return_type=return_type,
-                                  side_effect=SideEffect(new=True),
+                                  side_effect=SideEffect(new=True, name='[:]'),
                                   is_property=False,
                                   type_params=())])
 
@@ -1159,6 +1160,19 @@ def pretty_print_type(t: Module | TypeExpr, indent: int = 0) -> None:
             raise NotImplementedError(f'{t!r}, {type(t)}')
 
 
+def parse_side_effect(stmt: ast.stmt) -> SideEffect:
+    assert isinstance(stmt, ast.Assign)
+    assert len(stmt.targets) == 1
+    target = stmt.targets[0]
+    assert isinstance(target, ast.Name)
+
+    return SideEffect(
+        new='new' in name_decorators and not is_immutable(returns),
+        update=update_type,
+        points_to_args='points_to_args' in name_decorators,
+    )
+
+
 def module_to_type(module: ast.Module, module_name: str) -> Module:
     def free_vars(node: ast.expr | ast.arg) -> set[str]:
         return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
@@ -1286,10 +1300,12 @@ def module_to_type(module: ast.Module, module_name: str) -> Module:
                     update_type = expr_to_type(update.args[0])
                 else:
                     update_type = None
+                # side_effect = parse_side_effect(fdef.body)
                 side_effect = SideEffect(
                     new='new' in name_decorators and not is_immutable(returns),
                     update=update_type,
                     points_to_args='points_to_args' in name_decorators,
+                    name=fdef.name,
                 )
                 is_property = 'property' in name_decorators
                 type_params = tuple(generic_vars[x] for x in freevars if x in generic_vars)
@@ -1378,11 +1394,13 @@ def is_bound_method(t: TypeExpr) -> bool:
 
 
 def get_side_effect(applied: Overloaded) -> SideEffect:
+    [name] = {x.side_effect.name for x in applied.items}
     return SideEffect(
         new=any(x.side_effect.new for x in applied.items),
         update=join_all(x.side_effect.update for x in applied.items),
         bound_method=any(is_bound_method(x) for x in applied.items),
         points_to_args=any(x.side_effect.points_to_args for x in applied.items),
+        name=name
     )
 
 

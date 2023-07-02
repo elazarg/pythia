@@ -48,7 +48,32 @@ class float:
     def __truediv__(self, other: int) -> float: ...
 
 
-class str: pass
+class str:
+    def __add__(self, other: str) -> str: ...
+    def __eq__(self, other) -> bool: ...
+    def __gt__(self, other: str) -> bool: ...
+    def __lt__(self, other: str) -> bool: ...
+    def __getitem__(self, index: int) -> str: ...
+    def __len__(self) -> int: ...
+    def __contains__(self, item: str) -> bool: ...
+    def __iter__(self) -> Iterable[str]: ...
+
+    def startswith(self, prefix: str) -> bool: ...
+    def endswith(self, suffix: str) -> bool: ...
+    def split(self) -> list[str]: ...
+    def join(self, iterable: Iterable[str]) -> str: ...
+    def replace(self, old: str, new: str, count: int) -> str: ...
+    def strip(self, chars: str = None) -> str: ...
+    def lstrip(self, chars: str = None) -> str: ...
+    def rstrip(self, chars: str = None) -> str: ...
+    def capitalize(self) -> str: ...
+    def title(self) -> str: ...
+    def lower(self) -> str: ...
+    def upper(self) -> str: ...
+    def swapcase(self) -> str: ...
+    def casefold(self) -> str: ...
+    def center(self, width: int, fillchar: str = ' ') -> str: ...
+
 
 class slice: pass
 
@@ -59,32 +84,48 @@ class tuple(Generic[*Args]):
     # def __add__(self: tuple[*Args], other: tuple[*Args2]) -> tuple[*Args, *Args2]: pass
 
 class list(Generic[T]):
-    def __getitem__(self: list[T], index: N) -> T: ...
-    @update(list[T|Q], "point")
-    def __setitem__(self: list[T], index: N, value: Q) -> None: ...
+    def __getitem__(self: list[T], index: N) -> T:
+        result = self[index]
+
+    @update(list[T|Q])
+    def __setitem__(self: list[T], index: N, value: Q) -> None:
+        self[index] = value
 
     @new
-    def __iter__(self: list[T]) -> SupportsNext[T]: ...
+    def __iter__(self: list[T]) -> SupportsNext[T]:
+        result += self
 
     @new
-    def copy(self: list[T]) -> list[T]: pass
+    def copy(self: list[T]) -> list[T]:
+        result += self
 
     @update(list[Q])
-    def clear(self: list[T]) -> None: pass
-    @update(list[T|Q], "point")
-    def append(self: list[T], x: Q) -> None: pass
-    @update(list[T | Q], "spill")
-    def extend(self: list[T], x: list[Q]) -> None: pass
-    @update(list[T | Q], "point")
-    def insert(self: list[T], i: int, x: Q) -> None: pass
+    def clear(self: list[T]) -> None:
+        del self[:]
+
+    @update(list[T|Q])
+    def append(self: list[T], x: Q) -> None:
+        self[_] = x
+
+    @update(list[T | Q])
+    def insert(self: list[T], i: int, x: Q) -> None:
+        self[_] = x
+
+    @update(list[T | Q])
+    def extend(self: list[T], x: list[Q]) -> None:
+        self += x
 
     def remove(self: list[T], x: T) -> None: pass
     def pop(self: list[T], i: int = -1) -> T: pass
 
     def index(self: list[T], x: T, start: int = 0, end: int = 0) -> int: pass
     def count(self: list[T], x: T) -> int: pass
-    def sort(self: list[T], key: object = None, reverse: bool = False) -> None: pass
-    def reverse(self: list[T]) -> None: pass
+
+    def sort(self: list[T], key: object = None, reverse: bool = False) -> None:
+        self += self
+
+    def reverse(self: list[T]) -> None:
+        self += self
 
     @new
     def __add__(self: list[T], other: list[Q]) -> list[T|Q]: pass
@@ -115,13 +156,20 @@ def max(x, y) -> int: pass
 def sum(x) -> int: pass
 def all(x) -> bool: pass
 def any(x) -> bool: pass
+
 @new
-def sorted(x) -> list: pass
+def sorted(x) -> list:
+    result += x
+
 def zip(x: Iterable[T], y: Iterable[Q]) -> Iterable[tuple[T, Q]]: pass
 
 @new
-def iter(xs: list[T]) -> SupportsNext[T]: ...
-def next(xs: SupportsNext[T]) -> T: ...
+def iter(xs: list[T]) -> SupportsNext[T]:
+    result += xs
+
+def next(xs: SupportsNext[T]) -> T:
+    result = xs[_]
 
 
-def enumerate(xs: T) -> Iterable[tuple[int, T]]: pass
+def enumerate(xs: T) -> Iterable[tuple[int, T]]:
+    pass
