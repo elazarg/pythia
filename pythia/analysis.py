@@ -101,14 +101,14 @@ def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair],
             for name, invariant_pair in invariants.items():
                 pre_invariant = invariant_pair.pre[(label, block.first_index())]
                 print(f'\t{name}:')
-                print(str(pre_invariant))
+                pre_invariant.print()
         gu.print_block(label, block, cfg.annotator)
         if print_invariants:
             print('Post:')
             for name, invariant_pair in invariants.items():
                 post_invariant = invariant_pair.post[(label, block.last_index())]
                 print(f'\t{name}:')
-                print(str(post_invariant))
+                post_invariant.print()
             print()
         print("Successors:", list(cfg.successors(label)))
         print()

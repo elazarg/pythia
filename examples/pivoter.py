@@ -1,18 +1,23 @@
 
 def new(f): return f
 
+
 @new
-def get_world(g: dict[int, dict[int, int]], root_to_leaf_path: list[int], vertices: set[int]) -> set[int]:
-    world = set(vertices)
+def get_world(g: dict, root_to_leaf_path: list[int]) -> set[int]:
+    world = set(g)
     for u in root_to_leaf_path:
-        world &= set(g[u].keys())
+        s = set(g[u])
+        if world is None:
+            world = s
+        else:
+            world &= s
     return world
 
 
-def run(g: dict[int, dict[int, int]], root_to_leaf_path: list[int], vertices: set[int]) -> int:
+def run(g: dict, root_to_leaf_path: list[int]) -> int:
     counter = 0
     while root_to_leaf_path:
-        world = get_world(g, root_to_leaf_path, vertices)
+        world = get_world(g, root_to_leaf_path)
         if not world:
             # no children to explore
             # found maximal clique
@@ -22,10 +27,10 @@ def run(g: dict[int, dict[int, int]], root_to_leaf_path: list[int], vertices: se
             # leaf node -> print clique
             # move_to_sibling(g, root_to_leaf_path, vertices):
             parent = root_to_leaf_path.pop()
-            world = get_world(g, root_to_leaf_path, vertices)
+            world = get_world(g, root_to_leaf_path)
             while root_to_leaf_path and parent == max(world):
                 parent = root_to_leaf_path.pop()
-                world = get_world(g, root_to_leaf_path, vertices)
+                world = get_world(g, root_to_leaf_path)
             if parent != max(world):
                 for curr in sorted(world):
                     if curr > parent:
@@ -42,15 +47,14 @@ def run(g: dict[int, dict[int, int]], root_to_leaf_path: list[int], vertices: se
 
 
 def main():
-    g = {1: {2: 1, 3: 1},
-         2: {1: 1, 3: 1},
-         3: {1: 1, 4: 1},
-         4: {3: 1, 5: 1, 6: 1},
-         5: {4: 1, 6: 1},
-         6: {5: 1, 4: 1}}
+    g = {1: {2, 3},
+         2: {1, 3},
+         3: {1, 4},
+         4: {3, 5, 6},
+         5: {4, 6},
+         6: {5, 4}}
     root_to_leaf_path = [1]
-    vertices = set(range(4))
-    counter = run(g, root_to_leaf_path, vertices)
+    counter = run(g, root_to_leaf_path)
     print(counter)
 
 
