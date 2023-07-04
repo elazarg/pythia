@@ -1,44 +1,58 @@
 
-def get_world(g, root_to_leaf_path, V):
-    world = set(V)
+def new(f): return f
+
+@new
+def get_world(g: dict[int, dict[int, int]], root_to_leaf_path: list[int], vertices: set[int]) -> set[int]:
+    world = set(vertices)
     for u in root_to_leaf_path:
-        world = world.intersection(set(g[u]))
-        world = {u for u in world if u > root_to_leaf_path[-1]}
+        world &= set(g[u].keys())
     return world
 
 
-def move_to_child(root_to_leaf_path, g, world):
-    root_to_leaf_path.append(min(world))
-
-
-def move_to_sibling(root_to_leaf_path, g, V):
-    parent = root_to_leaf_path.pop()
-    world = get_world(g, root_to_leaf_path, V)
-    while len(root_to_leaf_path) > 0 and parent == max(world):
-        parent = root_to_leaf_path.pop()
-        world = get_world(g, root_to_leaf_path, V)
-    if parent == max(world):
-        assert (root_to_leaf_path == [])
-        return
-    for curr in sorted(world):
-        if curr > parent:
-            root_to_leaf_path.append(curr)
-            return
-
-
-def CN(g, root_to_leaf_path, V):
-    result = []  # comment-out
+def run(g: dict[int, dict[int, int]], root_to_leaf_path: list[int], vertices: set[int]) -> int:
     counter = 0
-    while len(root_to_leaf_path) != 0:
-        world = get_world(g, root_to_leaf_path, V)
-        if len(world) == 0:  # leaf node -> print clique
-            print(f"Maximal Clique: {root_to_leaf_path}")
-            result.append(root_to_leaf_path)  # comment-out
+    while root_to_leaf_path:
+        world = get_world(g, root_to_leaf_path, vertices)
+        if not world:
+            # no children to explore
+            # found maximal clique
+            # print(f"Maximal Clique: {root_to_leaf_path}")
             counter += 1
-            move_to_sibling(root_to_leaf_path, g, V)
+        if max(world, default=0) <= root_to_leaf_path[-1]:
+            # leaf node -> print clique
+            # move_to_sibling(g, root_to_leaf_path, vertices):
+            parent = root_to_leaf_path.pop()
+            world = get_world(g, root_to_leaf_path, vertices)
+            while root_to_leaf_path and parent == max(world):
+                parent = root_to_leaf_path.pop()
+                world = get_world(g, root_to_leaf_path, vertices)
+            if parent != max(world):
+                for curr in sorted(world):
+                    if curr > parent:
+                        root_to_leaf_path.append(curr)
+                        break
+            else:
+                assert not root_to_leaf_path
         else:
-            move_to_child(root_to_leaf_path, g, world)
-    return result, counter  # comment-out, just return counter
+            for neighbour in sorted(world):
+                if neighbour > root_to_leaf_path[-1]:
+                    root_to_leaf_path.append(neighbour)
+                    break
+    return counter
 
 
-CN(G, [0], set(range(n)))
+def main():
+    g = {1: {2: 1, 3: 1},
+         2: {1: 1, 3: 1},
+         3: {1: 1, 4: 1},
+         4: {3: 1, 5: 1, 6: 1},
+         5: {4: 1, 6: 1},
+         6: {5: 1, 4: 1}}
+    root_to_leaf_path = [1]
+    vertices = set(range(4))
+    counter = run(g, root_to_leaf_path, vertices)
+    print(counter)
+
+
+if __name__ == '__main__':
+    main()

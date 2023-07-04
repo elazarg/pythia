@@ -1279,7 +1279,6 @@ def module_to_type(module: ast.Module, module_name: str) -> Module:
                     module_dict = typed_dict([row for index, stmt in enumerate(body)
                                               for row in stmt_to_rows(stmt, index)])
                     res = Module(f'{module_name}.{class_name}', module_dict)
-                    print(res)
                 else:
                     class_dict = typed_dict([infer_self(row) for index, stmt in enumerate(body)
                                              for row in stmt_to_rows(stmt, index)])

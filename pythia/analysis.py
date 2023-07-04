@@ -14,7 +14,7 @@ from pythia.analysis_liveness import LivenessVarLattice
 from pythia.analysis_typed_pointer import TypedPointerLattice
 from pythia.graph_utils import Location
 
-T = TypeVar('T')
+Inv = TypeVar('Inv')
 Cfg: TypeAlias = gu.Cfg[tac.Tac]
 
 
@@ -26,14 +26,14 @@ def make_tac_cfg(f: typing.Any, simplify: bool = True) -> Cfg:
 
 
 @dataclass
-class InvariantPair(typing.Generic[T]):
-    pre: InvariantMap[T]
-    post: InvariantMap[T]
+class InvariantPair(typing.Generic[Inv]):
+    pre: InvariantMap[Inv]
+    post: InvariantMap[Inv]
 
 
-def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T]) -> InvariantPair[T]:
-    pre_result: InvariantMap[T] = {}
-    post_result: InvariantMap[T] = {}
+def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[Inv]) -> InvariantPair[Inv]:
+    pre_result: InvariantMap[Inv] = {}
+    post_result: InvariantMap[Inv] = {}
 
     cfg: domain.IterationStrategy = domain.BackwardIterationStrategy(_cfg) if analysis.backward else domain.ForwardIterationStrategy(_cfg)
     # gu.pretty_print_cfg(_cfg)
@@ -58,8 +58,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T]) -> InvariantPair[
                 e.add_note(f"from {ins}")
                 e.add_note(f"pre: {pre_result[location]}")
                 raise e
-            # assert not isinstance(invariant, domain.Bottom), f'At {location}\nfrom {pre_result[location]}\n{ins} produced bottom'
-
+            
             post = post_result[location] = invariant
         for next_label in cfg.successors(label):
             next_location = (next_label, cfg[next_label].first_index())
@@ -81,8 +80,8 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[T]) -> InvariantPair[
     return InvariantPair(pre_result, post_result)
 
 
-def analyze_single(cfg: Cfg, analysis: typing.Callable[[tac.Tac, Location], T]) -> InvariantMap[T]:
-    result: InvariantMap[T] = {}
+def analyze_single(cfg: Cfg, analysis: typing.Callable[[tac.Tac, Location], Inv]) -> InvariantMap[Inv]:
+    result: InvariantMap[Inv] = {}
     # gu.pretty_print_cfg(cfg)
     for label, block in cfg.items():
         for index, ins in block.items():
@@ -154,7 +153,7 @@ def analyze_function(filename: str, *function_names: str, print_invariants: bool
     functions, imports = disassemble.read_file(filename)
     module_type = ts.parse_file(filename)
 
-    dirty_map = {}
+    # dirty_map: dict[str, set] = {}
     for function_name in function_names:
         f = functions[function_name]
         cfg = make_tac_cfg(f, simplify=False)

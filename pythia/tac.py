@@ -446,7 +446,7 @@ def make_tac_no_dels(opname: str, val: str | int | None, stack_effect: int, stac
             lhs = stackvar(out)
             left = stackvar(stack_depth - 1)
             right = stackvar(stack_depth)
-            if argrepr[-1] == '=' and argrepr[0] != '=':
+            if argrepr != '!=' and argrepr[-1] == '=' and argrepr[0] != '=':
                 return [Assign(lhs, Binary(left, argrepr[:-1], right, inplace=True))]
             else:
                 return [Assign(lhs, Binary(left, argrepr, right, inplace=False))]
@@ -497,7 +497,7 @@ def make_tac_no_dels(opname: str, val: str | int | None, stack_effect: int, stac
             return [Assign(stackvar(out), Const(val))]
         case ['LOAD', *ops]:
             lhs = stackvar(out)
-            assert isinstance(val, str), f'{opname}, {val}, {argrepr}'
+            assert isinstance(val, (str, type(None))), f'{opname}, {val}, {argrepr}'
             match ops:
                 case ['ATTR']:
                     return [Assign(lhs, Attribute(stackvar(stack_depth), Var(val)))]
@@ -515,7 +515,7 @@ def make_tac_no_dels(opname: str, val: str | int | None, stack_effect: int, stac
                 case ['BUILD', 'CLASS']:
                     return [Assign(lhs, make_class(val))]
                 case ['ASSERTION', 'ERROR']:
-                    return [Assign(lhs, Const(AssertionError()))]
+                    return []  # Assign(lhs, Const(AssertionError()))]
                 case _:
                     assert False, ops
         case ['STORE', 'FAST' | 'NAME']:
