@@ -186,6 +186,8 @@ class Map(typing.Generic[K, T]):
     def copy(self) -> Map:
         return Map(self.default, deepcopy(self._map))
 
+    def print(self) -> None:
+        print(str(self))
 
 MapDomain: typing.TypeAlias = Map[K, T] | Bottom
 VarMapDomain: typing.TypeAlias = MapDomain[tac.Var, T]

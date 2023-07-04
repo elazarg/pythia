@@ -31,10 +31,16 @@ class Param:
 
 @dataclass(frozen=True)
 class Immutable:
-    type: ts.TypeExpr
+    hash: int
 
     def __repr__(self) -> str:
-        return f'@type {self.type}'
+        return f'@type {self.hash}'
+
+
+def immutable(t: ts.TypeExpr, cache={}) -> Immutable:
+    if t not in cache:
+        cache[t] = Immutable(len(cache))
+    return cache[t]
 
 
 @dataclass(frozen=True)
@@ -255,6 +261,16 @@ class TypedPointer:
     def __repr__(self):
         return f'TP:\n {self.pointers}\n {self.types}\n'
 
+    def print(self) -> None:
+        print("Pointers:")
+        for obj, fields in sorted(self.pointers.items(), key=lambda x: str(x)):
+            print(f'  {obj}:')
+            for f, targets in sorted(fields.items(), key=lambda x: str(x)):
+                print(f'    {f}: {set(targets)}')
+        print("Types:")
+        for k, v in sorted(self.types.map.items(), key=lambda x: str(x)):
+            print(f'  {k}: {v}')
+
     def is_less_than(self: TypedPointer, other: TypedPointer) -> bool:
         return self.pointers.is_less_than(other.pointers) and self.types.is_less_than(other.types)
 
@@ -374,7 +390,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         match expr:
             case tac.Const(value):
                 t = self.type_lattice.const(value)
-                return (frozenset({Immutable(t)}), t)
+                return (frozenset({immutable(t)}), t)
             case tac.Var() as var:
                 objs = prev_tp.pointers[LOCALS][var]
                 types = prev_tp.types[objs]
@@ -386,7 +402,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if t == ts.BOTTOM:
                     t = ts.resolve_static_ref(ts.Ref(f'builtins.{field}'))
                 # TODO: class through type
-                return (frozenset({Immutable(t)}), t)
+                return (frozenset({immutable(t)}), t)
             case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
                 var_objs = prev_tp.pointers[LOCALS][var]
                 t = self.type_lattice.attribute(prev_tp.types[var_objs], field)
@@ -402,7 +418,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if new:
                     objects |= frozenset([location])
                 if not objects and ts.is_immutable(t):
-                    objects |= frozenset([Immutable(t)])
+                    objects |= frozenset([immutable(t)])
                 return (objects, t)
             case tac.Subscript(var=tac.Var() as var, index=tac.Var() as index):
                 var_objs = prev_tp.pointers[LOCALS][var]
@@ -423,7 +439,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if new:
                     objects |= frozenset([location])
                 elif not direct_objs and ts.is_immutable(t):
-                    objects |= frozenset([Immutable(t)])
+                    objects |= frozenset([immutable(t)])
 
                 return (objects, t)
             case tac.Call(var, tuple() as args):
@@ -482,7 +498,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                         else:
                             new_tp.pointers.update(location, tac.Var("*"), pointed_objects)
                 elif ts.is_immutable(t):
-                    objects |= frozenset({Immutable(t)})
+                    objects |= frozenset({immutable(t)})
                 else:
                     # TODO: actually "returns args"
                     if side_effect.points_to_args:
@@ -502,7 +518,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if any(f.new() for f in applied.items):
                     objects |= frozenset([location])
                 elif ts.is_immutable(t):
-                    objects |= frozenset({Immutable(t)})
+                    objects |= frozenset({immutable(t)})
 
                 return (objects, t)
             case tac.Binary(left=tac.Var() as left, right=tac.Var() as right, op=str() as op):
@@ -518,7 +534,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if any(f.new() for f in applied.items):
                     objects |= frozenset([location])
                 elif ts.is_immutable(t):
-                    objects |= frozenset({Immutable(t)})
+                    objects |= frozenset({immutable(t)})
 
                 return (objects, t)
             case _:
@@ -544,7 +560,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                         tp.pointers[LOCALS, var] = objs
                     else:
                         assert ts.is_immutable(ti), f"Expected immutable type, got {ti}"
-                        objs = frozenset({Immutable(ti)})
+                        objs = frozenset({immutable(ti)})
                     tp.pointers[LOCALS, var] = objs
                     tp.types[objs] = ti
             case tac.Var() as var:
@@ -570,15 +586,16 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         for var in tac.gens(ins):
             if var in tp.pointers[LOCALS]:
                 del tp.pointers[LOCALS][var]
-        print(f"Transfer {ins} at {location.location}")
+        # print(f"Transfer {ins} at {location.location}")
         for var in tac.free_vars(ins):
             if var in prev_tp.pointers[LOCALS].keys():
                 p = prev_tp.pointers[LOCALS][var]
                 t = prev_tp.types[p]
-                print(f"  {var} = {p} : {t}")
+                # print(f"  {var} = {p} : {t}")
             else:
-                print(f"  {var} = <bottom>")
-        print(f"Prev: {prev_tp}")
+                pass
+                # print(f"  {var} = <bottom>")
+        # print(f"Prev: {prev_tp}")
         match ins:
             case tac.Assign(lhs, expr):
                 (pointed, types) = self.expr(prev_tp, expr, location, tp)
@@ -586,15 +603,16 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Return(var):
                 val = tp.pointers[LOCALS][var]
                 tp.pointers[LOCALS, tac.Var('return')] = val
-        print(f"New: {tp}")
+        # print(f"New: {tp}")
         for var in tac.gens(ins):
             if var in tp.pointers[LOCALS].keys():
                 p = tp.pointers[LOCALS][var]
                 t = tp.types[p]
-                print(f"  {var} = {p} : {t}")
+                # print(f"  {var} = {p} : {t}")
             else:
-                print(f"  {var} = <bottom>")
-        print()
+                pass
+                # print(f"  {var} = <bottom>")
+        # print()
 
         tp.collect_garbage(self.liveness[location.location])
 

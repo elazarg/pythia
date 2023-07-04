@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def new(f): return f
 
 
