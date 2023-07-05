@@ -179,6 +179,11 @@ class Overloaded(TypeExpr):
     def __repr__(self) -> str:
         return f'Overloaded({self.items})'
 
+    def all_new(self) -> bool:
+        return all(item.new for item in self.items)
+
+    def any_new(self) -> bool:
+        return any(item.new for item in self.items)
 
 @dataclass(frozen=True)
 class Class(TypeExpr):
@@ -954,13 +959,16 @@ def subscr(selftype: TypeExpr, index: TypeExpr) -> TypeExpr:
     result = bind_self(attr_type, selftype)
     if isinstance(result, FunctionType):
         result = overload([result])
-    # if isinstance(result, Overloaded):
-    #     if any(f.is_property for f in result.items):
-    #         assert all(f.is_property for f in result.items)
-    #         return union(f.return_type for f in result.items)
     assert not free_vars_expr(result), f'{result!r}'
     return result
 
+
+def subscr_get_property(selftype: TypeExpr, index: TypeExpr) -> TypeExpr:
+    res = subscr(selftype, index)
+    if isinstance(res, Overloaded) and any(f.is_property for f in res.items):
+        assert all(f.is_property for f in res.items)
+        return get_return(res)
+    return res
 
 def call(callable: TypeExpr, args: TypedDict) -> TypeExpr:
     resolved = partial(callable, args)
@@ -1345,15 +1353,23 @@ def is_immutable(value: TypeExpr) -> bool:
     match value:
         case Module() as module:
             return all(is_immutable(x.type) for x in module.class_dict.items)
-        case Overloaded(items) | TypedDict(items) | Union(items):
+        case Overloaded(items) | Union(items):
             return all(is_immutable(x) for x in items)
+        case TypedDict(items):
+            if value == TOP:
+                return False
+            return all(is_immutable(x) for x in items.values())
         case Instantiation(generic, items):
             return is_immutable(generic) and all(is_immutable(x) for x in items)
-        case Literal():
+        case Literal() as literal:
+            if isinstance(literal.value, tuple):
+                return literal.ref == 'builtins.tuple' and all(is_immutable(x) for x in literal.value)
             return True
         case Row(type=value):
             return is_immutable(value)
-        case FunctionType():
+        case FunctionType() as f:
+            if f.side_effect.update is not None:
+                return False
             return True
         case Ref(name):
             module, name = name.split('.')

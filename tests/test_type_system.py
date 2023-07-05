@@ -194,35 +194,35 @@ def test_tuple():
     f = ts.FunctionType(params=ts.typed_dict([ts.make_row(0, 'item', N)]),
                         return_type=ts.Access(tuple_star, N),
                         is_property=False,
-                        side_effect=ts.SideEffect(new=False, bound_method=True),
+                        side_effect=ts.SideEffect(new=False, bound_method=True, name='__getitem__'),
                         type_params=(N,))
     assert g == ts.overload([f])
     x = ts.call(g, make_rows(FIRST))
     assert x == INT
 
-    x = ts.subscr(tuple_named, FIRST)
+    x = ts.subscr_get_property(tuple_named, FIRST)
     assert x == INT
 
-    x = ts.subscr(tuple_named, SECOND)
+    x = ts.subscr_get_property(tuple_named, SECOND)
     assert x == FLOAT
 
     x = ts.call(g, make_rows(SECOND))
     assert x == FLOAT
 
-    left = ts.subscr(tuple_structure, FIRST)
+    left = ts.subscr_get_property(tuple_structure, FIRST)
     assert left == INT
 
-    right = ts.subscr(tuple_structure, SECOND)
+    right = ts.subscr_get_property(tuple_structure, SECOND)
     assert right == FLOAT
 
 
 def test_list():
     t1 = ts.Instantiation(LIST, (INT,))
-    gt = ts.subscr(t1, ts.literal('__getitem__'))
+    gt = ts.subscr_get_property(t1, ts.literal('__getitem__'))
     x = ts.call(gt, make_rows(ts.literal(0)))
     assert x == INT
 
-    gt = ts.subscr(t1, ts.literal('__add__'))
+    gt = ts.subscr_get_property(t1, ts.literal('__add__'))
     x = ts.call(gt, make_rows(t1))
     assert x == t1
 
@@ -239,21 +239,21 @@ def test_list_join():
 
 def test_getitem_list():
     t = ts.Instantiation(LIST, (INT,))
-    x = ts.subscr(t, ts.literal(0))
+    x = ts.subscr_get_property(t, ts.literal(0))
     assert x == INT
 
 
 def test_getitem_numpy():
-    x = ts.subscr(ARRAY, ts.literal(0))
+    x = ts.subscr_get_property(ARRAY, ts.literal(0))
     assert x == FLOAT
 
-    x = ts.subscr(ARRAY, ARRAY)
+    x = ts.subscr_get_property(ARRAY, ARRAY)
     assert x == ARRAY
 
-    x = ts.subscr(ARRAY, ts.Ref('builtins.slice'))
+    x = ts.subscr_get_property(ARRAY, ts.Ref('builtins.slice'))
     assert x == ARRAY
 
-    x = ts.subscr(ARRAY, ts.Ref('builtins.None'))
+    x = ts.subscr_get_property(ARRAY, ts.Ref('builtins.None'))
     assert x == ts.BOTTOM
 
 

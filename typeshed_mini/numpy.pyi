@@ -126,10 +126,7 @@ class random:
 
     @staticmethod
     @new
-    def choice(a: ndarray, size: int) -> ndarray: ...
-    @staticmethod
-    @new
-    def choice(a: int, size: int) -> ndarray: ...
+    def choice(a: ndarray | int, size: int) -> ndarray: ...
 
 @module
 class linalg:

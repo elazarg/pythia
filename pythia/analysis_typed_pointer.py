@@ -37,10 +37,10 @@ class Immutable:
         return f'@type {self.hash}'
 
 
-def immutable(t: ts.TypeExpr, cache={}) -> Immutable:
+def immutable(t: ts.TypeExpr, cache={}) -> frozenset[Immutable]:
     if t not in cache:
         cache[t] = Immutable(len(cache))
-    return cache[t]
+    return frozenset([cache[t]])
 
 
 @dataclass(frozen=True)
@@ -390,7 +390,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         match expr:
             case tac.Const(value):
                 t = self.type_lattice.const(value)
-                return (frozenset({immutable(t)}), t)
+                return (immutable(t), t)
             case tac.Var() as var:
                 objs = prev_tp.pointers[LOCALS][var]
                 types = prev_tp.types[objs]
@@ -402,23 +402,35 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if t == ts.BOTTOM:
                     t = ts.resolve_static_ref(ts.Ref(f'builtins.{field}'))
                 # TODO: class through type
-                return (frozenset({immutable(t)}), t)
+                return (immutable(t), t)
             case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
                 var_objs = prev_tp.pointers[LOCALS][var]
                 t = self.type_lattice.attribute(prev_tp.types[var_objs], field)
-                new = False
-                if isinstance(t, ts.Overloaded) and any(item.is_property for item in t.items):
-                    assert all(f.is_property for f in t.items)
-                    new = any(f.new() for f in t.items)
-                    t = ts.get_return(t)
-                if ts.is_bound_method(t):
-                    new_tp.pointers[location, tac.Var("self")] = var_objs
-                    new = True
-                objects = flatten(prev_tp.pointers[var_obj][field] for var_obj in var_objs)
-                if new:
-                    objects |= frozenset([location])
-                if not objects and ts.is_immutable(t):
-                    objects |= frozenset([immutable(t)])
+                any_new = all_new = False
+                assert not isinstance(t, ts.FunctionType)
+                if isinstance(t, ts.Overloaded):
+                    if any(item.is_property for item in t.items):
+                        assert all(f.is_property for f in t.items)
+                        any_new = t.any_new()
+                        all_new = t.all_new()
+                        t = ts.get_return(t)
+                    if ts.is_bound_method(t):
+                        new_tp.pointers[location, tac.Var("self")] = var_objs
+                        any_new = True
+                        all_new = True
+
+                if ts.is_immutable(t):
+                    objects = immutable(t)
+                else:
+                    objects = flatten(prev_tp.pointers[var_obj][field] for var_obj in var_objs)
+                    if any_new:
+                        objects |= frozenset([location])
+                    if not all_new:
+                        if ts.is_immutable(t):
+                            objects |= immutable(t)
+                        else:
+                            assert False
+
                 return (objects, t)
             case tac.Subscript(var=tac.Var() as var, index=tac.Var() as index):
                 var_objs = prev_tp.pointers[LOCALS][var]
@@ -426,20 +438,29 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 index_type = prev_tp.types[index_objs]
                 var_type = prev_tp.types[var_objs]
                 t = self.type_lattice.subscr(var_type, index_type)
-                new = False
+                any_new = all_new = False
                 if isinstance(t, ts.Overloaded) and any(item.is_property for item in t.items):
                     assert all(f.is_property for f in t.items)
-                    new = any(f.new() for f in t.items)
+                    any_new = t.any_new()
+                    all_new = t.all_new()
                     t = ts.get_return(t)
                 assert t != ts.BOTTOM, f"Subscript {var}[{index}] is BOTTOM"
                 direct_objs = flatten(prev_tp.pointers[var_obj][tac.Var("*")] for var_obj in var_objs)
                 # TODO: class through type
 
-                objects = direct_objs
-                if new:
-                    objects |= frozenset([location])
-                elif not direct_objs and ts.is_immutable(t):
-                    objects |= frozenset([immutable(t)])
+                if ts.is_immutable(t):
+                    objects = immutable(t)
+                else:
+                    objects = direct_objs
+                    if any_new:
+                        if all_new:
+                            # TODO: assert not direct_objs ??
+                            objects = frozenset([location])
+                        else:
+                            objects |= frozenset([location])
+                    if not all_new:
+                        if ts.is_immutable(t):
+                            objects |= immutable(t)
 
                 return (objects, t)
             case tac.Call(var, tuple() as args):
@@ -461,11 +482,11 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 side_effect = ts.get_side_effect(applied)
                 if side_effect.update is not None:
                     if len(func_objects) != 1:
-                        raise RuntimeError("Cannot handle update with multiple function objects")
+                        raise RuntimeError("Update with multiple function objects")
                     [func_obj] = func_objects
                     self_objects = prev_tp.pointers[func_obj][tac.Var("self")]
                     if len(self_objects) != 1:
-                        raise RuntimeError("Cannot handle update with multiple self objects")
+                        raise RuntimeError("Update with multiple self objects")
                     [self_obj] = self_objects
 
                     aliasing_pointers = {obj for obj, fields in prev_tp.pointers.items() for f, targets in fields.items()
@@ -475,7 +496,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
 
                     if new_tp.types[self_obj] != side_effect.update:
                         if monomorophized:
-                            raise RuntimeError(f"Cannot handle update with aliased objects: {aliasing_pointers} (not: {func_obj, LOCALS})")
+                            raise RuntimeError(f"Update with aliased objects: {aliasing_pointers} (not: {func_obj, LOCALS})")
                         new_tp.types[self_obj] = side_effect.update
                         if side_effect.name == 'append':
                             x = arg_objects[0]
@@ -489,7 +510,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     pointed_objects = frozenset(ts.union_all(set(x) for x in arg_objects))
 
                 objects: frozenset[Object] = frozenset()
-                if any(f.new() for f in applied.items):
+                if applied.any_new():
                     objects |= frozenset([location])
                     if side_effect.points_to_args:
                         if var == tac.Predefined.TUPLE and not new_tp.pointers[location][tac.Var("*")]:
@@ -497,12 +518,20 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                                 new_tp.pointers[location, tac.Var(f"{i}")] = arg
                         else:
                             new_tp.pointers.update(location, tac.Var("*"), pointed_objects)
-                elif ts.is_immutable(t):
-                    objects |= frozenset({immutable(t)})
+
+                if ts.is_immutable(t):
+                    objects = immutable(t)
                 else:
-                    # TODO: actually "returns args"
-                    if side_effect.points_to_args:
-                        objects |= pointed_objects
+                    if not applied.all_new():
+                        if ts.is_immutable(t):
+                            objects |= immutable(t)
+                        else:
+                            assert False
+                    else:
+                        # TODO: actually "returns args"
+                        if side_effect.points_to_args:
+                            objects |= pointed_objects
+
                 assert objects
 
                 return (objects, t)
@@ -514,11 +543,18 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 assert isinstance(applied, ts.Overloaded), f"Expected overloaded type, got {applied}"
 
                 t = ts.get_return(applied)
-                objects = frozenset()
-                if any(f.new() for f in applied.items):
-                    objects |= frozenset([location])
-                elif ts.is_immutable(t):
-                    objects |= frozenset({immutable(t)})
+
+                if ts.is_immutable(t):
+                    objects = immutable(t)
+                else:
+                    objects = frozenset()
+                    if applied.any_new():
+                        objects |= frozenset([location])
+                    if not applied.all_new():
+                        if ts.is_immutable(t):
+                            objects |= immutable(t)
+                        else:
+                            assert False
 
                 return (objects, t)
             case tac.Binary(left=tac.Var() as left, right=tac.Var() as right, op=str() as op):
@@ -530,11 +566,18 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 assert isinstance(applied, ts.Overloaded), f"Expected overloaded type, got {applied}"
 
                 t = ts.get_return(applied)
-                objects = frozenset()
-                if any(f.new() for f in applied.items):
-                    objects |= frozenset([location])
-                elif ts.is_immutable(t):
-                    objects |= frozenset({immutable(t)})
+
+                if ts.is_immutable(t):
+                    objects = immutable(t)
+                else:
+                    objects = frozenset()
+                    if applied.any_new():
+                        objects |= frozenset([location])
+                    if not applied.all_new():
+                        if ts.is_immutable(t):
+                            objects |= immutable(t)
+                        else:
+                            assert False
 
                 return (objects, t)
             case _:
@@ -560,7 +603,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                         tp.pointers[LOCALS, var] = objs
                     else:
                         assert ts.is_immutable(ti), f"Expected immutable type, got {ti}"
-                        objs = frozenset({immutable(ti)})
+                        objs = immutable(ti)
                     tp.pointers[LOCALS, var] = objs
                     tp.types[objs] = ti
             case tac.Var() as var:

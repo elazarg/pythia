@@ -6,11 +6,7 @@ def new(f): return f
 def get_world(g: dict, root_to_leaf_path: list[int]) -> set[int]:
     world = set(g)
     for u in root_to_leaf_path:
-        s = set(g[u])
-        if world is None:
-            world = s
-        else:
-            world &= s
+        world.intersection_update(g[u])
     return world
 
 
