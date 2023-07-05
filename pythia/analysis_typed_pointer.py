@@ -253,7 +253,7 @@ class AllocationType(enum.StrEnum):
 Allocation: typing.TypeAlias = AllocationType
 
 
-@dataclass(frozen=True)
+@dataclass
 class TypedPointer:
     pointers: Pointer
     types: TypeMap
@@ -317,6 +317,16 @@ class TypedPointer:
         reachable = find_reachable_from_vars(self.pointers)
         self.pointers.keep_keys(reachable)
         self.types.keep_keys(reachable)
+
+    def normalize_types(self) -> None:
+        new_pointers = Pointer(make_graph({}))
+        for obj, fields in self.pointers.items():
+            for field, pointed in fields.items():
+                new_pointers[obj, field] = frozenset(p if not isinstance(p, Immutable)
+                                                     else min(((k, v) for k, v in self.types.map.items() if v == self.types[p]),
+                                                              key=str)[0]
+                                                     for p in pointed)
+        self.pointers = new_pointers
 
 
 def typed_pointer(pointers: Pointer, types: TypeMap) -> TypedPointer:
@@ -629,16 +639,10 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         for var in tac.gens(ins):
             if var in tp.pointers[LOCALS]:
                 del tp.pointers[LOCALS][var]
+
         # print(f"Transfer {ins} at {location.location}")
-        for var in tac.free_vars(ins):
-            if var in prev_tp.pointers[LOCALS].keys():
-                p = prev_tp.pointers[LOCALS][var]
-                t = prev_tp.types[p]
-                # print(f"  {var} = {p} : {t}")
-            else:
-                pass
-                # print(f"  {var} = <bottom>")
-        # print(f"Prev: {prev_tp}")
+        # print_debug(ins, tp)
+
         match ins:
             case tac.Assign(lhs, expr):
                 (pointed, types) = self.expr(prev_tp, expr, location, tp)
@@ -646,20 +650,25 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Return(var):
                 val = tp.pointers[LOCALS][var]
                 tp.pointers[LOCALS, tac.Var('return')] = val
-        # print(f"New: {tp}")
-        for var in tac.gens(ins):
-            if var in tp.pointers[LOCALS].keys():
-                p = tp.pointers[LOCALS][var]
-                t = tp.types[p]
-                # print(f"  {var} = {p} : {t}")
-            else:
-                pass
-                # print(f"  {var} = <bottom>")
-        # print()
 
+        # print_debug(ins, tp)
+
+        tp.normalize_types()
         tp.collect_garbage(self.liveness[location.location])
 
         return tp
+
+
+def print_debug(ins: tac.Tac, tp: TypedPointer) -> None:
+    for var in tac.free_vars(ins):
+        if var in tp.pointers[LOCALS].keys():
+            p = tp.pointers[LOCALS][var]
+            t = tp.types[p]
+            print(f"  {var} = {p} : {t}")
+        else:
+            pass
+            print(f"  {var} = <bottom>")
+    print(f"Prev: {tp}")
 
 
 def find_reachable_from_vars(ptr: Pointer) -> set[Object]:
