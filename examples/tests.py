@@ -17,6 +17,9 @@ def empty(y: list[int]) -> list[int]:
     return x
 
 
+# TODO: positives
+
+
 def build_list_of_lists(k: int) -> None:
     clusters = []
     for _ in range(k):

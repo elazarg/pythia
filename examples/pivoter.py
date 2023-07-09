@@ -12,7 +12,7 @@ def get_world(g: dict, root_to_leaf_path: list[int]) -> set[int]:
 
 def run(g: dict, root_to_leaf_path: list[int]) -> int:
     counter = 0
-    while root_to_leaf_path:
+    for i in range(100):
         world = get_world(g, root_to_leaf_path)
         if not world:
             # no children to explore
@@ -45,7 +45,7 @@ def run(g: dict, root_to_leaf_path: list[int]) -> int:
 def main():
     g = {1: {2, 3},
          2: {1, 3},
-         3: {1, 4},
+         3: {1, 4, 2},
          4: {3, 5, 6},
          5: {4, 6},
          6: {5, 4}}
