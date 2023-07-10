@@ -63,9 +63,6 @@ class Lattice(typing.Protocol[T]):
     def bottom(self) -> T:
         raise NotImplementedError
 
-    def is_top(self, elem: T) -> bool:
-        raise NotImplementedError
-
     def is_bottom(self, elem: T) -> bool:
         raise NotImplementedError
 
@@ -275,9 +272,6 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
 
     def top(self) -> Map[tac.Var, T]:
         return self.make_map()
-
-    def is_top(self, elem: VarMapDomain[T]) -> bool:
-        return elem == self.top()
 
     def bottom(self) -> VarMapDomain[T]:
         return BOTTOM

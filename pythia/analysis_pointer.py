@@ -87,9 +87,6 @@ class PointerLattice(InstructionLattice[Graph]):
     def top(self) -> Graph:
         raise NotImplementedError
 
-    def is_top(self, elem: Graph) -> bool:
-        return False
-
     def is_bottom(self, elem: Graph) -> bool:
         return elem == self.bottom()
 

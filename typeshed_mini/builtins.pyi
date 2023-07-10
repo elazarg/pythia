@@ -32,6 +32,8 @@ class int:
     def __floordiv__(self, other: int) -> int: ...
     def __truediv__(self, other: int) -> float: ...
     def __truediv__(self, other: float) -> float: ...
+    def __mul__(self, other: int) -> int: ...
+    def __pow__(self, power: int) -> int: ...
 
 class bool:
     def __bool__(self) -> bool: ...
@@ -114,8 +116,8 @@ class list(Generic[T]):
     def copy(self: list[T]) -> list[T]:
         result += self
 
-    @update(list[Q])
-    def clear(self: list[T]) -> None:
+    @update(list[T])
+    def clear(self: list) -> None:
         del self[:]
 
     @update(list[T|Q])
@@ -130,15 +132,20 @@ class list(Generic[T]):
     def extend(self: list[T], x: list[Q]) -> None:
         self += x
 
+    @update(list[T])
     def remove(self: list[T], x: T) -> None: pass
+
+    @update(list[T])
     def pop(self: list[T], i: int = -1) -> T: pass
 
     def index(self: list[T], x: T, start: int = 0, end: int = 0) -> int: pass
     def count(self: list[T], x: T) -> int: pass
 
+    @update(list[T])
     def sort(self: list[T], key: object = None, reverse: bool = False) -> None:
         self += self
 
+    @update(list[T])
     def reverse(self: list[T]) -> None:
         self += self
 
@@ -146,6 +153,7 @@ class list(Generic[T]):
     def __add__(self: list[T], other: list[Q]) -> list[T|Q]: pass
 
 class SupportsNext(Protocol[T]):
+    @update(SupportsNext[T])
     def __next__(self: SupportsNext[T]) -> T: ...
 
 class Iterable(Protocol[T]):
@@ -159,6 +167,7 @@ class Indexable(Protocol[T]):
 
 class Iterator(Protocol[T]):
     @new
+    @update(Iterator[T])
     def __next__(self: Iterator[T]) -> T: ...
 
 @new
@@ -187,9 +196,9 @@ def zip(x: Iterable[T], y: Iterable[Q]) -> Iterable[tuple[T, Q]]: pass
 def iter(xs: list[T]) -> SupportsNext[T]:
     result += xs
 
+@update(SupportsNext[T])
 def next(xs: SupportsNext[T]) -> T:
     result = xs[_]
-
 
 def enumerate(xs: T) -> Iterable[tuple[int, T]]:
     pass

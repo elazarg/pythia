@@ -12,6 +12,7 @@ from pythia import tac
 from pythia.analysis_domain import InvariantMap
 from pythia.analysis_liveness import LivenessVarLattice
 from pythia.analysis_typed_pointer import TypedPointerLattice
+from pythia.analysis_dirty import DirtyLattice
 from pythia.graph_utils import Location
 
 Inv = TypeVar('Inv')
@@ -119,7 +120,7 @@ def find_first_for_loop(cfg: Cfg) -> tuple[Location, Location]:
                       if block and isinstance(block[0], tac.For))
     block = cfg[first_label]
     assert len(block) == 1
-    prev, after = cfg.predecessors(first_label)
+    prev, *_, after = sorted(cfg.predecessors(first_label))
     return ((first_label, 0), (after, cfg[after].last_index()))
 
 
@@ -129,14 +130,9 @@ def run(cfg: Cfg, annotations: dict[tac.Var, str], module_type: ts.Module, funct
 
     typed_pointer_analysis = TypedPointerLattice(liveness_invariants.post, function_name, module_type)
     typed_pointer_invariants = analyze(cfg, typed_pointer_analysis)
-    #
-    # for_location, loop_end = find_first_for_loop(cfg)
-    #
-    # update_allocation_invariants(allocation_invariants,
-    #                              pointer_invariants.post[for_location],
-    #                              liveness_invariants.post[for_location],
-    #                              annotations)
-    #
+
+    for_location, loop_end = find_first_for_loop(cfg)
+
     # dirty_locals = set(find_reaching_locals(pointer_invariants.post[loop_end],
     #                                         liveness_invariants.post[loop_end],
     #                                         dirty_invariants.post[loop_end]))

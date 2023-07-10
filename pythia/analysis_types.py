@@ -48,9 +48,6 @@ class TypeLattice(ValueLattice[TypeExpr]):
     def top(self) -> TypeExpr:
         return ts.TOP
 
-    def is_top(self, elem: TypeExpr) -> bool:
-        return elem == ts.TOP
-
     def is_bottom(self, elem: TypeExpr) -> bool:
         return elem == ts.BOTTOM
 

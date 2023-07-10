@@ -1,7 +1,6 @@
 
 def new(f): return f
 
-
 @new
 def get_world(g: dict, root_to_leaf_path: list[int]) -> set[int]:
     world = set(g)
@@ -12,7 +11,9 @@ def get_world(g: dict, root_to_leaf_path: list[int]) -> set[int]:
 
 def run(g: dict, root_to_leaf_path: list[int]) -> int:
     counter = 0
-    for i in range(100):
+    for _ in range(10**100):  # type: int
+        if not root_to_leaf_path:
+            break
         world = get_world(g, root_to_leaf_path)
         if not world:
             # no children to explore
