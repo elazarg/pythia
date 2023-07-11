@@ -11,8 +11,7 @@ from pythia import disassemble, ast_transform
 from pythia import tac
 from pythia.analysis_domain import InvariantMap
 from pythia.analysis_liveness import LivenessVarLattice
-from pythia.analysis_typed_pointer import TypedPointerLattice
-from pythia.analysis_dirty import DirtyLattice
+from pythia.analysis_typed_pointer import TypedPointerLattice, find_reaching_locals
 from pythia.graph_utils import Location
 
 Inv = TypeVar('Inv')
@@ -92,7 +91,7 @@ def analyze_single(cfg: Cfg, analysis: typing.Callable[[tac.Tac, Location], Inv]
     return result
 
 
-def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair],
+def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair], loop_end: Location,
                    print_invariants: bool = True) -> None:
     for label, block in sorted(cfg.items()):
         if math.isinf(label):
@@ -111,31 +110,25 @@ def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair],
                 print(f'\t{name}:')
                 post_invariant.print()
             print()
+        if loop_end is not None and label == loop_end[0]:
+            typed_pointer_invariants = invariants["TypedPointer"].post[loop_end]
+            liveness_invariants = invariants["Liveness"].post[loop_end]
+            dirty_locals = set(find_reaching_locals(typed_pointer_invariants.dirty,
+                                                    typed_pointer_invariants.pointers,
+                                                    liveness_invariants))
+            print(f"Dirty Locals: (from {typed_pointer_invariants.dirty})")
+            print(dirty_locals)
+            print()
         print("Successors:", list(cfg.successors(label)))
         print()
 
 
-def find_first_for_loop(cfg: Cfg) -> tuple[Location, Location]:
-    first_label = min(label for label, block in cfg.items()
-                      if block and isinstance(block[0], tac.For))
-    block = cfg[first_label]
-    assert len(block) == 1
-    prev, *_, after = sorted(cfg.predecessors(first_label))
-    return ((first_label, 0), (after, cfg[after].last_index()))
-
-
-def run(cfg: Cfg, annotations: dict[tac.Var, str], module_type: ts.Module, function_name: str) -> dict[str, InvariantPair]:
+def run(cfg: Cfg, for_location: Location, module_type: ts.Module, function_name: str) -> dict[str, InvariantPair]:
     gu.pretty_print_cfg(cfg)
     liveness_invariants = analyze(cfg, LivenessVarLattice())
 
-    typed_pointer_analysis = TypedPointerLattice(liveness_invariants.post, function_name, module_type)
+    typed_pointer_analysis = TypedPointerLattice(liveness_invariants.post, function_name, module_type, for_location)
     typed_pointer_invariants = analyze(cfg, typed_pointer_analysis)
-
-    for_location, loop_end = find_first_for_loop(cfg)
-
-    # dirty_locals = set(find_reaching_locals(pointer_invariants.post[loop_end],
-    #                                         liveness_invariants.post[loop_end],
-    #                                         dirty_invariants.post[loop_end]))
 
     invariant_pairs: dict[str, InvariantPair] = {
         "Liveness": liveness_invariants,
@@ -156,13 +149,17 @@ def analyze_function(filename: str, *function_names: str, print_invariants: bool
         cfg = gu.simplify_cfg(cfg)
         if not simplify:
             cfg = gu.refine_to_chain(cfg)
-        annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
-        invariant_pairs = run(cfg, annotations,
+        try:
+            for_location, loop_end = gu.find_first_for_loop(cfg, lambda b: isinstance(b, tac.For))
+        except ValueError:
+            for_location, loop_end = None, None
+
+        invariant_pairs = run(cfg, for_location,
                               module_type=module_type,
                               function_name=function_name)
 
         if print_invariants:
-            print_analysis(cfg, invariant_pairs)
+            print_analysis(cfg, invariant_pairs, loop_end)
 
         # dirty_map[function_name] = dirty_locals
 

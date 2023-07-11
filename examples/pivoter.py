@@ -1,6 +1,7 @@
 
 def new(f): return f
 
+
 @new
 def get_world(g: dict, root_to_leaf_path: list[int]) -> set[int]:
     world = set(g)
@@ -9,8 +10,9 @@ def get_world(g: dict, root_to_leaf_path: list[int]) -> set[int]:
     return world
 
 
-def run(g: dict, root_to_leaf_path: list[int]) -> int:
+def run(g: dict, root: int) -> int:
     counter = 0
+    root_to_leaf_path = [root]
     for _ in range(10**100):  # type: int
         if not root_to_leaf_path:
             break
@@ -50,8 +52,7 @@ def main():
          4: {3, 5, 6},
          5: {4, 6},
          6: {5, 4}}
-    root_to_leaf_path = [1]
-    counter = run(g, root_to_leaf_path)
+    counter = run(g, 1)
     print(counter)
 
 

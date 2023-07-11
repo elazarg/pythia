@@ -17,6 +17,10 @@ def empty(y: list[int]) -> list[int]:
     return x
 
 
+def first_shape(x: np.ndarray) -> int:
+    return x.shape[0]
+
+
 # TODO: positives
 
 

@@ -276,3 +276,12 @@ def pretty_print_cfg(cfg: Cfg[T]) -> None:
 
 def single_source_dijkstra_path_length(cfg: Cfg, source: int, weight: str) -> dict[Label, int]:
     return nx.single_source_dijkstra_path_length(cfg.graph, source, weight=weight)
+
+
+def find_first_for_loop(cfg: Cfg[T], is_for: Callable[[T], bool]) -> tuple[Location, Location]:
+    first_label = min(label for label, block in cfg.items()
+                      if block and any(is_for(b) for b in block))
+    block = cfg[first_label]
+    assert len(block) == 1
+    prev, *_, after = sorted(cfg.predecessors(first_label))
+    return ((first_label, 0), (after, cfg[after].last_index()))

@@ -9,7 +9,7 @@ from pythia import tac
 from pythia.graph_utils import Label, Location
 
 T = typing.TypeVar('T')
-K = typing.TypeVar('K')
+K = typing.TypeVar('K', covariant=True)
 Q = typing.TypeVar('Q')
 
 
@@ -96,6 +96,15 @@ class Top:
     def __rand__(self, other: T) -> T:
         return other
 
+    def __contains__(self, item: object) -> bool:
+        return True
+
+    def __copy__(self):
+        return self
+
+    def __deepcopy__(self, memo):
+        return self
+
 
 @dataclass(frozen=True)
 class Bottom:
@@ -122,12 +131,100 @@ BOTTOM = Bottom()
 TOP = Top()
 
 
+class Set(typing.Generic[T]):
+    _set: frozenset[T] | Top
+
+    def __init__(self, s: typing.Optional[typing.Iterable[T] | Top] = None):
+        if s is None:
+            self._set = frozenset()
+        elif isinstance(s, Top):
+            self._set = TOP
+        else:
+            self._set = frozenset(s)
+
+    def __repr__(self):
+        if isinstance(self._set, Top):
+            return 'Set(TOP)'
+        items = ', '.join(repr(x) for x in self._set)
+        return f'Set({items})'
+
+    @classmethod
+    def top(cls: typing.Type[Set[T]]) -> Set[T]:
+        return Set(TOP)
+
+    def meet(self, other: Set[T]) -> Set[T]:
+        if isinstance(self._set, Top):
+            return other
+        if isinstance(other._set, Top):
+            return self
+        return Set(self._set & other._set)
+
+    def join(self, other: Set[T]) -> Set[T]:
+        if isinstance(self._set, Top) or isinstance(other._set, Top):
+            return Set(TOP)
+        return Set(self._set | other._set)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Set) and self._set == other._set
+
+    def __contains__(self, item: T) -> bool:
+        if isinstance(self._set, Top):
+            return True
+        return item in self._set
+
+    def __bool__(self) -> bool:
+        if isinstance(self._set, Top):
+            return True
+        return bool(self._set)
+
+    def is_subset(self, other: Set[T]) -> bool:
+        if isinstance(other._set, Top):
+            return True
+        else:
+            if isinstance(self._set, Top):
+                return False
+            return self._set <= other._set
+
+    def __le__(self: Set[T], other: Set[T]) -> bool:
+        return self.is_subset(other)
+
+    def __or__(self: Set[T], other: Set[T]) -> Set[T]:
+        return self.join(other)
+
+    def __and__(self: Set[T], other: Set[T]) -> Set[T]:
+        return self.meet(other)
+
+    @classmethod
+    def squeeze(cls: typing.Type[Set[T]], s: T | Set[T]) -> T | Set[T]:
+        if isinstance(s, Set) and not isinstance(s._set, Top) and len(s._set) == 1:
+            return next(iter(s._set))
+        return s
+
+    @classmethod
+    def union_all(cls: typing.Type[Set[T]], xs: typing.Iterable[Set[T]]) -> Set[T]:
+        result: Set[T] = Set()
+        for x in xs:
+            if isinstance(x._set, Top):
+                result._set = TOP
+                break
+            result._set |= x._set
+        return result
+
+    @classmethod
+    def singleton(cls: typing.Type[Set[T]], x: T) -> Set[T]:
+        return Set({x})
+
+    def as_set(self) -> frozenset[T]:
+        assert not isinstance(self._set, Top)
+        return self._set
+
+
 class Map(typing.Generic[K, T]):
     # Essentially a defaultdict, but a defaultdict makes values appear out of nowhere
     _map: dict[K, T]
     default: T
 
-    def __init__(self, default: T, d: typing.Optional[dict[K, T]] = None):
+    def __init__(self, default: T, d: typing.Optional[typing.Mapping[K, T]] = None):
         self.default = default
         self._map = {}
         if d is not None:
@@ -145,7 +242,7 @@ class Map(typing.Generic[K, T]):
             # assert not isinstance(value, Map)
             self._map[key] = value
 
-    def update(self, dictionary: dict[K, T] | Map) -> None:
+    def update(self, dictionary: typing.Mapping[K, T] | Map) -> None:
         for k, v in dictionary.items():
             self[k] = v
 
@@ -154,6 +251,9 @@ class Map(typing.Generic[K, T]):
 
     def __contains__(self, key: K) -> bool:
         return key in self._map
+
+    def __bool__(self) -> bool:
+        return bool(self._map)
 
     def __len__(self) -> int:
         return len(self._map)
@@ -185,6 +285,24 @@ class Map(typing.Generic[K, T]):
 
     def print(self) -> None:
         print(str(self))
+
+    def keep_keys(self, keys: typing.Iterable[K]) -> None:
+        for k in list(self._map.keys()):
+            if k not in keys:
+                del self._map[k]
+
+    def join(self, other: Map[K, T]) -> Map[K, T]:
+        result: Map[K, T] = Map(self.default)
+        for k in {*other.keys(), *self.keys()}:
+            result[k] = self[k].join(other[k])
+        return result
+
+    def __or__(self, other: Map[K, T]) -> Map[K, T]:
+        result: Map[K, T] = Map(self.default)
+        for k in {*other.keys(), *self.keys()}:
+            self[k] = self[k] | other[k]
+        return result
+
 
 MapDomain: typing.TypeAlias = Map[K, T] | Bottom
 VarMapDomain: typing.TypeAlias = MapDomain[tac.Var, T]
