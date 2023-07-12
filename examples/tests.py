@@ -9,10 +9,10 @@ def list_of_ints() -> list[int]:
     return []
 
 
-def empty(y: list[int]) -> list[int]:
+def empty(y: list[int], xs: list[int]) -> list[int]:
     x = []
     # a = [x]
-    for i in range(len(y)):
+    for i in xs:  # type: int
         x.append(i)
     return x
 

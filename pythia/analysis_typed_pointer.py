@@ -527,7 +527,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     if isinstance(func_obj, domain.Set):
                         raise RuntimeError(f"Update with multiple function objects: {func_objects}")
                     self_objects = prev_tp.pointers[func_obj, tac.Var("self")]
-                    dirty = make_dirty({func_obj: [tac.Var("self")]})
+                    dirty = make_dirty_from_keys(self_objects, DirtySet.top())
                     self_obj = ObjectSet.squeeze(self_objects)
                     if isinstance(self_obj, domain.Set):
                         raise RuntimeError(f"Update with multiple self objects: {self_objects}")
@@ -748,17 +748,21 @@ def find_reachable(ptr: Pointer, alive: set[tac.Var], params: set[tac.Var],
                 worklist.add(obj)
 
 
-def find_reaching_locals(dirty: Dirty, pointers: Pointer, liveness: VarMapDomain[analysis_liveness.Liveness]) -> typing.Iterator[str]:
+def find_dirty_roots(tp: TypedPointer, liveness: VarMapDomain[analysis_liveness.Liveness]) -> typing.Iterator[str]:
     assert not isinstance(liveness, domain.Bottom)
-    for var in dirty[LOCALS].as_set():
+    for var in tp.dirty[LOCALS].as_set():
+        if var.is_stackvar:
+            continue
         yield var.name
     alive = {k for k, v in liveness.items() if isinstance(v, domain.Top)}
-    for k, v in pointers[LOCALS].items():
-        if k.name == 'return':
+    for var, target in tp.pointers[LOCALS].items():
+        if var.name == 'return':
             continue
-        reachable = set(find_reachable(pointers, alive, set(), v.as_set()))
-        if k in alive and any(dirty[obj] for obj in reachable):
-            yield k.name
+        reachable = set(find_reachable(tp.pointers, alive, set(), target.as_set()))
+        if var in alive and any(tp.dirty[obj] for obj in reachable):
+            if var.is_stackvar:
+                continue
+            yield var.name
 
     # TODO: assert that all dirty objects are reachable from locals
     # TODO: assert that only the iterator is reachable from stack variables
