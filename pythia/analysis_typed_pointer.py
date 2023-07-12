@@ -189,7 +189,7 @@ class Pointer:
                 del self.graph[obj]
 
     def __str__(self) -> str:
-        join = lambda target_obj: "{" + ", ".join(str(x) for x in self.graph.keys() if x in target_obj) + "}"
+        join = lambda target_obj: "{" + ", ".join(str(x) for x in target_obj.as_set()) + "}"
         return ', '.join((f'{source_obj}:' if source_obj is not LOCALS else '') + f'{field}->{join(target_obj)}'
                          for source_obj in self.graph
                          for field, target_obj in self.graph[source_obj].items()
