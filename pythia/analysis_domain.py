@@ -188,6 +188,9 @@ class Set(typing.Generic[T]):
     def __le__(self: Set[T], other: Set[T]) -> bool:
         return self.is_subset(other)
 
+    def is_less_than(self, other: Set[T]) -> bool:
+        return self.is_subset(other)
+
     def __or__(self: Set[T], other: Set[T]) -> Set[T]:
         return self.join(other)
 
@@ -302,6 +305,10 @@ class Map(typing.Generic[K, T]):
         for k in {*other.keys(), *self.keys()}:
             self[k] = self[k] | other[k]
         return result
+
+    def is_less_than(self, other: Map[K, T]) -> bool:
+        return all(v.is_less_than(other[k])
+                   for k, v in self.items())
 
 
 MapDomain: typing.TypeAlias = Map[K, T] | Bottom

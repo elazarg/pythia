@@ -53,7 +53,7 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
                 for i in range(len(xj)):
                     x = get_ndarray(xj, i)
                     t = get_ndarray(theta, i)
-                    total = total + x * t
+                    total += x * t
                 prediction[j] = total
         else:
             prediction = np.zeros(features.shape[0]).reshape(features.shape[0], -1)

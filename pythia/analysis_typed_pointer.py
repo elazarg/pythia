@@ -297,7 +297,9 @@ class TypedPointer:
         print(f'  {self.dirty}')
 
     def is_less_than(self: TypedPointer, other: TypedPointer) -> bool:
-        return self.pointers.is_less_than(other.pointers) and self.types.is_less_than(other.types)
+        return self.pointers.is_less_than(other.pointers) \
+            and self.types.is_less_than(other.types) \
+            and self.dirty.is_less_than(other.dirty)
 
     def copy(self: TypedPointer) -> TypedPointer:
         return TypedPointer(self.pointers.copy(),
@@ -331,7 +333,7 @@ class TypedPointer:
                              TypeMap.initial(annotations),
                              make_dirty())
 
-    def collect_garbage(self, alive) -> None:
+    def collect_garbage(self, alive: VarMapDomain[analysis_liveness.Liveness]) -> None:
         if isinstance(alive, domain.Bottom):
             return
 
@@ -341,6 +343,7 @@ class TypedPointer:
                     del self.pointers[LOCALS][var]
 
         reachable = find_reachable_from_vars(self.pointers)
+        reachable.update(obj for obj in self.types if isinstance(obj, Param))
         self.pointers.keep_keys(reachable)
         self.types.keep_keys(reachable)
         self.dirty.keep_keys(reachable)
@@ -475,7 +478,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 index_objs = prev_tp.pointers[LOCALS, index]
                 index_type = prev_tp.types[index_objs]
                 var_type = prev_tp.types[var_objs]
-                t = self.type_lattice.subscr(var_type, index_type)
+                t = ts.subscr(self.type_lattice.resolve(var_type), self.type_lattice.resolve(index_type))
                 any_new = all_new = False
                 if isinstance(t, ts.Overloaded) and any(item.is_property for item in t.items):
                     assert all(f.is_property for f in t.items)
@@ -632,10 +635,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     def signature(self, tp: TypedPointer, signature: tac.Signature, pointed: ObjectSet, t: ts.TypeExpr) -> None:
         match signature:
             case tuple() as signature:  # type: ignore
-                indirect_pointed = []
-                for i in range(len(signature)):
-                    pointed_i = tp.pointers[pointed, tac.Var(f"{i}")] | tp.pointers[pointed, tac.Var("*")]
-                    indirect_pointed.append(pointed_i)
+                unknown = tp.pointers[pointed, tac.Var("*")]
+                indirect_pointed = [tp.pointers[pointed, tac.Var(f"{i}")] | unknown
+                                    for i in range(len(signature))]
                 for i, var in enumerate(signature):
                     assert isinstance(var, tac.Var), f"Expected Var, got {var}"
                     objs = indirect_pointed[i]

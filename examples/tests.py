@@ -21,6 +21,9 @@ def first_shape(x: np.ndarray) -> int:
     return x.shape[0]
 
 
+def setitem(x: np.ndarray, i: int, y: float) -> None:
+    x[i] = y
+
 # TODO: positives
 
 
