@@ -48,23 +48,15 @@ def run(g: dict, root: int) -> collections.Counter[int]:
     return counter
 
 
-def test():
-    g = {1: {2, 3},
-         2: {1, 3},
-         3: {1, 4, 2},
-         4: {3, 5, 6},
-         5: {4, 6},
-         6: {5, 4}}
-    counter = run(g, 1)
-    print(counter)
+def read_edge(pair: str) -> tuple[int, int]:
+    a, b = pair.strip().split()
+    return int(a), int(b)
 
 
 def parse(path: str) -> dict[int, set[int]]:
     with open(path) as f:
-        n, m = next(f).strip().split()
-        n, m = int(n), int(m)
-        edges = [line.strip().split() for line in f]
-        edges = [(int(a), int(b)) for a, b in edges]
+        n, m = read_edge(next(f))
+        edges = [read_edge(line) for line in f]
     result = {}
     for a, b in edges:
         result.setdefault(a, set()).add(b)
@@ -72,11 +64,10 @@ def parse(path: str) -> dict[int, set[int]]:
     return result
 
 
-def main():
-    g = parse("data/enron.edges.small.txt")
-    counter = run(g, 1)
-    print(counter)
-
-
 if __name__ == '__main__':
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--filename', default='data/test.edges', help='path to edges file')
+    parser.add_argument('--root', type=int, default=1, help='root node')
+    args = parser.parse_args()
+    print(run(parse(args.filename), args.root))
