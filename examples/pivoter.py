@@ -4,6 +4,24 @@ import collections
 def new(f): return f
 
 
+def recursive_cn(g: dict, root: int):
+    vertices = set(g)
+
+    def recursive_cn(root_to_leaf_path: list[int]) -> collections.Counter[int]:
+        counter = collections.Counter[int]()
+        world = vertices
+        for v in root_to_leaf_path:
+            world = world.intersection(g[v])
+        if len(world) == 0:
+            counter[len(root_to_leaf_path)] += 1
+            return counter
+        for neighbour in world:
+            counter |= recursive_cn(root_to_leaf_path + [neighbour])
+        return counter
+
+    return recursive_cn([root])
+
+
 @new
 def get_world(g: dict, root_to_leaf_path: list[int]) -> set[int]:
     world = set(g)
@@ -55,8 +73,8 @@ def read_edge(pair: str) -> tuple[int, int]:
 
 def parse(path: str) -> dict[int, set[int]]:
     with open(path) as f:
-        n, m = read_edge(next(f))
-        edges = [read_edge(line) for line in f]
+        n_vertices, n_edges = read_edge(next(f))
+        edges = [read_edge(line) for line in f.readlines(n_edges)]
     result = {}
     for a, b in edges:
         result.setdefault(a, set()).add(b)
@@ -69,5 +87,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--filename', default='data/test.edges', help='path to edges file')
     parser.add_argument('--root', type=int, default=1, help='root node')
+    parser.add_argument('--recursive', action='store_true', help='use recursive version')
     args = parser.parse_args()
-    print(run(parse(args.filename), args.root))
+    if args.recursive:
+        print(recursive_cn(parse(args.filename), args.root))
+    else:
+        print(run(parse(args.filename), args.root))
