@@ -1,38 +1,34 @@
-import collections
+import collections as collections  # FIX: import collections
 
 
 def new(f): return f
 
 
-def recursive_cn(g: dict, root: int):
-    vertices = set(g)
-
-    def recursive_cn(root_to_leaf_path: list[int]) -> collections.Counter[int]:
-        counter = collections.Counter[int]()
-        world = vertices
-        for v in root_to_leaf_path:
-            world = world.intersection(g[v])
-        if len(world) == 0:
-            counter[len(root_to_leaf_path)] += 1
-            return counter
-        for neighbour in world:
-            counter |= recursive_cn(root_to_leaf_path + [neighbour])
-        return counter
-
-    return recursive_cn([root])
-
-
 @new
-def get_world(g: dict, root_to_leaf_path: list[int]) -> set[int]:
+def get_world(g: dict[int, set[int]], root_to_leaf_path: list[int]) -> set[int]:
     world = set(g)
     for u in root_to_leaf_path:
         world.intersection_update(g[u])
     return world
 
 
-def run(g: dict, root: int) -> collections.Counter[int]:
+def recursive_cn(g: dict[int, set[int]], root: int):
+    def cn(root_to_leaf_path: list[int]) -> collections.Counter[int]:
+        counter = collections.Counter[int]()
+        world = get_world(g, root_to_leaf_path)
+        if not world == 0:
+            counter[len(root_to_leaf_path)] += 1
+            return counter
+        for neighbour in world:
+            counter |= cn(root_to_leaf_path + [neighbour])
+        return counter
+
+    return cn([root])
+
+
+def run(g: dict[int, set[int]], root: int) -> collections.Counter[int]:
     root_to_leaf_path = [root]
-    counter = collections.Counter[int]()
+    counter = collections.Counter()
     for r in range(10**100):  # type: int
         if not root_to_leaf_path:
             break
@@ -75,18 +71,18 @@ def parse(path: str) -> dict[int, set[int]]:
     with open(path) as f:
         n_vertices, n_edges = read_edge(next(f))
         edges = [read_edge(line) for line in f.readlines(n_edges)]
-    result = {}
+    g: dict[int, set[int]] = {}
     for a, b in edges:
-        result.setdefault(a, set()).add(b)
-        result.setdefault(b, set()).add(a)
-    return result
+        g.setdefault(a, set()).add(b)
+        g.setdefault(b, set()).add(a)
+    return g
 
 
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--filename', default='data/test.edges', help='path to edges file')
-    parser.add_argument('--root', type=int, default=1, help='root node')
+    parser.add_argument('--root', type=int, default=0, help='root node')
     parser.add_argument('--recursive', action='store_true', help='use recursive version')
     args = parser.parse_args()
     if args.recursive:

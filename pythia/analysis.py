@@ -133,7 +133,9 @@ def run(cfg: Cfg, for_location: typing.Optional[Location], module_type: ts.Modul
     return invariant_pairs
 
 
-def find_dirty_roots(invariants: dict[str, InvariantPair], loop_end: Location) -> set[str]:
+def find_dirty_roots(invariants: dict[str, InvariantPair], loop_end: typing.Optional[Location]) -> set[str]:
+    if loop_end is None:
+        return set()
     return set(typed_pointer.find_dirty_roots(invariants["TypedPointer"].post[loop_end],
                                               invariants["Liveness"].post[loop_end]))
 

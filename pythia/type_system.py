@@ -194,7 +194,7 @@ class Class(TypeExpr):
     type_params: tuple[TypeVar, ...]
 
     def __repr__(self) -> str:
-        return f'class {self.name}'
+        return f'instance {self.name}'
 
 
 @dataclass(frozen=True)
@@ -420,7 +420,7 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
         case (TypedDict(items1), TypedDict(items2)):  # type: ignore
             return TypedDict(items1.intersection(items2))
         case (Ref() as ref, other) | (other, Ref() as ref):  # type: ignore
-            if resolve_static_ref(ref) == other:
+            if instantiate_static_ref(ref) == other:
                 return ref
             return union([ref, other])
         case (Instantiation(generic1, type_args1), Instantiation(generic2, type_args2)) if generic1 == generic2:
@@ -585,7 +585,7 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
                 value = (join_all(value),)
             return unify_argument(type_params, param, Instantiation(ref, value))
         case param, Instantiation(Ref() as param_type, param_args) if not isinstance(param, Ref):
-            return unify_argument(type_params, param, Instantiation(resolve_static_ref(param_type), param_args))
+            return unify_argument(type_params, param, Instantiation(instantiate_static_ref(param_type), param_args))
         case Literal() as param, Literal() as arg:
             if param == arg:
                 return {}
@@ -605,11 +605,11 @@ def unify_argument(type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeE
         case Class(), Literal():
             return None
         case param, Ref() as arg:
-            return unify_argument(type_params, param, resolve_static_ref(arg))
+            return unify_argument(type_params, param, instantiate_static_ref(arg))
         case Ref() as param, Literal(ref=arg) if arg == param:
             return {}
         case Ref() as param, arg:
-            return unify_argument(type_params, resolve_static_ref(param), arg)
+            return unify_argument(type_params, instantiate_static_ref(param), arg)
         case param, arg:
             return None
             raise NotImplementedError(f'{param!r}, {arg!r}')
@@ -705,7 +705,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> Overloaded | Module:
                     return t
                 if not isinstance(t, (Overloaded, FunctionType)):
                     return t
-            if not types and isinstance(t, Module) and t.name not in ['builtins', 'numpy']:
+            if not types and isinstance(t, Module) and t.name not in ['builtins', 'numpy', 'collections']:
                 return TOP
             result = overload(types)
             assert free_vars_expr(result) == set(), f'{result!r}'
@@ -713,7 +713,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> Overloaded | Module:
         case Class() as t, arg:
             getter = access(t, literal('__getitem__'))
             getitem = partial(getter, typed_dict([make_row(1, None, arg)]))
-            assert free_vars_expr(getitem) == set(), f'{getitem!r}'
+            # assert free_vars_expr(getitem) == set(), f'{getitem!r} has free vars: {free_vars_expr(getitem)}'
             if getitem == BOTTOM:
                 return BOTTOM
             if isinstance(getitem, Union):
@@ -724,7 +724,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> Overloaded | Module:
         case Module() as t, arg:
             return access(t.class_dict, arg)
         case Ref() as ref, arg:
-            return access(resolve_static_ref(ref), arg)
+            return access(instantiate_static_ref(ref), arg)
         case t, TypedDict(items):
             assert False, f'{t!r}, {arg!r}'
         case t, Overloaded(items):
@@ -836,6 +836,11 @@ def partial(callable: TypeExpr, args: TypedDict) -> TypeExpr:
     if callable == BOTTOM:
         return BOTTOM
     match callable:
+        case Instantiation(Ref('builtins.type'), (arg,)):
+            assert isinstance(arg, Class)
+            init = access(arg, literal('__init__'))
+            side_effect = SideEffect(new=True, bound_method=False, update=None, points_to_args=True)
+            return overload(replace(f, return_type=arg, side_effect=side_effect) for f in init.items)
         case Overloaded(items):
             # This returns a union of cases, so defaults to TOP.
             applied = []
@@ -1097,6 +1102,15 @@ def resolve_static_ref(ref: Ref) -> TypeExpr:
     return resolve_relative_ref(ref, MODULES)
 
 
+def instantiate_static_ref(ref: Ref) -> TypeExpr:
+    t = resolve_static_ref(ref)
+    if isinstance(t,(Module, Overloaded)):
+        return t
+    assert isinstance(t, Instantiation), f'{t!r}'
+    assert t.generic == Ref('builtins.type')
+    return t.type_args[0]
+
+
 def resolve_relative_ref(ref: Ref, module: Module) -> TypeExpr:
     result: TypeExpr = module
     for attr in ref.name.split('.'):
@@ -1146,7 +1160,7 @@ def pretty_print_type(t: Module | TypeExpr, indent: int = 0) -> None:
             pretty_type_params = ', '.join(str(x) for x in type_params)
             print(f'[{pretty_type_params}]({params}) -> {"new " if side_effect.new else ""}{return_type}')
         case Class(name, class_dict=class_dict, inherits=inherits, protocol=protocol, type_params=type_params):
-            kind = 'protocol' if protocol else 'class'
+            kind = ' protocol' if protocol else ''
             pretty_type_params = ', '.join(str(x) for x in type_params)
             print(f'{kind} {name}[{pretty_type_params}]({", ".join(str(x) for x in inherits)})')
             pretty_print_type(class_dict, indent + 4)
@@ -1164,6 +1178,9 @@ def pretty_print_type(t: Module | TypeExpr, indent: int = 0) -> None:
                 print(f'({number}){name}')
         case Literal(value):
             print(f'{value}', end='')
+        case Instantiation(Ref('builtins.type'), (arg,)):
+            print('class', end='')
+            pretty_print_type(arg, indent)
         case _:
             raise NotImplementedError(f'{t!r}, {type(t)}')
 
@@ -1267,19 +1284,6 @@ def module_to_type(module: ast.Module, module_name: str) -> Module:
                         case _:
                             raise NotImplementedError(f'{base!r}')
 
-                metaclass = Class(f'__{class_name}_metaclass__',
-                                  typed_dict([
-                                      make_row(0, '__call__', FunctionType(typed_dict([
-                                          make_row(0, 'cls', TypeVar('Infer')),
-                                      ]), Ref('type'),
-                                          side_effect=SideEffect(new=True),
-                                          is_property=False,
-                                          type_params=())),
-                                  ]),
-                                  inherits=(Ref('builtins.type'),),
-                                  protocol=False,
-                                  type_params=())
-
                 name_decorators = {decorator.id: decorator for decorator in decorator_list
                                    if isinstance(decorator, ast.Name)}
                 res: TypeExpr
@@ -1287,14 +1291,28 @@ def module_to_type(module: ast.Module, module_name: str) -> Module:
                     module_dict = typed_dict([row for index, stmt in enumerate(body)
                                               for row in stmt_to_rows(stmt, index)])
                     res = Module(f'{module_name}.{class_name}', module_dict)
+                    yield make_row(index, class_name, res)
                 else:
                     class_dict = typed_dict([infer_self(row) for index, stmt in enumerate(body)
                                              for row in stmt_to_rows(stmt, index)])
 
                     res = Class(class_name, class_dict, inherits=tuple(base_classes_list), protocol=protocol,
                                 type_params=type_params)
+                    typetype = Instantiation(Ref('builtins.type'), (res,))
+                    metaclass = Class(f'__{class_name}_metaclass__',
+                                      typed_dict([
+                                          make_row(0, '__call__', FunctionType(typed_dict([
+                                              make_row(0, 'cls', TypeVar('Infer')),
+                                          ]), Ref('type'),
+                                              side_effect=SideEffect(new=True),
+                                              is_property=False,
+                                              type_params=())),
+                                      ]),
+                                      inherits=(Ref('builtins.type'),),
+                                      protocol=False,
+                                      type_params=type_params)
+                    yield make_row(index, class_name, typetype)
 
-                yield make_row(index, class_name, res)
             case ast.FunctionDef() as fdef:
                 freevars = {x for node in fdef.args.args for x in free_vars(node)}
                 returns = expr_to_type(fdef.returns)
@@ -1359,6 +1377,8 @@ def is_immutable(value: TypeExpr) -> bool:
             if value == TOP:
                 return False
             return all(is_immutable(x) for x in items.values())
+        case Instantiation(Ref('builtins.type'), (arg,)):
+            return True  # Not really, but we assume this
         case Instantiation(generic, items):
             return is_immutable(generic) and all(is_immutable(x) for x in items)
         case Literal() as literal:

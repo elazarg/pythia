@@ -495,6 +495,12 @@ def make_tac_no_dels(opname: str, val: str | int | None, stack_effect: int, stac
             return [For(stackvar(out), stackvar(stack_depth), val)]
         case ['LOAD', 'CONST']:
             return [Assign(stackvar(out), Const(val))]
+        case ['COPY']:
+            # Push the i-th item to the top of the stack. The item is not removed from its original location.
+            lhs = stackvar(out)
+            assert isinstance(val, int)
+            # print(f"COPY {val}; out={out}")
+            return [Assign(lhs, stackvar(out - val))]
         case ['LOAD', *ops]:
             lhs = stackvar(out)
             assert isinstance(val, (str, type(None))), f'{opname}, {val}, {argrepr}'

@@ -1,4 +1,5 @@
 import numpy as np
+import collections as collections  # FIX: import collections
 
 
 def new(f): return f
@@ -24,6 +25,10 @@ def first_shape(x: np.ndarray) -> int:
 def setitem(x: np.ndarray, i: int, y: float) -> None:
     x[i] = y
 
+
+def counter(i: int, j: int, f: np.ndarray) -> None:
+    res = collections.Counter()
+    res[i] += j
 # TODO: positives
 
 

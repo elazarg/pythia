@@ -514,6 +514,8 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     func_type = self.type_lattice.predefined(var)
                 else:
                     assert False, f"Expected Var or Predefined, got {var}"
+                if isinstance(func_type, ts.Instantiation) and func_type.generic == ts.Ref('builtins.type'):
+                    func_type = ts.partial(func_type, ts.typed_dict([]))
                 assert isinstance(func_type, ts.Overloaded), f"Expected Overloaded type, got {func_type}"
                 arg_objects = tuple([prev_tp.pointers[LOCALS, var] for var in args])
                 arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
@@ -677,7 +679,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
 
         if isinstance(ins, tac.For):
             ins = ins.as_call()
-        #
+
         # print(f"Transfer {ins} at {location.location}")
         # print_debug(ins, tp)
         # print(f"Prev: {tp}")
@@ -695,7 +697,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Return(var):
                 val = tp.pointers[LOCALS, var]
                 tp.pointers[LOCALS, tac.Var('return')] = val
-        #
+
         # print_debug(ins, tp)
         # print(f"Post: {tp}")
         # print()
