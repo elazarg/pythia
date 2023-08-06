@@ -12,28 +12,30 @@ def get_world(g: dict[int, set[int]], root_to_leaf_path: list[int]) -> set[int]:
     return world
 
 
-def recursive_cn(g: dict[int, set[int]], root: int):
+def recursive_cn(g: dict[int, set[int]], root: int, max_only: bool=False):
     def cn(root_to_leaf_path: list[int]) -> collections.Counter[int]:
         counter = collections.Counter[int]()
         world = get_world(g, root_to_leaf_path)
-        if not world == 0:
+        if not max_only or len(world) == 0:
             counter[len(root_to_leaf_path)] += 1
-            return counter
+
         for neighbour in world:
-            counter |= cn(root_to_leaf_path + [neighbour])
+            if not root_to_leaf_path or neighbour > root_to_leaf_path[-1]:
+                counter += cn(root_to_leaf_path + [neighbour])
+
         return counter
 
-    return cn([root])
+    return cn([])
 
 
-def run(g: dict[int, set[int]], root: int) -> collections.Counter[int]:
+def run(g: dict[int, set[int]], root: int, max_only: bool=False) -> collections.Counter[int]:
     root_to_leaf_path = [root]
     counter = collections.Counter()
     for r in range(10**100):  # type: int
         if not root_to_leaf_path:
             break
         world = get_world(g, root_to_leaf_path)
-        if not world:
+        if not max_only or len(world) == 0:
             # no children to explore
             # found maximal clique
             # print(f"Maximal Clique: {root_to_leaf_path}")
@@ -70,7 +72,8 @@ def read_edge(pair: str) -> tuple[int, int]:
 def parse(path: str) -> dict[int, set[int]]:
     with open(path) as f:
         n_vertices, n_edges = read_edge(next(f))
-        edges = [read_edge(line) for line in f.readlines(n_edges)]
+        edges = [read_edge(line) for line in f.readlines() if line.strip()]
+        assert len(edges) == n_edges
     g: dict[int, set[int]] = {}
     for a, b in edges:
         g.setdefault(a, set()).add(b)
@@ -84,8 +87,9 @@ if __name__ == '__main__':
     parser.add_argument('--filename', default='data/test.edges', help='path to edges file')
     parser.add_argument('--root', type=int, default=0, help='root node')
     parser.add_argument('--recursive', action='store_true', help='use recursive version')
+    parser.add_argument('--max-only', action='store_true', help='count only maximal cliques')
     args = parser.parse_args()
     if args.recursive:
-        print(recursive_cn(parse(args.filename), args.root))
+        print(recursive_cn(parse(args.filename), args.root, args.max_only))
     else:
-        print(run(parse(args.filename), args.root))
+        print(run(parse(args.filename), args.root, args.max_only))
