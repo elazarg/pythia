@@ -28,14 +28,14 @@ def recursive_cn(g: dict[int, set[int]], root: int, max_only: bool=False):
     return cn([])
 
 
-def run(g: dict[int, set[int]], root: int, max_only: bool=False) -> collections.Counter[int]:
+def run(g: dict[int, set[int]], root: int, max_only: bool = False) -> collections.Counter[int]:
     root_to_leaf_path = [root]
     counter = collections.Counter()
     for r in range(10**100):  # type: int
         if not root_to_leaf_path:
             break
         world = get_world(g, root_to_leaf_path)
-        if not max_only or len(world) == 0:
+        if not max_only or not world:
             # no children to explore
             # found maximal clique
             # print(f"Maximal Clique: {root_to_leaf_path}")
