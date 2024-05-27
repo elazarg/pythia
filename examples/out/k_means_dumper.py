@@ -32,7 +32,7 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
         for i in transaction.iterate(range(max_iterations)):  # type: int
             centroid_is = empty_list_of_tuples()
             for sample_i, sample in enumerate(X):
-                centroid_i = np.argmin(np.linalg.norm(sample - centroids, axis=1))
+                centroid_i: int = np.argmin(np.linalg.norm(sample - centroids, axis=1))
                 centroid_is.append((centroid_i, sample_i))
             clusters = empty_list_of_lists(k)
             for centroid_i, sample_i in centroid_is:

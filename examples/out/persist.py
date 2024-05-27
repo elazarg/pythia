@@ -84,13 +84,20 @@ class PseudoLoader(Loader):
             print("Finished successfully")
 
 
+def connect(tag: str) -> socket.socket:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect(("10.0.2.2", 1234))
+    s.send(tag.encode("utf8"))
+    return s
+
+
 class SimpleTcpClient:
     restored_state = ()
+    socket: socket.socket
+    i: Any
 
     def __init__(self, tag: str) -> None:
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect(("10.0.2.2", 1234))
-        self.socket.send(tag.encode("utf8"))
+        self.socket = connect(tag)
         self.i = None
 
     def commit(self) -> None:
