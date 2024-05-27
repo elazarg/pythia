@@ -21,8 +21,10 @@ class Iter:
 class Loader:
     restored_state: tuple[Any, ...]
     iterator: typing.Optional[Iter]
+    version: int
+    filename: pathlib.Path
 
-    def __init__(self, module_filename: str):
+    def __init__(self, module_filename: str | pathlib.Path):
         module_filename = pathlib.Path(module_filename)
         with module_filename.open("rb") as f:
             m = hashlib.md5()
@@ -40,8 +42,8 @@ class Loader:
         if self._now_recovering():
             print("Recovering from snapshot")
             with self.filename.open("rb") as snapshot:
-                version, self.restored_state, self.iterator = pickle.load(snapshot)
-            print(f"Loaded {version=}: {self.restored_state}")
+                self.version, self.restored_state, self.iterator = pickle.load(snapshot)
+            print(f"Loaded {self.version=}: {self.restored_state}")
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
