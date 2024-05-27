@@ -28,7 +28,7 @@ class Loader:
             h = m.hexdigest()[:6]
             name = pathlib.Path(module_filename).stem
             print(name)
-        self.filename = pathlib.Path('examples/cache/{name}-{h}.pickle')
+        self.filename = pathlib.Path(f'examples/cache/{name}-{h}.pickle')
         self.filename.parent.mkdir(parents=True, exist_ok=True)
         self.iterator = None
         self.version = 0
@@ -45,7 +45,7 @@ class Loader:
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
             print('Finished successfully')
-            # pathlib.Path(self.filename).unlink()
+            # self.filename.unlink()
 
     def iterate(self, iterable):
         if self.iterator is None:
