@@ -82,8 +82,8 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
 
 
 def main(dataset: str, k: int) -> None:
-    features = np.load(f'data/{dataset}_features.npy')
-    target = np.load(f'data/{dataset}_target.npy')
+    features = np.load(f'examples/data/{dataset}_features.npy')
+    target = np.load(f'examples/data/{dataset}_target.npy')
     S = do_work(features, target, k)
     print(S)
 

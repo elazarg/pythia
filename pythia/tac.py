@@ -170,6 +170,7 @@ class MakeFunction:
     positional_only_defaults: Optional[Var] = None
     free_var_cells: Optional[Var] = None
 
+
 @dataclass
 class MakeClass:
     name: str
@@ -408,7 +409,7 @@ def make_tac_cfg(f: typing.Any) -> gu.Cfg[Tac]:
 
     def instruction_block_to_tac_block(n: Label, block: gu.Block[instruction_cfg.Instruction]) -> gu.Block[Tac]:
         return gu.Block(list(it.chain.from_iterable(make_tac(ins, depths[ins.offset], trace_origin)
-                                                           for ins in block)))
+                                                    for ins in block)))
 
     def annotator(location: Location, n: Tac) -> str:
         pos = trace_origin[id(n)].positions
@@ -501,9 +502,11 @@ def make_tac_no_dels(opname: str, val: str | int | None, stack_effect: int, stac
             assert isinstance(val, int)
             # print(f"COPY {val}; out={out}")
             return [Assign(lhs, stackvar(out - val))]
+        case ['LOAD', 'ASSERTION', 'ERROR']:
+            return []  # Assign(lhs, Const(AssertionError()))]
         case ['LOAD', *ops]:
             lhs = stackvar(out)
-            assert isinstance(val, (str, type(None))), f'{opname}, {val}, {argrepr}'
+            assert isinstance(val, str), f'{opname}, {val}, {argrepr}'
             match ops:
                 case ['ATTR']:
                     return [Assign(lhs, Attribute(stackvar(stack_depth), Var(val)))]
@@ -520,8 +523,6 @@ def make_tac_no_dels(opname: str, val: str | int | None, stack_effect: int, stac
                     return [Assign(lhs, Const(None))]
                 case ['BUILD', 'CLASS']:
                     return [Assign(lhs, make_class(val))]
-                case ['ASSERTION', 'ERROR']:
-                    return []  # Assign(lhs, Const(AssertionError()))]
                 case _:
                     assert False, ops
         case ['STORE', 'FAST' | 'NAME']:
