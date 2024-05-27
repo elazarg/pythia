@@ -3,6 +3,8 @@ from __future__ import annotations as _
 import ast
 import typing
 
+import black
+
 
 class Parser:
     filename: str
@@ -138,7 +140,8 @@ def transform(
 
     tree = Compiler().visit(tree)
     tree = ast.fix_missing_locations(tree)
-    return ast.unparse(tree)
+    res = ast.unparse(tree)
+    return black.format_str(res, mode=black.FileMode())
 
 
 if __name__ == "__main__":
