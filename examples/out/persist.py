@@ -47,7 +47,7 @@ class Loader:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if exc_type is None:
             print("Finished successfully")
-            # self.filename.unlink()
+            self.filename.unlink()
 
     def iterate(self, iterable) -> Iter:
         if self.iterator is None:
