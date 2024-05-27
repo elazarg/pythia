@@ -1,10 +1,13 @@
-from typing import Any
+import typing
+from typing import Any, TypeVar
 
 import pickle
 import pathlib
 import hashlib
 import socket
 import struct
+
+T = TypeVar("T")
 
 
 class Iter:
@@ -17,6 +20,7 @@ class Iter:
 
 class Loader:
     restored_state: tuple[Any, ...]
+    iterator: typing.Optional[Iter]
 
     def __init__(self, module_filename: str):
         module_filename = pathlib.Path(module_filename)
@@ -32,7 +36,7 @@ class Loader:
         self.version = 0
         self.restored_state = ()
 
-    def __enter__(self) -> Loader:
+    def __enter__(self) -> "Loader":
         if self._now_recovering():
             print("Recovering from snapshot")
             with self.filename.open("rb") as snapshot:
@@ -40,17 +44,17 @@ class Loader:
             print(f"Loaded {version=}: {self.restored_state}")
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if exc_type is None:
             print("Finished successfully")
             # self.filename.unlink()
 
-    def iterate(self, iterable):
+    def iterate(self, iterable) -> Iter:
         if self.iterator is None:
             self.iterator = Iter(iterable)
         return self.iterator
 
-    def commit(self, *args):
+    def commit(self, *args) -> None:
         self.version += 1
 
         temp_filename = self.filename.with_suffix(".tmp")
@@ -60,12 +64,12 @@ class Loader:
         pathlib.Path(self.filename).unlink(missing_ok=True)
         pathlib.Path(temp_filename).rename(self.filename)
 
-    def _now_recovering(self):
+    def _now_recovering(self) -> bool:
         return pathlib.Path(self.filename).exists()
 
 
 class PseudoLoader(Loader):
-    def commit(self, *args):
+    def commit(self, *args) -> None:
         size = pickle.dumps((self.version, args, self.iterator)).__sizeof__()
         print(self.version, size, end="\n", flush=True)
         self.version += 1
@@ -73,7 +77,7 @@ class PseudoLoader(Loader):
     def __enter__(self) -> Loader:
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if exc_type is None:
             print("Finished successfully")
 
@@ -94,9 +98,9 @@ class SimpleTcpClient:
     def __enter__(self) -> "SimpleTcpClient":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.socket.close()
 
-    def iterate(self, iterable):
+    def iterate(self, iterable: typing.Iterable[T]) -> typing.Iterable[T]:
         for self.i in iterable:
             yield self.i
