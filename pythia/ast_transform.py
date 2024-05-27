@@ -6,11 +6,14 @@ import typing
 
 class Parser:
     filename: str
+
     def __init__(self, filename: str) -> None:
         self.filename = filename
 
     def parse(self, source: str) -> ast.Module:
-        return ast.parse(source, type_comments=True, filename=self.filename, feature_version=(3, 11))
+        return ast.parse(
+            source, type_comments=True, filename=self.filename, feature_version=(3, 11)
+        )
 
     def parse_statement(self, source: str) -> ast.stmt:
         stmt = self.parse(source).body[0]
@@ -28,48 +31,58 @@ def make_for(for_loop: ast.For, filename: str, _dirty: set[str]) -> ast.With:
     parse_expression = Parser(filename).parse_expression
     iter = ast.Call(
         func=ast.Attribute(
-            value=ast.Name(id='transaction', ctx=ast.Load()),
-            attr='iterate',
-            ctx=ast.Load()),
+            value=ast.Name(id="transaction", ctx=ast.Load()),
+            attr="iterate",
+            ctx=ast.Load(),
+        ),
         args=[for_loop.iter],
         keywords=[],
     )
-    commit = ast.Expr(
-        parse_expression(f'transaction.commit({", ".join(dirty)})')
-    )
-    body = [
-        *for_loop.body,
-        commit
-    ]
+    commit = ast.Expr(parse_expression(f'transaction.commit({", ".join(dirty)})'))
+    body = [*for_loop.body, commit]
 
-    for_loop = ast.For(for_loop.target, iter, body, for_loop.orelse, for_loop.type_comment,
-                       lineno=for_loop.lineno, col_offset=for_loop.col_offset)
+    for_loop = ast.For(
+        for_loop.target,
+        iter,
+        body,
+        for_loop.orelse,
+        for_loop.type_comment,
+        lineno=for_loop.lineno,
+        col_offset=for_loop.col_offset,
+    )
 
     res = ast.With(
         items=[
             ast.withitem(
-                context_expr=parse_expression('persist.Loader(__file__)'),
-                optional_vars=ast.Name(id='transaction', ctx=ast.Store()))],
+                context_expr=parse_expression("persist.Loader(__file__)"),
+                optional_vars=ast.Name(id="transaction", ctx=ast.Store()),
+            )
+        ],
         body=[
             ast.If(
-                test=parse_expression('transaction.restored_state'),
+                test=parse_expression("transaction.restored_state"),
                 body=[
                     ast.Assign(
                         targets=[
                             ast.List(
-                                elts=[ast.Name(id=x, ctx=ast.Store())
-                                      for x in dirty],
-                                ctx=ast.Store())],
-                        value=parse_expression('transaction.restored_state'))
+                                elts=[ast.Name(id=x, ctx=ast.Store()) for x in dirty],
+                                ctx=ast.Store(),
+                            )
+                        ],
+                        value=parse_expression("transaction.restored_state"),
+                    )
                 ],
-                orelse=[]),
+                orelse=[],
+            ),
             for_loop,
-        ]
+        ],
     )
     return res
 
 
-def transform(filename: str, dirty_map: typing.Optional[dict[str, set[str]]] = None) -> str:
+def transform(
+    filename: str, dirty_map: typing.Optional[dict[str, set[str]]] = None
+) -> str:
     parser = Parser(filename)
 
     class VariableFinder(ast.NodeVisitor):
@@ -77,13 +90,17 @@ def transform(filename: str, dirty_map: typing.Optional[dict[str, set[str]]] = N
             self.dirty: dict[str, set[str]] = {}
 
         def visit_FunctionDef(self, func: ast.FunctionDef) -> None:
-            dirty = {node.arg for node in ast.walk(func.args)
-                     if isinstance(node, ast.arg)}
-            dirty |= {node.id for node in ast.walk(func)
-                      if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)}
+            dirty = {
+                node.arg for node in ast.walk(func.args) if isinstance(node, ast.arg)
+            }
+            dirty |= {
+                node.id
+                for node in ast.walk(func)
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+            }
             self.dirty[func.name] = dirty
 
-    with open(filename, encoding='utf-8') as f:
+    with open(filename, encoding="utf-8") as f:
         source = f.read()
     tree = parser.parse(source)
 
@@ -106,8 +123,10 @@ def transform(filename: str, dirty_map: typing.Optional[dict[str, set[str]]] = N
     class Compiler(ast.NodeTransformer):
         def visit_Module(self, node: ast.Module) -> ast.Module:
             tree = typing.cast(ast.Module, self.generic_visit(node))
-            import_stmt = parser.parse_statement('import persist')
-            res = ast.Module(body=[import_stmt, *tree.body], type_ignores=tree.type_ignores)
+            import_stmt = parser.parse_statement("import persist")
+            res = ast.Module(
+                body=[import_stmt, *tree.body], type_ignores=tree.type_ignores
+            )
             return res
 
         def visit_FunctionDef(self, function: ast.FunctionDef) -> ast.FunctionDef:
@@ -122,5 +141,5 @@ def transform(filename: str, dirty_map: typing.Optional[dict[str, set[str]]] = N
     return ast.unparse(tree)
 
 
-if __name__ == '__main__':
-    print(transform('examples/feature_selection.py'))
+if __name__ == "__main__":
+    print(transform("examples/feature_selection.py"))

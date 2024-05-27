@@ -9,10 +9,10 @@ from typing import TypeVar, Generic, Callable, Iterator, TypeAlias, Optional
 import networkx as nx  # type: ignore
 from networkx.classes.reportviews import NodeView  # type: ignore
 
-BLOCK_NAME = 'block'
+BLOCK_NAME = "block"
 
-T = TypeVar('T')
-Q = TypeVar('Q')
+T = TypeVar("T")
+Q = TypeVar("Q")
 
 
 Label: TypeAlias = int | float
@@ -98,8 +98,18 @@ class Cfg(Generic[T]):
     def annotator(self, annotator: Callable[[Location, T], str]) -> None:
         self._annotator = staticmethod(annotator)
 
-    def __init__(self, graph: nx.DiGraph | dict | list[tuple[Label, Label]] | list[tuple[Label, Label, dict]],
-                 blocks: Optional[dict[Label, list[T]]] = None, add_sink: bool = True, add_source=False) -> None:
+    def __init__(
+        self,
+        graph: (
+            nx.DiGraph
+            | dict
+            | list[tuple[Label, Label]]
+            | list[tuple[Label, Label, dict]]
+        ),
+        blocks: Optional[dict[Label, list[T]]] = None,
+        add_sink: bool = True,
+        add_source=False,
+    ) -> None:
         if isinstance(graph, nx.DiGraph):
             self.graph = graph
         else:
@@ -107,7 +117,11 @@ class Cfg(Generic[T]):
 
         if blocks is not None:
             self.graph.add_nodes_from(blocks.keys())
-            nx.set_node_attributes(self.graph, name=BLOCK_NAME, values={k: Block(block) for k, block in blocks.items()})
+            nx.set_node_attributes(
+                self.graph,
+                name=BLOCK_NAME,
+                values={k: Block(block) for k, block in blocks.items()},
+            )
 
         sinks = {label for label in self.labels if self.graph.out_degree(label) == 0}
         if add_sink:
@@ -130,7 +144,7 @@ class Cfg(Generic[T]):
             assert len(sources) == 1, sources
             [source] = sources
         assert {sink, source} == {self.exit_label, self.entry_label}, {sink, source}
-        self.annotator = lambda tup, x: ''
+        self.annotator = lambda tup, x: ""
 
     @property
     def entry_label(self) -> Label:
@@ -166,6 +180,7 @@ class Cfg(Generic[T]):
 
     def draw(self) -> None:
         import matplotlib.pyplot as plt  # type: ignore
+
         nx.draw_networkx(self.graph, with_labels=True)
         plt.show()
 
@@ -197,9 +212,12 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
     """
     # pretty_print_cfg(cfg)
     g = cfg.graph
-    starts = set(chain((n for n in g if g.in_degree(n) != 1),
-                       chain.from_iterable(g.successors(n) for n in g
-                                           if g.out_degree(n) > 1)))
+    starts = set(
+        chain(
+            (n for n in g if g.in_degree(n) != 1),
+            chain.from_iterable(g.successors(n) for n in g if g.out_degree(n) > 1),
+        )
+    )
     blocks = {}
     labels = set()
     edges: list[tuple[Label, Label]] = []
@@ -213,7 +231,7 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
             next_n = next(iter(g.successors(n)))
             if instructions and g.in_degree(next_n) != 1:
                 break
-            if len(instructions) and type(instructions[-1]).__name__ == 'Jump':
+            if len(instructions) and type(instructions[-1]).__name__ == "Jump":
                 del instructions[-1]
             n = next_n
         labels.add(label)
@@ -240,9 +258,11 @@ def refine_to_chain(cfg: Cfg) -> Cfg:
         nx.relabel_nodes(path, mapping={x: n + x for x in path.nodes()}, copy=False)
         path.add_edges_from((n + max(0, size - 1), s) for s in g.successors(n))
         paths.append(path)
-    blocks = {n + i: [block]
-              for n in g.nodes()
-              for i, block in enumerate(g.nodes[n][BLOCK_NAME])}
+    blocks = {
+        n + i: [block]
+        for n in g.nodes()
+        for i, block in enumerate(g.nodes[n][BLOCK_NAME])
+    }
     res: nx.DiGraph = nx.compose_all(paths)
     simplified_cfg = Cfg(res.edges(), blocks=blocks, add_sink=True, add_source=False)
     simplified_cfg.annotator = cfg.annotator
@@ -256,13 +276,18 @@ def node_data_map(cfg: Cfg[T], f: Callable[[Label, Block[T]], Block[Q]]) -> Cfg[
     return typing.cast(Cfg[Q], cfg)
 
 
-def print_block(label: Label, block: Block[T],
-                *annotators: Callable[[Location, T], object]) -> None:
-    print(label, ':')
+def print_block(
+    label: Label, block: Block[T], *annotators: Callable[[Location, T], object]
+) -> None:
+    print(label, ":")
     for index, ins in enumerate(block):
         location = (label, index)
-        str_location = f'{label}.{index}'
-        print(f'\t{str_location:6}', *[f'{annotator(location, ins):7}' for annotator in annotators], ins)
+        str_location = f"{label}.{index}"
+        print(
+            f"\t{str_location:6}",
+            *[f"{annotator(location, ins):7}" for annotator in annotators],
+            ins,
+        )
 
 
 def pretty_print_cfg(cfg: Cfg[T]) -> None:
@@ -274,13 +299,18 @@ def pretty_print_cfg(cfg: Cfg[T]) -> None:
         print()
 
 
-def single_source_dijkstra_path_length(cfg: Cfg, source: int, weight: str) -> dict[Label, int]:
+def single_source_dijkstra_path_length(
+    cfg: Cfg, source: int, weight: str
+) -> dict[Label, int]:
     return nx.single_source_dijkstra_path_length(cfg.graph, source, weight=weight)
 
 
-def find_first_for_loop(cfg: Cfg[T], is_for: Callable[[T], bool]) -> tuple[Location, Location]:
-    first_label = min(label for label, block in cfg.items()
-                      if block and any(is_for(b) for b in block))
+def find_first_for_loop(
+    cfg: Cfg[T], is_for: Callable[[T], bool]
+) -> tuple[Location, Location]:
+    first_label = min(
+        label for label, block in cfg.items() if block and any(is_for(b) for b in block)
+    )
     block = cfg[first_label]
     assert len(block) == 1
     prev, *_, after = sorted(cfg.predecessors(first_label))

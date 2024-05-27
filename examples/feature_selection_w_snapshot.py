@@ -71,7 +71,9 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
 
     for idx in range(k):
         if persist._now_recovering():
-            idx, S = persist._recover(snapshot)  # load snapshot and set local variables to saved state
+            idx, S = persist._recover(
+                snapshot
+            )  # load snapshot and set local variables to saved state
         persist._mark(idx)
 
         # define and train model
@@ -85,13 +87,13 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
         for a in np.setdiff1d(A, S):
             point = np.append(point, a)
         out = [[point, len(np.setdiff1d(A, S))]]
-        out = np.array(out, dtype='object')
+        out = np.array(out, dtype="object")
         rounds_ind += np.max(out[:, -1])
 
         # get feasible points
         points = np.array([])
         points = np.append(points, np.array(out[0, 0]))
-        points = points.astype('int')
+        points = points.astype("int")
         # break if points are no longer feasible
         if len(points) == 0:
             break
@@ -105,7 +107,9 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
         if grad[a] >= 0:
             persist._unmark(S)
             S = np.unique(np.append(S, a))
-            persist._mark_shallow(S)  # for now S must be ndarray (can use pickle when committing)
+            persist._mark_shallow(
+                S
+            )  # for now S must be ndarray (can use pickle when committing)
         else:
             break
 

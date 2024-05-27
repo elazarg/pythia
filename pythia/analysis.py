@@ -14,7 +14,7 @@ from pythia.analysis_liveness import LivenessVarLattice
 from pythia import analysis_typed_pointer as typed_pointer
 from pythia.graph_utils import Location
 
-Inv = TypeVar('Inv')
+Inv = TypeVar("Inv")
 Cfg: TypeAlias = gu.Cfg[tac.Tac]
 
 
@@ -35,7 +35,11 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[Inv]) -> InvariantPai
     pre_result: InvariantMap[Inv] = {}
     post_result: InvariantMap[Inv] = {}
 
-    cfg: domain.IterationStrategy = domain.BackwardIterationStrategy(_cfg) if analysis.backward else domain.ForwardIterationStrategy(_cfg)
+    cfg: domain.IterationStrategy = (
+        domain.BackwardIterationStrategy(_cfg)
+        if analysis.backward
+        else domain.ForwardIterationStrategy(_cfg)
+    )
     # gu.pretty_print_cfg(_cfg)
     wl = [entry] = {cfg.entry_label}
     initial = analysis.initial()
@@ -58,7 +62,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[Inv]) -> InvariantPai
                 e.add_note(f"from {ins}")
                 e.add_note(f"pre: {pre_result[location]}")
                 raise e
-            
+
             post = post_result[location] = invariant
         for next_label in cfg.successors(label):
             next_location = (next_label, cfg[next_label].first_index())
@@ -80,7 +84,9 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[Inv]) -> InvariantPai
     return InvariantPair(pre_result, post_result)
 
 
-def analyze_single(cfg: Cfg, analysis: typing.Callable[[tac.Tac, Location], Inv]) -> InvariantMap[Inv]:
+def analyze_single(
+    cfg: Cfg, analysis: typing.Callable[[tac.Tac, Location], Inv]
+) -> InvariantMap[Inv]:
     result: InvariantMap[Inv] = {}
     # gu.pretty_print_cfg(cfg)
     for label, block in cfg.items():
@@ -91,38 +97,49 @@ def analyze_single(cfg: Cfg, analysis: typing.Callable[[tac.Tac, Location], Inv]
     return result
 
 
-def print_analysis(cfg: Cfg, invariants: dict[str, InvariantPair],
-                   loop_end: typing.Optional[Location], dirty_locals: set[str],
-                   print_invariants: bool = True) -> None:
+def print_analysis(
+    cfg: Cfg,
+    invariants: dict[str, InvariantPair],
+    loop_end: typing.Optional[Location],
+    dirty_locals: set[str],
+    print_invariants: bool = True,
+) -> None:
     for label, block in sorted(cfg.items()):
         if math.isinf(label):
             continue
         if print_invariants:
-            print('Pre:')
+            print("Pre:")
             for name, invariant_pair in invariants.items():
                 pre_invariant = invariant_pair.pre[(label, block.first_index())]
-                print(f'\t{name}:')
+                print(f"\t{name}:")
                 pre_invariant.print()
         gu.print_block(label, block, cfg.annotator)
         if print_invariants:
-            print('Post:')
+            print("Post:")
             for name, invariant_pair in invariants.items():
                 post_invariant = invariant_pair.post[(label, block.last_index())]
-                print(f'\t{name}:')
+                print(f"\t{name}:")
                 post_invariant.print()
             print()
         if loop_end is not None and label == loop_end[0]:
-            print(f"Dirty Locals:", ', '.join(dirty_locals))
+            print(f"Dirty Locals:", ", ".join(dirty_locals))
             print()
         print("Successors:", list(cfg.successors(label)))
         print()
 
 
-def run(cfg: Cfg, for_location: typing.Optional[Location], module_type: ts.Module, function_name: str) -> dict[str, InvariantPair]:
+def run(
+    cfg: Cfg,
+    for_location: typing.Optional[Location],
+    module_type: ts.Module,
+    function_name: str,
+) -> dict[str, InvariantPair]:
     gu.pretty_print_cfg(cfg)
     liveness_invariants = analyze(cfg, LivenessVarLattice())
 
-    typed_pointer_analysis = typed_pointer.TypedPointerLattice(liveness_invariants.post, function_name, module_type, for_location)
+    typed_pointer_analysis = typed_pointer.TypedPointerLattice(
+        liveness_invariants.post, function_name, module_type, for_location
+    )
     typed_pointer_invariants = analyze(cfg, typed_pointer_analysis)
 
     invariant_pairs: dict[str, InvariantPair] = {
@@ -133,14 +150,26 @@ def run(cfg: Cfg, for_location: typing.Optional[Location], module_type: ts.Modul
     return invariant_pairs
 
 
-def find_dirty_roots(invariants: dict[str, InvariantPair], loop_end: typing.Optional[Location]) -> set[str]:
+def find_dirty_roots(
+    invariants: dict[str, InvariantPair], loop_end: typing.Optional[Location]
+) -> set[str]:
     if loop_end is None:
         return set()
-    return set(typed_pointer.find_dirty_roots(invariants["TypedPointer"].post[loop_end],
-                                              invariants["Liveness"].post[loop_end]))
+    return set(
+        typed_pointer.find_dirty_roots(
+            invariants["TypedPointer"].post[loop_end],
+            invariants["Liveness"].post[loop_end],
+        )
+    )
 
 
-def analyze_function(filename: str, *function_names: str, print_invariants: bool, outfile: str, simplify: bool) -> None:
+def analyze_function(
+    filename: str,
+    *function_names: str,
+    print_invariants: bool,
+    outfile: str,
+    simplify: bool,
+) -> None:
     functions, imports = disassemble.read_file(filename)
     module_type = ts.parse_file(filename)
 
@@ -152,13 +181,15 @@ def analyze_function(filename: str, *function_names: str, print_invariants: bool
         if not simplify:
             cfg = gu.refine_to_chain(cfg)
         try:
-            for_location, loop_end = gu.find_first_for_loop(cfg, lambda b: isinstance(b, tac.For))
+            for_location, loop_end = gu.find_first_for_loop(
+                cfg, lambda b: isinstance(b, tac.For)
+            )
         except ValueError:
             for_location, loop_end = None, None
 
-        invariant_pairs = run(cfg, for_location,
-                              module_type=module_type,
-                              function_name=function_name)
+        invariant_pairs = run(
+            cfg, for_location, module_type=module_type, function_name=function_name
+        )
 
         dirty_map[function_name] = find_dirty_roots(invariant_pairs, loop_end)
 
@@ -169,5 +200,5 @@ def analyze_function(filename: str, *function_names: str, print_invariants: bool
     if outfile is None:
         print(output)
     else:
-        with open(outfile, 'w', encoding='utf-8') as f:
+        with open(outfile, "w", encoding="utf-8") as f:
             print(output, file=f)

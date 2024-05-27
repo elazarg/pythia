@@ -1,7 +1,8 @@
 import collections as collections  # FIX: import collections
 
 
-def new(f): return f
+def new(f):
+    return f
 
 
 @new
@@ -12,7 +13,7 @@ def get_world(g: dict[int, set[int]], root_to_leaf_path: list[int]) -> set[int]:
     return world
 
 
-def recursive_cn(g: dict[int, set[int]], root: int, max_only: bool=False):
+def recursive_cn(g: dict[int, set[int]], root: int, max_only: bool = False):
     def cn(root_to_leaf_path: list[int]) -> collections.Counter[int]:
         counter = collections.Counter[int]()
         world = get_world(g, root_to_leaf_path)
@@ -28,7 +29,9 @@ def recursive_cn(g: dict[int, set[int]], root: int, max_only: bool=False):
     return cn([])
 
 
-def run(g: dict[int, set[int]], root: int, max_only: bool = False) -> collections.Counter[int]:
+def run(
+    g: dict[int, set[int]], root: int, max_only: bool = False
+) -> collections.Counter[int]:
     root_to_leaf_path = [root]
     counter = collections.Counter()
     for r in range(10**100):  # type: int
@@ -81,13 +84,20 @@ def parse(path: str) -> dict[int, set[int]]:
     return g
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument('--filename', default='data/test.edges', help='path to edges file')
-    parser.add_argument('--root', type=int, default=0, help='root node')
-    parser.add_argument('--recursive', action='store_true', help='use recursive version')
-    parser.add_argument('--max-only', action='store_true', help='count only maximal cliques')
+    parser.add_argument(
+        "--filename", default="data/test.edges", help="path to edges file"
+    )
+    parser.add_argument("--root", type=int, default=0, help="root node")
+    parser.add_argument(
+        "--recursive", action="store_true", help="use recursive version"
+    )
+    parser.add_argument(
+        "--max-only", action="store_true", help="count only maximal cliques"
+    )
     args = parser.parse_args()
     if args.recursive:
         print(recursive_cn(parse(args.filename), args.root, args.max_only))

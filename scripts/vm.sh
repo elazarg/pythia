@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 POOL=pool
 # This is already in qcow2 format.
-img=ubuntu-22.10-server-cloudimg-amd64.img
+# https://cloud-images.ubuntu.com/releases/24.04/release-20240523.1/ubuntu-24.04-server-cloudimg-amd64.img
+img=ubuntu-24.04-server-cloudimg-amd64.img
 if [ ! -f "$POOL/$img" ]; then
   cd $POOL
-  wget "https://cloud-images.ubuntu.com/releases/22.10/release/${img}"
+  wget "https://cloud-images.ubuntu.com/releases/24.04/release-20240523.1/${img}"
   cd ..
 fi
 

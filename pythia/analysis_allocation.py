@@ -10,10 +10,10 @@ from pythia.graph_utils import Location
 
 
 class AllocationType(enum.StrEnum):
-    NONE = ''
-    STACK = 'Stack'
-    HEAP = 'Heap'
-    UNKNOWN = 'Unknown'
+    NONE = ""
+    STACK = "Stack"
+    HEAP = "Heap"
+    UNKNOWN = "Unknown"
 
 
 Allocation: typing.TypeAlias = AllocationType
@@ -24,7 +24,11 @@ class AllocationChecker:
     type_lattice: VarLattice[ts.TypeExpr]
     backward = False
 
-    def __init__(self, type_invariant_map: InvariantMap[VarMapDomain[ts.TypeExpr]], type_lattice: VarLattice[ts.TypeExpr]) -> None:
+    def __init__(
+        self,
+        type_invariant_map: InvariantMap[VarMapDomain[ts.TypeExpr]],
+        type_lattice: VarLattice[ts.TypeExpr],
+    ) -> None:
         super().__init__()
         self.type_invariant_map = type_invariant_map
         self.type_lattice = type_lattice
@@ -43,12 +47,21 @@ class AllocationChecker:
                     return AllocationType.NONE
                 case tac.Call(func, args):
                     function = self.type_lattice.transformer_expr(type_invariant, func)
-                    returns = ts.call(function, make_rows(*[self.type_lattice.transformer_expr(type_invariant, arg)
-                                                            for index, arg in enumerate(args)]))
+                    returns = ts.call(
+                        function,
+                        make_rows(
+                            *[
+                                self.type_lattice.transformer_expr(type_invariant, arg)
+                                for index, arg in enumerate(args)
+                            ]
+                        ),
+                    )
                     return from_function(function, returns)
                 case tac.Subscript(var=tac.Var() as var, index=tac.Var() as index):
                     var_type = self.type_lattice.transformer_expr(type_invariant, var)
-                    index_type = self.type_lattice.transformer_expr(type_invariant, index)
+                    index_type = self.type_lattice.transformer_expr(
+                        type_invariant, index
+                    )
                     return AllocationType.UNKNOWN
                 case tac.Unary(var=tac.Var() as var, op=tac.UnOp() as op):
                     value = self.type_lattice.transformer_expr(type_invariant, var)
@@ -56,17 +69,22 @@ class AllocationChecker:
                     assert isinstance(lattice, TypeLattice)
                     function = lattice.get_unary_attribute(value, op)
                     return from_function(function, make_rows(value))
-                case tac.Binary(left=tac.Var() as left, right=tac.Var() as right, op=str() as op):
-                    left_type: ts.TypeExpr = self.type_lattice.transformer_expr(type_invariant, left)
-                    right_type: ts.TypeExpr = self.type_lattice.transformer_expr(type_invariant, right)
+                case tac.Binary(
+                    left=tac.Var() as left, right=tac.Var() as right, op=str() as op
+                ):
+                    left_type: ts.TypeExpr = self.type_lattice.transformer_expr(
+                        type_invariant, left
+                    )
+                    right_type: ts.TypeExpr = self.type_lattice.transformer_expr(
+                        type_invariant, right
+                    )
                     function = ts.get_binop(left_type, right_type, op)
                     return from_function(function, make_rows(left_type, right_type))
         return AllocationType.NONE
 
 
 def make_rows(*types: ts.TypeExpr) -> ts.Intersection:
-    return ts.typed_dict([ts.make_row(index, None, t)
-                          for index, t in enumerate(types)])
+    return ts.typed_dict([ts.make_row(index, None, t) for index, t in enumerate(types)])
 
 
 def join(left: Allocation, right: Allocation) -> Allocation:

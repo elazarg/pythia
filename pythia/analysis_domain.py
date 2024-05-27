@@ -8,9 +8,9 @@ from pythia import graph_utils as gu
 from pythia import tac
 from pythia.graph_utils import Label, Location
 
-T = typing.TypeVar('T')
-K = typing.TypeVar('K', covariant=True)
-Q = typing.TypeVar('Q')
+T = typing.TypeVar("T")
+K = typing.TypeVar("K", covariant=True)
+Q = typing.TypeVar("Q")
 
 
 @dataclass
@@ -27,7 +27,7 @@ class ForwardIterationStrategy(typing.Generic[T]):
     def __getitem__(self, label: Label) -> gu.Block:
         return self.cfg[label]
 
-    def order(self, pair: tuple[K, Q]) -> tuple[K ,Q]:
+    def order(self, pair: tuple[K, Q]) -> tuple[K, Q]:
         return pair
 
 
@@ -49,7 +49,9 @@ class BackwardIterationStrategy(typing.Generic[T]):
         return pair[1], pair[0]
 
 
-IterationStrategy: typing.TypeAlias = ForwardIterationStrategy | BackwardIterationStrategy
+IterationStrategy: typing.TypeAlias = (
+    ForwardIterationStrategy | BackwardIterationStrategy
+)
 
 
 class Lattice(typing.Protocol[T]):
@@ -79,7 +81,7 @@ class Lattice(typing.Protocol[T]):
 @dataclass(frozen=True)
 class Top:
     def __str__(self) -> str:
-        return '⊤'
+        return "⊤"
 
     def copy(self: T) -> T:
         return self
@@ -109,7 +111,7 @@ class Top:
 @dataclass(frozen=True)
 class Bottom:
     def __str__(self) -> str:
-        return '⊥'
+        return "⊥"
 
     def copy(self: T) -> T:
         return self
@@ -144,9 +146,9 @@ class Set(typing.Generic[T]):
 
     def __repr__(self):
         if isinstance(self._set, Top):
-            return 'Set(TOP)'
-        items = ', '.join(repr(x) for x in self._set)
-        return f'Set({items})'
+            return "Set(TOP)"
+        items = ", ".join(repr(x) for x in self._set)
+        return f"Set({items})"
 
     @classmethod
     def top(cls: typing.Type[Set[T]]) -> Set[T]:
@@ -268,8 +270,8 @@ class Map(typing.Generic[K, T]):
         del self._map[key]
 
     def __repr__(self) -> str:
-        items = ', '.join(f'{k}={v}' for k, v in self._map.items())
-        return f'Map({items})'
+        items = ", ".join(f"{k}={v}" for k, v in self._map.items())
+        return f"Map({items})"
 
     def __str__(self) -> str:
         return repr(self)
@@ -307,8 +309,7 @@ class Map(typing.Generic[K, T]):
         return result
 
     def is_less_than(self, other: Map[K, T]) -> bool:
-        return all(v.is_less_than(other[k])
-                   for k, v in self.items())
+        return all(v.is_less_than(other[k]) for k, v in self.items())
 
 
 MapDomain: typing.TypeAlias = Map[K, T] | Bottom
@@ -369,7 +370,11 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
     liveness: InvariantMap[VarMapDomain[Top | Bottom]]
     backward: bool = False
 
-    def __init__(self, lattice: ValueLattice[T], liveness: InvariantMap[VarMapDomain[Top | Bottom]]):
+    def __init__(
+        self,
+        lattice: ValueLattice[T],
+        liveness: InvariantMap[VarMapDomain[Top | Bottom]],
+    ):
         super().__init__()
         self.lattice = lattice
         self.liveness = liveness
@@ -410,8 +415,10 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
 
     def join(self, left: VarMapDomain[T], right: VarMapDomain[T]) -> VarMapDomain[T]:
         match left, right:
-            case (Bottom(), _): return right
-            case (_, Bottom()): return left
+            case (Bottom(), _):
+                return right
+            case (_, Bottom()):
+                return left
             case (Map() as left, Map() as right):
                 res: Map[tac.Var, T] = self.top()
                 for k in left.keys() | right.keys():
@@ -462,14 +469,20 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
             case tac.MakeFunction():
                 return self.lattice.top()
             case _:
-                assert False, f'unexpected expr of type {type(expr)}: {expr}'
+                assert False, f"unexpected expr of type {type(expr)}: {expr}"
 
-    def transformer_signature(self, value: T, signature: tac.Signature) -> Map[tac.Var, T]:
+    def transformer_signature(
+        self, value: T, signature: tac.Signature
+    ) -> Map[tac.Var, T]:
         match signature:
             case tuple() as signature:  # type: ignore
                 assert all(isinstance(v, tac.Var) for v in signature)
-                return self.make_map({var: self.lattice.subscr(value, self.lattice.const(i))
-                                      for i, var in enumerate(signature)})
+                return self.make_map(
+                    {
+                        var: self.lattice.subscr(value, self.lattice.const(i))
+                        for i, var in enumerate(signature)
+                    }
+                )
             case tac.Var():
                 return self.make_map({signature: value})
             case tac.Attribute():
@@ -477,9 +490,11 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
             case tac.Subscript():
                 return self.make_map()
             case _:
-                assert False, f'unexpected signature {signature}'
+                assert False, f"unexpected signature {signature}"
 
-    def forward_transfer(self, values: VarMapDomain[T], ins: tac.Tac) -> VarMapDomain[T]:
+    def forward_transfer(
+        self, values: VarMapDomain[T], ins: tac.Tac
+    ) -> VarMapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
         if isinstance(ins, tac.For):
@@ -492,13 +507,13 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
                 to_update = self.transformer_signature(assigned, ins.lhs)
             case tac.Return():
                 assigned = self.transformer_expr(values, ins.value)
-                to_update = self.make_map({
-                    tac.Var('return'): assigned
-                })
+                to_update = self.make_map({tac.Var("return"): assigned})
         # assert not any(self.lattice.is_bottom(v) for v in to_update.values())
         return to_update
 
-    def transfer(self, values: VarMapDomain[T], ins: tac.Tac, location: Location) -> VarMapDomain[T]:
+    def transfer(
+        self, values: VarMapDomain[T], ins: tac.Tac, location: Location
+    ) -> VarMapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()
@@ -511,8 +526,8 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
             # print(f'updated: {to_update}')
             # print()
         except Exception as e:
-            e.add_note(f'while processing {ins} at {location}')
-            e.add_note(f'values: {values}')
+            e.add_note(f"while processing {ins} at {location}")
+            e.add_note(f"values: {values}")
             raise
         for var in tac.gens(ins):
             if var in values:

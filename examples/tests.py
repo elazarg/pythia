@@ -2,7 +2,8 @@ import numpy as np
 import collections as collections  # FIX: import collections
 
 
-def new(f): return f
+def new(f):
+    return f
 
 
 @new
@@ -29,6 +30,8 @@ def setitem(x: np.ndarray, i: int, y: float) -> None:
 def counter(i: int, j: int, f: np.ndarray) -> None:
     res = collections.Counter()
     res[i] += j
+
+
 # TODO: positives
 
 
@@ -55,7 +58,8 @@ def build_aliased_list_of_known_lists(k: int, xs: list[int], i: int) -> None:
 
 
 def iterate(x: int):
-    for i in range(x): pass
+    for i in range(x):
+        pass
 
 
 def cmp(a: float, b: float) -> bool:
@@ -73,33 +77,41 @@ def access(x: np.ndarray):
 
 
 def tup() -> tuple[int, float]:
-    a, b = (1, 'x')
+    a, b = (1, "x")
+
 
 def listing():
     lst = [1]
     tpl = (1,)
 
+
 def make_int() -> int:
     return 1
 
+
 def empty_list_add(x: int):
     return [] + [x]
+
 
 def list_append(y: int):
     x = []
     x.append(y)
 
+
 def list_add():
     x = [1] + [make_int()]
     y = [(1,)] + [(2,)]
+
 
 def pair() -> tuple[int, float]:
     x = 2
     res = x + 1
     return res
 
+
 def destruct():
     a, b = pair()
+
 
 def test_tuple(a: int, b: float) -> int:
     x = (a, b)

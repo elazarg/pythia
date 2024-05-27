@@ -1,7 +1,8 @@
 import numpy as np
 
 
-def new(f): return f
+def new(f):
+    return f
 
 
 @new
@@ -60,12 +61,14 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
 
 def compute_random(n_samples: int, k: int, plot: bool) -> None:
     import sklearn.datasets
+
     X, y = sklearn.datasets.make_blobs(
         n_samples=n_samples, n_features=2, centers=k, cluster_std=1.8, shuffle=True
     )
     y_pred = k_means(X, k=k, max_iterations=1000)
     if plot:
         import matplotlib.pyplot as plt
+
         plt.scatter(X[:, 0], X[:, 1], c=y_pred)
         plt.show()
     else:
@@ -74,6 +77,7 @@ def compute_random(n_samples: int, k: int, plot: bool) -> None:
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("samples", type=int)
     parser.add_argument("k", type=int)

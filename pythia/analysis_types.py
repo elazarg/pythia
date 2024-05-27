@@ -11,13 +11,19 @@ from pythia.analysis_domain import ValueLattice
 
 def parse_annotations(this_function: str, this_module: ts.Module):
     this_signature = ts.subscr(this_module, ts.literal(this_function))
-    assert isinstance(this_signature, ts.Overloaded), f"Expected overloaded type, got {this_signature}"
-    assert len(this_signature.items) == 1, f"Expected single signature, got {this_signature}"
+    assert isinstance(
+        this_signature, ts.Overloaded
+    ), f"Expected overloaded type, got {this_signature}"
+    assert (
+        len(this_signature.items) == 1
+    ), f"Expected single signature, got {this_signature}"
     [this_signature] = this_signature.items
-    annotations = {tac.Var(row.index.name, is_stackvar=False): row.type
-                   for row in this_signature.params.row_items()
-                   if row.index.name is not None}
-    annotations[tac.Var('return', is_stackvar=False)] = this_signature.return_type
+    annotations = {
+        tac.Var(row.index.name, is_stackvar=False): row.type
+        for row in this_signature.params.row_items()
+        if row.index.name is not None
+    }
+    annotations[tac.Var("return", is_stackvar=False)] = this_signature.return_type
     return annotations
 
 
@@ -25,10 +31,13 @@ class TypeLattice(ValueLattice[TypeExpr]):
     """
     Abstract domain for type analysis with lattice operations.
     """
+
     def __init__(self, this_function: str, this_module: ts.Module):
-        self.annotations: dict[tac.Var, TypeExpr] = parse_annotations(this_function, this_module)
+        self.annotations: dict[tac.Var, TypeExpr] = parse_annotations(
+            this_function, this_module
+        )
         self.globals = this_module
-        self.builtins = ts.resolve_static_ref(ts.Ref('builtins'))
+        self.builtins = ts.resolve_static_ref(ts.Ref("builtins"))
 
     def annotation(self, name: tac.Var, t: str) -> TypeExpr:
         return self.annotations[name]
@@ -62,8 +71,8 @@ class TypeLattice(ValueLattice[TypeExpr]):
 
     def resolve(self, ref: TypeExpr) -> TypeExpr:
         if isinstance(ref, ts.Ref):
-            if '.' in ref.name:
-                module, name = ref.name.split('.', 1)
+            if "." in ref.name:
+                module, name = ref.name.split(".", 1)
                 if module == self.globals.name:
                     return ts.subscr(self.globals, ts.literal(name))
             # ref = ts.resolve_static_ref(ref)
@@ -74,8 +83,15 @@ class TypeLattice(ValueLattice[TypeExpr]):
         return ts.join_all(types)
 
     def call(self, function: TypeExpr, args: list[TypeExpr]) -> TypeExpr:
-        return ts.call(self.resolve(function), ts.typed_dict([ts.make_row(index, None, self.resolve(arg))
-                                                              for index, arg in enumerate(args)]))
+        return ts.call(
+            self.resolve(function),
+            ts.typed_dict(
+                [
+                    ts.make_row(index, None, self.resolve(arg))
+                    for index, arg in enumerate(args)
+                ]
+            ),
+        )
 
     def binary(self, left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
         result = ts.binop(left, right, op)
@@ -90,13 +106,20 @@ class TypeLattice(ValueLattice[TypeExpr]):
 
     def unop_to_str(self, op: UnOp) -> str:
         match op:
-            case UnOp.NEG: return '-'
-            case UnOp.NOT: return 'not'
-            case UnOp.INVERT: return '~'
-            case UnOp.POS: return '+'
-            case UnOp.ITER: return 'iter'
-            case UnOp.NEXT: return 'next'
-            case UnOp.YIELD_ITER: return 'yield iter'
+            case UnOp.NEG:
+                return "-"
+            case UnOp.NOT:
+                return "not"
+            case UnOp.INVERT:
+                return "~"
+            case UnOp.POS:
+                return "+"
+            case UnOp.ITER:
+                return "iter"
+            case UnOp.NEXT:
+                return "next"
+            case UnOp.YIELD_ITER:
+                return "yield iter"
             case _:
                 raise NotImplementedError(f"UnOp.{op.name}")
 
@@ -106,13 +129,20 @@ class TypeLattice(ValueLattice[TypeExpr]):
 
     def predefined(self, name: Predefined) -> TypeExpr:
         match name:
-            case Predefined.LIST: return ts.make_list_constructor()
-            case Predefined.TUPLE: return ts.make_tuple_constructor()
-            case Predefined.SLICE: return ts.make_slice_constructor()
-            case Predefined.GLOBALS: return self.globals
-            case Predefined.NONLOCALS: return self.top()
-            case Predefined.LOCALS: return self.top()
-            case Predefined.CONST_KEY_MAP: return self.top()
+            case Predefined.LIST:
+                return ts.make_list_constructor()
+            case Predefined.TUPLE:
+                return ts.make_tuple_constructor()
+            case Predefined.SLICE:
+                return ts.make_slice_constructor()
+            case Predefined.GLOBALS:
+                return self.globals
+            case Predefined.NONLOCALS:
+                return self.top()
+            case Predefined.LOCALS:
+                return self.top()
+            case Predefined.CONST_KEY_MAP:
+                return self.top()
         assert False, name
 
     def const(self, value: object) -> TypeExpr:
@@ -120,7 +150,7 @@ class TypeLattice(ValueLattice[TypeExpr]):
 
     def attribute(self, var: TypeExpr, attr: tac.Var) -> TypeExpr:
         mod = self.resolve(var)
-        assert mod != ts.TOP, f'Cannot resolve {attr} in {var}'
+        assert mod != ts.TOP, f"Cannot resolve {attr} in {var}"
         try:
             # FIX: How to differentiate nonexistent attributes from attributes that are TOP?
             res = ts.subscr(mod, ts.literal(attr.name))
@@ -157,10 +187,16 @@ def main():
     f = functions[function_name]
     cfg = analysis.make_tac_cfg(f, simplify=False)
     annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
-    liveness_invariants = analysis.analyze(cfg, analysis.LivenessVarLattice(), annotations)
-    type_analysis = analysis.domain.VarLattice(TypeLattice(function_name, module_type), liveness_invariants.post)
+    liveness_invariants = analysis.analyze(
+        cfg, analysis.LivenessVarLattice(), annotations
+    )
+    type_analysis = analysis.domain.VarLattice(
+        TypeLattice(function_name, module_type), liveness_invariants.post
+    )
     type_invariants = analysis.analyze(cfg, type_analysis, annotations)
     invariant_pairs = {
         "Type": type_invariants,
     }
-    analysis.print_analysis(cfg, invariant_pairs, defaultdict(lambda: analysis.AllocationType.NONE))
+    analysis.print_analysis(
+        cfg, invariant_pairs, defaultdict(lambda: analysis.AllocationType.NONE)
+    )

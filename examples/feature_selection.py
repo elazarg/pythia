@@ -2,9 +2,6 @@ import numpy as np
 import argparse
 
 
-def new(f): return f
-
-
 def append_int(a: np.ndarray, n: int) -> np.ndarray:
     return np.append(a, n)
 
@@ -16,7 +13,7 @@ def get_float(array: np.ndarray, idx: int) -> float:
 
 
 def log(idx: int, k: int) -> None:
-    print(f'{idx} / {k}', end='\r', flush=True)
+    print(f"{idx} / {k}", end="\r", flush=True)
 
 
 def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
@@ -82,16 +79,22 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
 
 
 def main(dataset: str, k: int) -> None:
-    features = np.load(f'examples/data/{dataset}_features.npy')
-    target = np.load(f'examples/data/{dataset}_target.npy')
+    features = np.load(f"examples/data/{dataset}_features.npy")
+    target = np.load(f"examples/data/{dataset}_target.npy")
     S = do_work(features, target, k)
     print(S)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('dataset', choices=['dataset_20KB', 'dataset_large', 'healthstudy'], help='dataset to use')
-    parser.add_argument('--k', type=int, default=100000, help='number of features to select')
+    parser.add_argument(
+        "dataset",
+        choices=["dataset_20KB", "dataset_large", "healthstudy"],
+        help="dataset to use",
+    )
+    parser.add_argument(
+        "--k", type=int, default=100000, help="number of features to select"
+    )
     args = parser.parse_args()
     main(args.dataset, args.k)

@@ -1,5 +1,3 @@
-from __future__ import annotations as _
-
 from typing import Any
 
 import pickle
@@ -20,15 +18,15 @@ class Iter:
 class Loader:
     restored_state: tuple[Any, ...]
 
-    def __init__(self, module_filename):
-
-        with open(module_filename, 'rb') as f:
+    def __init__(self, module_filename: str):
+        module_filename = pathlib.Path(module_filename)
+        with module_filename.open("rb") as f:
             m = hashlib.md5()
             m.update(f.read())
             h = m.hexdigest()[:6]
-            name = pathlib.Path(module_filename).stem
+            name = module_filename.stem
             print(name)
-        self.filename = pathlib.Path(f'examples/cache/{name}-{h}.pickle')
+        self.filename = pathlib.Path(f"examples/cache/{name}-{h}.pickle")
         self.filename.parent.mkdir(parents=True, exist_ok=True)
         self.iterator = None
         self.version = 0
@@ -39,12 +37,12 @@ class Loader:
             print("Recovering from snapshot")
             with self.filename.open("rb") as snapshot:
                 version, self.restored_state, self.iterator = pickle.load(snapshot)
-            print(f'Loaded {version=}: {self.restored_state}')
+            print(f"Loaded {version=}: {self.restored_state}")
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
-            print('Finished successfully')
+            print("Finished successfully")
             # self.filename.unlink()
 
     def iterate(self, iterable):
@@ -55,7 +53,7 @@ class Loader:
     def commit(self, *args):
         self.version += 1
 
-        temp_filename = self.filename.with_suffix('.tmp')
+        temp_filename = self.filename.with_suffix(".tmp")
         with open(temp_filename, "wb") as snapshot:
             pickle.dump((self.version, args, self.iterator), snapshot)
 
@@ -69,7 +67,7 @@ class Loader:
 class PseudoLoader(Loader):
     def commit(self, *args):
         size = pickle.dumps((self.version, args, self.iterator)).__sizeof__()
-        print(self.version, size, end='\n', flush=True)
+        print(self.version, size, end="\n", flush=True)
         self.version += 1
 
     def __enter__(self) -> Loader:
@@ -77,7 +75,7 @@ class PseudoLoader(Loader):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
-            print('Finished successfully')
+            print("Finished successfully")
 
 
 class SimpleTcpClient:
@@ -85,15 +83,15 @@ class SimpleTcpClient:
 
     def __init__(self, tag: str) -> None:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect(('10.0.2.2', 1234))
-        self.socket.send(tag.encode('utf8'))
+        self.socket.connect(("10.0.2.2", 1234))
+        self.socket.send(tag.encode("utf8"))
         self.i = None
 
     def commit(self) -> None:
-        self.socket.send(struct.pack('Q', self.i))
+        self.socket.send(struct.pack("Q", self.i))
         self.socket.recv(128)  # wait for snapshot
 
-    def __enter__(self) -> 'SimpleTcpClient':
+    def __enter__(self) -> "SimpleTcpClient":
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):

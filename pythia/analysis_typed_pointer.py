@@ -20,12 +20,13 @@ import pythia.type_system as ts
 # 3. immutable value of a certain type
 # 4. Scope: Globals, locals*
 
+
 @dataclass(frozen=True)
 class Param:
     param: typing.Optional[tac.Var] = None
 
     def __repr__(self) -> str:
-        return f'@param {self.param}'
+        return f"@param {self.param}"
 
 
 @dataclass(frozen=True)
@@ -33,7 +34,7 @@ class Immutable:
     hash: int
 
     def __repr__(self) -> str:
-        return f'@type {self.hash}'
+        return f"@type {self.hash}"
 
 
 def immutable(t: ts.TypeExpr, cache={}) -> ObjectSet:
@@ -47,11 +48,11 @@ class Scope:
     name: str
 
     def __repr__(self) -> str:
-        return f'@scope {self.name}'
+        return f"@scope {self.name}"
 
 
-LOCALS: Final[Object] = Scope('locals')
-GLOBALS: Final[Object] = Scope('globals')
+LOCALS: Final[Object] = Scope("locals")
+GLOBALS: Final[Object] = Scope("globals")
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,7 @@ class LocationObject:
     location: Location
 
     def __repr__(self) -> str:
-        return f'@location {self.location}'
+        return f"@location {self.location}"
 
 
 Object: TypeAlias = typing.Union[LocationObject, Param, Immutable, Scope]
@@ -72,7 +73,9 @@ DirtySet: TypeAlias = domain.Set[tac.Var]
 Dirty: TypeAlias = domain.Map[Object, DirtySet]
 
 
-def make_fields(d: typing.Optional[typing.Mapping[tac.Var, ObjectSet]] = None) -> Fields:
+def make_fields(
+    d: typing.Optional[typing.Mapping[tac.Var, ObjectSet]] = None
+) -> Fields:
     d = d or {}
     return domain.Map(default=domain.Set(), d=d)
 
@@ -82,7 +85,9 @@ def make_graph(d: typing.Optional[typing.Mapping[Object, Fields]] = None) -> Gra
     return domain.Map(default=make_fields(), d=d)
 
 
-def make_dirty(d: typing.Optional[typing.Mapping[Object, typing.Iterable[tac.Var]]] = None) -> Dirty:
+def make_dirty(
+    d: typing.Optional[typing.Mapping[Object, typing.Iterable[tac.Var]]] = None
+) -> Dirty:
     d = d or {}
     return domain.Map(default=domain.Set(), d={k: domain.Set(v) for k, v in d.items()})
 
@@ -91,7 +96,9 @@ def make_dirty_from_keys(keys: ObjectSet, field: DirtySet) -> Dirty:
     return domain.Map(default=domain.Set(), d={k: field for k in keys.as_set()})
 
 
-def make_type_map(d: typing.Optional[typing.Mapping[Object, ts.TypeExpr]] = None) -> domain.Map[Object, ts.TypeExpr]:
+def make_type_map(
+    d: typing.Optional[typing.Mapping[Object, ts.TypeExpr]] = None
+) -> domain.Map[Object, ts.TypeExpr]:
     d = d or {}
     return domain.Map(default=ts.BOTTOM, d=d)
 
@@ -101,7 +108,7 @@ class Pointer:
     graph: Graph
 
     def __repr__(self):
-        return f'Pointer({self.graph})'
+        return f"Pointer({self.graph})"
 
     def __init__(self, graph: Graph):
         self.graph = deepcopy(graph)
@@ -113,9 +120,11 @@ class Pointer:
         return self.graph.items()
 
     def is_less_than(self, other: Pointer) -> bool:
-        return all(self.graph[obj][field].is_subset(other.graph[obj][field])
-                   for obj in self.graph
-                   for field in self.graph[obj])
+        return all(
+            self.graph[obj][field].is_subset(other.graph[obj][field])
+            for obj in self.graph
+            for field in self.graph[obj]
+        )
 
     def copy(self) -> Pointer:
         return Pointer(self.graph)
@@ -134,8 +143,13 @@ class Pointer:
                 for field, values in fields.items():
                     pointers[obj][field] = pointers[obj][field] | values
             else:
-                pointers[obj] = make_fields({field: deepcopy(targets)
-                                             for field, targets in fields.items() if targets})
+                pointers[obj] = make_fields(
+                    {
+                        field: deepcopy(targets)
+                        for field, targets in fields.items()
+                        if targets
+                    }
+                )
         return Pointer(pointers)
 
     @typing.overload
@@ -149,10 +163,15 @@ class Pointer:
         match key:
             case Param() | Immutable() | Scope() | LocationObject() as obj:
                 return self.graph[obj]
-            case (Param() | Immutable() | Scope() | LocationObject() as obj, tac.Var() as var):
+            case (
+                Param() | Immutable() | Scope() | LocationObject() as obj,
+                tac.Var() as var,
+            ):
                 return self.graph[obj][var]
             case (domain.Set() as objects, tac.Var() as var):
-                return ObjectSet.union_all(self.graph[obj][var] for obj in self.graph.keys() if obj in objects)
+                return ObjectSet.union_all(
+                    self.graph[obj][var] for obj in self.graph.keys() if obj in objects
+                )
 
     @typing.overload
     def __setitem__(self, key: Object, value: Fields) -> None: ...
@@ -163,19 +182,25 @@ class Pointer:
 
     def __setitem__(self, key, value):
         match key, value:
-            case (Param() | Immutable() | Scope() | LocationObject() as obj, tac.Var() as var), domain.Set() as values:
+            case (
+                Param() | Immutable() | Scope() | LocationObject() as obj,
+                tac.Var() as var,
+            ), domain.Set() as values:
                 if obj not in self.graph:
                     self.graph[obj] = make_fields({var: values})
                 else:
                     self.graph[obj][var] = values
-            case Param() | Immutable() | Scope() | LocationObject() as obj, domain.Map() as fields:
+            case (
+                Param() | Immutable() | Scope() | LocationObject() as obj,
+                domain.Map() as fields,
+            ):
                 self.graph[obj] = fields
             case (domain.Set() as objects, tac.Var() as var), domain.Set() as values:
                 for obj in self.graph.keys():
                     if obj in objects:
                         self.graph[obj][var] = values
             case _:
-                raise ValueError(f'Invalid key {key} or value {value}')
+                raise ValueError(f"Invalid key {key} or value {value}")
 
     def update(self, obj: Object, var: tac.Var, values: ObjectSet) -> None:
         if obj not in self.graph:
@@ -189,18 +214,35 @@ class Pointer:
                 del self.graph[obj]
 
     def __str__(self) -> str:
-        join = lambda target_obj: "{" + ", ".join(str(x) for x in target_obj.as_set()) + "}"
-        return ', '.join((f'{source_obj}:' if source_obj is not LOCALS else '') + f'{field}->{join(target_obj)}'
-                         for source_obj in self.graph
-                         for field, target_obj in self.graph[source_obj].items()
-                         if self.graph[source_obj][field]
-                         )
+        join = (
+            lambda target_obj: "{"
+            + ", ".join(str(x) for x in target_obj.as_set())
+            + "}"
+        )
+        return ", ".join(
+            (f"{source_obj}:" if source_obj is not LOCALS else "")
+            + f"{field}->{join(target_obj)}"
+            for source_obj in self.graph
+            for field, target_obj in self.graph[source_obj].items()
+            if self.graph[source_obj][field]
+        )
 
     @staticmethod
     def initial(annotations: domain.Map[Param, ts.TypeExpr]) -> Pointer:
-        return Pointer(make_graph({LOCALS: make_fields({obj.param: ObjectSet.singleton(obj)
-                                                        for obj in annotations if obj.param is not None}),
-                                   GLOBALS: make_fields()}))
+        return Pointer(
+            make_graph(
+                {
+                    LOCALS: make_fields(
+                        {
+                            obj.param: ObjectSet.singleton(obj)
+                            for obj in annotations
+                            if obj.param is not None
+                        }
+                    ),
+                    GLOBALS: make_fields(),
+                }
+            )
+        )
 
 
 @dataclass
@@ -208,15 +250,14 @@ class TypeMap:
     map: domain.Map[Object, ts.TypeExpr]
 
     def __repr__(self):
-        return f'TypeMap({self.map})'
+        return f"TypeMap({self.map})"
 
     def __init__(self, map: domain.Map[Object, ts.TypeExpr]):
         self.map = deepcopy(map)
 
     def is_less_than(self, other: TypeMap) -> bool:
         # TODO: check
-        return all(ts.is_subtype(self.map[obj], other.map[obj])
-                   for obj in self.map)
+        return all(ts.is_subtype(self.map[obj], other.map[obj]) for obj in self.map)
 
     def copy(self) -> TypeMap:
         return TypeMap(self.map)
@@ -268,7 +309,7 @@ class TypeMap:
         return TypeMap(res)
 
     def __str__(self) -> str:
-        return ','.join(f'{obj}: {type_expr}' for obj, type_expr in self.map.items())
+        return ",".join(f"{obj}: {type_expr}" for obj, type_expr in self.map.items())
 
     @staticmethod
     def initial(annotations: domain.Map[Param, ts.TypeExpr]) -> TypeMap:
@@ -282,35 +323,33 @@ class TypedPointer:
     dirty: Dirty
 
     def __repr__(self):
-        return f'TP:\n {self.pointers}\n {self.types}\n{self.dirty}'
+        return f"TP:\n {self.pointers}\n {self.types}\n{self.dirty}"
 
     def print(self) -> None:
         print("Pointers:")
         for obj, fields in sorted(self.pointers.items(), key=lambda x: str(x)):
-            print(f'  {obj}:')
+            print(f"  {obj}:")
             for f, targets in sorted(fields.items(), key=lambda x: str(x)):
-                print(f'    {f}: {targets}')
+                print(f"    {f}: {targets}")
         print("Types:")
         for k, v in sorted(self.types.map.items(), key=lambda x: str(x)):
-            print(f'  {k}: {v}')
+            print(f"  {k}: {v}")
         print("Dirty:")
-        print(f'  {self.dirty}')
+        print(f"  {self.dirty}")
 
     def is_less_than(self: TypedPointer, other: TypedPointer) -> bool:
-        return self.pointers.is_less_than(other.pointers) \
-            and self.types.is_less_than(other.types) \
+        return (
+            self.pointers.is_less_than(other.pointers)
+            and self.types.is_less_than(other.types)
             and self.dirty.is_less_than(other.dirty)
+        )
 
     def copy(self: TypedPointer) -> TypedPointer:
-        return TypedPointer(self.pointers.copy(),
-                            self.types.copy(),
-                            self.dirty.copy())
+        return TypedPointer(self.pointers.copy(), self.types.copy(), self.dirty.copy())
 
     @staticmethod
     def bottom() -> TypedPointer:
-        return TypedPointer(Pointer.bottom(),
-                            TypeMap.bottom(),
-                            make_dirty())
+        return TypedPointer(Pointer.bottom(), TypeMap.bottom(), make_dirty())
 
     @staticmethod
     def top() -> TypedPointer:
@@ -320,18 +359,20 @@ class TypedPointer:
         return self.pointers.is_bottom() or self.types.is_bottom()
 
     def join(self, right: TypedPointer) -> TypedPointer:
-        return typed_pointer(self.pointers.join(right.pointers),
-                             self.types.join(right.types),
-                             self.dirty.join(right.dirty))
+        return typed_pointer(
+            self.pointers.join(right.pointers),
+            self.types.join(right.types),
+            self.dirty.join(right.dirty),
+        )
 
     def __str__(self) -> str:
-        return str(self.pointers) + '\n' + str(self.types)
+        return str(self.pointers) + "\n" + str(self.types)
 
     @staticmethod
     def initial(annotations: domain.Map[Param, ts.TypeExpr]) -> TypedPointer:
-        return typed_pointer(Pointer.initial(annotations),
-                             TypeMap.initial(annotations),
-                             make_dirty())
+        return typed_pointer(
+            Pointer.initial(annotations), TypeMap.initial(annotations), make_dirty()
+        )
 
     def collect_garbage(self, alive: VarMapDomain[analysis_liveness.Liveness]) -> None:
         if isinstance(alive, domain.Bottom):
@@ -367,14 +408,22 @@ def typed_pointer(pointers: Pointer, types: TypeMap, dirty: Dirty) -> TypedPoint
     return TypedPointer(pointers, types, dirty)
 
 
-def parse_annotations(this_function: str, this_module: ts.Module) -> domain.Map[Param, ts.TypeExpr]:
+def parse_annotations(
+    this_function: str, this_module: ts.Module
+) -> domain.Map[Param, ts.TypeExpr]:
     this_signature = ts.subscr(this_module, ts.literal(this_function))
-    assert isinstance(this_signature, ts.Overloaded), f"Expected overloaded type, got {this_signature}"
-    assert len(this_signature.items) == 1, f"Expected single signature, got {this_signature}"
+    assert isinstance(
+        this_signature, ts.Overloaded
+    ), f"Expected overloaded type, got {this_signature}"
+    assert (
+        len(this_signature.items) == 1
+    ), f"Expected single signature, got {this_signature}"
     [this_signature] = this_signature.items
-    annotations: dict[Param, ts.TypeExpr] = {Param(tac.Var(row.index.name)): row.type
-                                             for row in this_signature.params.row_items()
-                                             if row.index.name is not None}
+    annotations: dict[Param, ts.TypeExpr] = {
+        Param(tac.Var(row.index.name)): row.type
+        for row in this_signature.params.row_items()
+        if row.index.name is not None
+    }
     # annotations[Param(tac.Var('return'))] = this_signature.return_type
     return domain.Map(default=ts.BOTTOM, d=annotations)
 
@@ -392,10 +441,13 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     def name(self) -> str:
         return "TypedPointer"
 
-    def __init__(self,
-                 liveness: InvariantMap[VarMapDomain[analysis_liveness.Liveness]],
-                 this_function: str, this_module: ts.Module,
-                 for_location: Location) -> None:
+    def __init__(
+        self,
+        liveness: InvariantMap[VarMapDomain[analysis_liveness.Liveness]],
+        this_function: str,
+        this_module: ts.Module,
+        for_location: Location,
+    ) -> None:
         super().__init__()
         self.annotations = parse_annotations(this_function, this_module)
         self.type_lattice = TypeLattice(this_function, this_module)
@@ -408,7 +460,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
 
     def copy(self, tp: TypedPointer) -> TypedPointer:
         return tp.copy()
-    
+
     def initial(self) -> TypedPointer:
         return TypedPointer.initial(self.annotations)
 
@@ -424,8 +476,13 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     def join(self, left: TypedPointer, right: TypedPointer) -> TypedPointer:
         return left.join(right)
 
-    def expr(self, prev_tp: TypedPointer, expr: tac.Expr, location: LocationObject,
-             new_tp: TypedPointer) -> tuple[ObjectSet, ts.TypeExpr, Dirty]:
+    def expr(
+        self,
+        prev_tp: TypedPointer,
+        expr: tac.Expr,
+        location: LocationObject,
+        new_tp: TypedPointer,
+    ) -> tuple[ObjectSet, ts.TypeExpr, Dirty]:
         objects: ObjectSet
         dirty: Dirty
         match expr:
@@ -441,7 +498,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 assert not global_objs
                 t = ts.subscr(self.this_module, ts.literal(field.name))
                 if t == ts.BOTTOM:
-                    t = ts.resolve_static_ref(ts.Ref(f'builtins.{field}'))
+                    t = ts.resolve_static_ref(ts.Ref(f"builtins.{field}"))
                 # TODO: class through type
                 return (immutable(t), t, make_dirty())
             case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
@@ -478,9 +535,14 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 index_objs = prev_tp.pointers[LOCALS, index]
                 index_type = prev_tp.types[index_objs]
                 var_type = prev_tp.types[var_objs]
-                t = ts.subscr(self.type_lattice.resolve(var_type), self.type_lattice.resolve(index_type))
+                t = ts.subscr(
+                    self.type_lattice.resolve(var_type),
+                    self.type_lattice.resolve(index_type),
+                )
                 any_new = all_new = False
-                if isinstance(t, ts.Overloaded) and any(item.is_property for item in t.items):
+                if isinstance(t, ts.Overloaded) and any(
+                    item.is_property for item in t.items
+                ):
                     assert all(f.is_property for f in t.items)
                     any_new = t.any_new()
                     all_new = t.all_new()
@@ -514,36 +576,58 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     func_type = self.type_lattice.predefined(var)
                 else:
                     assert False, f"Expected Var or Predefined, got {var}"
-                if isinstance(func_type, ts.Instantiation) and func_type.generic == ts.Ref('builtins.type'):
+                if isinstance(
+                    func_type, ts.Instantiation
+                ) and func_type.generic == ts.Ref("builtins.type"):
                     func_type = ts.partial(func_type, ts.typed_dict([]))
-                assert isinstance(func_type, ts.Overloaded), f"Expected Overloaded type, got {func_type}"
+                assert isinstance(
+                    func_type, ts.Overloaded
+                ), f"Expected Overloaded type, got {func_type}"
                 arg_objects = tuple([prev_tp.pointers[LOCALS, var] for var in args])
                 arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
-                assert all(arg for arg in arg_objects), f"Expected non-empty arg objects, got {arg_objects}"
+                assert all(
+                    arg for arg in arg_objects
+                ), f"Expected non-empty arg objects, got {arg_objects}"
                 applied = ts.partial_positional(func_type, arg_types)
-                assert isinstance(applied, ts.Overloaded), f"Expected Overloaded type, got {applied}"
+                assert isinstance(
+                    applied, ts.Overloaded
+                ), f"Expected Overloaded type, got {applied}"
                 side_effect = ts.get_side_effect(applied)
                 dirty = make_dirty()
                 if side_effect.update is not None:
                     func_obj = ObjectSet.squeeze(func_objects)
                     if isinstance(func_obj, domain.Set):
-                        raise RuntimeError(f"Update with multiple function objects: {func_objects}")
+                        raise RuntimeError(
+                            f"Update with multiple function objects: {func_objects}"
+                        )
                     self_objects = prev_tp.pointers[func_obj, tac.Var("self")]
                     dirty = make_dirty_from_keys(self_objects, DirtySet.top())
                     self_obj = ObjectSet.squeeze(self_objects)
                     if isinstance(self_obj, domain.Set):
-                        raise RuntimeError(f"Update with multiple self objects: {self_objects}")
+                        raise RuntimeError(
+                            f"Update with multiple self objects: {self_objects}"
+                        )
 
-                    aliasing_pointers = {obj for obj, fields in prev_tp.pointers.items() for f, targets in fields.items()
-                                         if self_obj in targets} - {func_obj, LOCALS}
-                    monomorophized = [obj for obj in aliasing_pointers if ts.is_monomorphized(prev_tp.types[obj])]
+                    aliasing_pointers = {
+                        obj
+                        for obj, fields in prev_tp.pointers.items()
+                        for f, targets in fields.items()
+                        if self_obj in targets
+                    } - {func_obj, LOCALS}
+                    monomorophized = [
+                        obj
+                        for obj in aliasing_pointers
+                        if ts.is_monomorphized(prev_tp.types[obj])
+                    ]
                     # Expected two objects: self argument and locals
 
                     if new_tp.types[self_obj] != side_effect.update:
                         if monomorophized:
-                            raise RuntimeError(f"Update with aliased objects: {aliasing_pointers} (not: {func_obj, LOCALS})")
+                            raise RuntimeError(
+                                f"Update with aliased objects: {aliasing_pointers} (not: {func_obj, LOCALS})"
+                            )
                         new_tp.types[self_obj] = side_effect.update
-                        if side_effect.name == 'append':
+                        if side_effect.name == "append":
                             x = arg_objects[0]
                             new_tp.pointers.update(self_obj, tac.Var("*"), x)
 
@@ -558,11 +642,16 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if applied.any_new():
                     objects = objects | ObjectSet.singleton(location)
                     if side_effect.points_to_args:
-                        if var == tac.Predefined.TUPLE and not new_tp.pointers[location, tac.Var("*")]:
+                        if (
+                            var == tac.Predefined.TUPLE
+                            and not new_tp.pointers[location, tac.Var("*")]
+                        ):
                             for i, arg in enumerate(arg_objects):
                                 new_tp.pointers[location, tac.Var(f"{i}")] = arg
                         else:
-                            new_tp.pointers.update(location, tac.Var("*"), pointed_objects)
+                            new_tp.pointers.update(
+                                location, tac.Var("*"), pointed_objects
+                            )
 
                 if ts.is_immutable(t):
                     objects = immutable(t)
@@ -590,7 +679,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 dirty = make_dirty()
                 if side_effect.update is not None:
                     dirty = make_dirty_from_keys(value_objects, DirtySet.top())
-                assert isinstance(applied, ts.Overloaded), f"Expected overloaded type, got {applied}"
+                assert isinstance(
+                    applied, ts.Overloaded
+                ), f"Expected overloaded type, got {applied}"
 
                 t = ts.get_return(applied)
 
@@ -607,13 +698,17 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                             assert False
 
                 return (objects, t, dirty)
-            case tac.Binary(left=tac.Var() as left, right=tac.Var() as right, op=str() as op):
+            case tac.Binary(
+                left=tac.Var() as left, right=tac.Var() as right, op=str() as op
+            ):
                 left_objects = prev_tp.pointers[LOCALS, left]
                 right_objects = prev_tp.pointers[LOCALS, right]
                 left_type = prev_tp.types[left_objects]
                 right_type = prev_tp.types[right_objects]
                 applied = ts.partial_binop(left_type, right_type, op)
-                assert isinstance(applied, ts.Overloaded), f"Expected overloaded type, got {applied}"
+                assert isinstance(
+                    applied, ts.Overloaded
+                ), f"Expected overloaded type, got {applied}"
 
                 t = ts.get_return(applied)
 
@@ -634,18 +729,28 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 raise NotImplementedError(expr)
         assert False
 
-    def signature(self, tp: TypedPointer, signature: tac.Signature, pointed: ObjectSet, t: ts.TypeExpr) -> None:
+    def signature(
+        self,
+        tp: TypedPointer,
+        signature: tac.Signature,
+        pointed: ObjectSet,
+        t: ts.TypeExpr,
+    ) -> None:
         match signature:
             case tuple() as signature:  # type: ignore
                 unknown = tp.pointers[pointed, tac.Var("*")]
-                indirect_pointed = [tp.pointers[pointed, tac.Var(f"{i}")] | unknown
-                                    for i in range(len(signature))]
+                indirect_pointed = [
+                    tp.pointers[pointed, tac.Var(f"{i}")] | unknown
+                    for i in range(len(signature))
+                ]
                 for i, var in enumerate(signature):
                     assert isinstance(var, tac.Var), f"Expected Var, got {var}"
                     objs = indirect_pointed[i]
                     ti = ts.subscr(t, ts.literal(i))
                     if isinstance(ti, ts.Overloaded):
-                        assert all(f.is_property for f in ti.items), f"Expected all properties, got {ti}"
+                        assert all(
+                            f.is_property for f in ti.items
+                        ), f"Expected all properties, got {ti}"
                         ti = ts.get_return(ti)
                     if objs:
                         tp.pointers[LOCALS, var] = objs
@@ -657,19 +762,29 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Var() as var:
                 tp.pointers[LOCALS, var] = pointed
                 tp.types[pointed] = t
-                tp.dirty.update(make_dirty_from_keys(ObjectSet.singleton(LOCALS), DirtySet.singleton(var)))
+                tp.dirty.update(
+                    make_dirty_from_keys(
+                        ObjectSet.singleton(LOCALS), DirtySet.singleton(var)
+                    )
+                )
             case tac.Attribute(var=var, field=field):
                 targets = tp.pointers[LOCALS, var]
                 tp.pointers[targets, field] = pointed
-                tp.dirty.update(make_dirty_from_keys(targets, DirtySet.singleton(field)))
+                tp.dirty.update(
+                    make_dirty_from_keys(targets, DirtySet.singleton(field))
+                )
             case tac.Subscript(var=var):
                 targets = tp.pointers[LOCALS, var]
-                tp.pointers[targets, tac.Var('*')] = pointed
-                tp.dirty.update(make_dirty_from_keys(targets, DirtySet.singleton(tac.Var('*'))))
+                tp.pointers[targets, tac.Var("*")] = pointed
+                tp.dirty.update(
+                    make_dirty_from_keys(targets, DirtySet.singleton(tac.Var("*")))
+                )
             case _:
-                assert False, f'unexpected signature {signature}'
+                assert False, f"unexpected signature {signature}"
 
-    def transfer(self, prev_tp: TypedPointer, ins: tac.Tac, _location: Location) -> TypedPointer:
+    def transfer(
+        self, prev_tp: TypedPointer, ins: tac.Tac, _location: Location
+    ) -> TypedPointer:
         tp = prev_tp.copy()
         prev_tp = deepcopy(prev_tp)  # defensive copy; should not be needed
 
@@ -696,7 +811,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 self.signature(tp, lhs, pointed, types)
             case tac.Return(var):
                 val = tp.pointers[LOCALS, var]
-                tp.pointers[LOCALS, tac.Var('return')] = val
+                tp.pointers[LOCALS, tac.Var("return")] = val
 
         # print_debug(ins, tp)
         # print(f"Post: {tp}")
@@ -731,8 +846,12 @@ def find_reachable_from_vars(ptr: Pointer) -> set[Object]:
     return reachable
 
 
-def find_reachable(ptr: Pointer, alive: set[tac.Var], params: set[tac.Var],
-                   sources: typing.Optional[typing.Iterable[Object]] = None) -> typing.Iterator[LocationObject]:
+def find_reachable(
+    ptr: Pointer,
+    alive: set[tac.Var],
+    params: set[tac.Var],
+    sources: typing.Optional[typing.Iterable[Object]] = None,
+) -> typing.Iterator[LocationObject]:
     worklist = set(sources) if sources is not None else {LOCALS}
     while worklist:
         root = worklist.pop()
@@ -750,7 +869,9 @@ def find_reachable(ptr: Pointer, alive: set[tac.Var], params: set[tac.Var],
                 worklist.add(obj)
 
 
-def find_dirty_roots(tp: TypedPointer, liveness: VarMapDomain[analysis_liveness.Liveness]) -> typing.Iterator[str]:
+def find_dirty_roots(
+    tp: TypedPointer, liveness: VarMapDomain[analysis_liveness.Liveness]
+) -> typing.Iterator[str]:
     assert not isinstance(liveness, domain.Bottom)
     for var in tp.dirty[LOCALS].as_set():
         if var.is_stackvar:
@@ -758,7 +879,7 @@ def find_dirty_roots(tp: TypedPointer, liveness: VarMapDomain[analysis_liveness.
         yield var.name
     alive = {k for k, v in liveness.items() if isinstance(v, domain.Top)}
     for var, target in tp.pointers[LOCALS].items():
-        if var.name == 'return':
+        if var.name == "return":
             continue
         reachable = set(find_reachable(tp.pointers, alive, set(), target.as_set()))
         if var in alive and any(tp.dirty[obj] for obj in reachable):

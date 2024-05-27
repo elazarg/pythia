@@ -20,6 +20,7 @@ Here:
       So in some cases, `x = f(a, b)` might have e.g. KILLS={a}
       (and implicitly x too) if it is the last command to use the variable `a`.
 """
+
 from __future__ import annotations as _
 
 import typing
@@ -27,11 +28,19 @@ from dataclasses import dataclass
 from typing import TypeVar
 
 from pythia import tac
-from pythia.analysis_domain import Top, Bottom, TOP, BOTTOM, \
-    VarMapDomain, Lattice, Map, InstructionLattice
+from pythia.analysis_domain import (
+    Top,
+    Bottom,
+    TOP,
+    BOTTOM,
+    VarMapDomain,
+    Lattice,
+    Map,
+    InstructionLattice,
+)
 from pythia.graph_utils import Location
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 Liveness = Top | Bottom
@@ -93,7 +102,9 @@ class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
     def name(self) -> str:
         return f"{self.lattice.name()}"
 
-    def is_less_than(self, left: VarMapDomain[Liveness], right: VarMapDomain[Liveness]) -> bool:
+    def is_less_than(
+        self, left: VarMapDomain[Liveness], right: VarMapDomain[Liveness]
+    ) -> bool:
         return self.join(left, right) == right
 
     def copy(self, values: VarMapDomain[Liveness]) -> VarMapDomain[Liveness]:
@@ -112,7 +123,9 @@ class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
             return BOTTOM
         return values
 
-    def make_map(self, d: typing.Optional[dict[tac.Var, Liveness]] = None) -> Map[tac.Var, Liveness]:
+    def make_map(
+        self, d: typing.Optional[dict[tac.Var, Liveness]] = None
+    ) -> Map[tac.Var, Liveness]:
         d = d or {}
         return Map(default=self.lattice.default(), d=d)
 
@@ -122,10 +135,14 @@ class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
     def bottom(self) -> VarMapDomain[Liveness]:
         return BOTTOM
 
-    def join(self, left: VarMapDomain[Liveness], right: VarMapDomain[Liveness]) -> VarMapDomain[Liveness]:
+    def join(
+        self, left: VarMapDomain[Liveness], right: VarMapDomain[Liveness]
+    ) -> VarMapDomain[Liveness]:
         match left, right:
-            case (Bottom(), _): return right
-            case (_, Bottom()): return left
+            case (Bottom(), _):
+                return right
+            case (_, Bottom()):
+                return left
             case (Map() as left, Map() as right):
                 res = self.top()
                 for k in left.keys() | right.keys():
@@ -133,7 +150,9 @@ class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
                 return self.normalize(res)
         return self.top()
 
-    def back_transfer(self, values: VarMapDomain[Liveness], ins: tac.Tac, location: Location) -> VarMapDomain[Liveness]:
+    def back_transfer(
+        self, values: VarMapDomain[Liveness], ins: tac.Tac, location: Location
+    ) -> VarMapDomain[Liveness]:
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()
@@ -143,7 +162,9 @@ class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
             values[v] = TOP
         return values
 
-    def transfer(self, values: VarMapDomain[Liveness], ins: tac.Tac, location: Location) -> VarMapDomain[Liveness]:
+    def transfer(
+        self, values: VarMapDomain[Liveness], ins: tac.Tac, location: Location
+    ) -> VarMapDomain[Liveness]:
         if isinstance(values, Bottom):
             return BOTTOM
         values = values.copy()

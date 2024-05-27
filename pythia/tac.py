@@ -1,4 +1,3 @@
-
 from __future__ import annotations as _
 
 import enum
@@ -19,7 +18,7 @@ class Module:
     name: str
 
     def __repr__(self) -> str:
-        return f'Module({self.name})'
+        return f"Module({self.name})"
 
 
 class Predefined(enum.Enum):
@@ -69,7 +68,7 @@ class Var:
 
     def __str__(self) -> str:
         if self.is_stackvar:
-            return f'${self.name}'
+            return f"${self.name}"
         return self.name
 
     def __repr__(self) -> str:
@@ -86,7 +85,7 @@ class Attribute:
     field: Var
 
     def __str__(self) -> str:
-        return f'{self.var}.{self.field}'
+        return f"{self.var}.{self.field}"
 
 
 @dataclass(frozen=True)
@@ -95,7 +94,7 @@ class Subscript:
     index: Var
 
     def __str__(self) -> str:
-        return f'{self.var}[{self.index}]'
+        return f"{self.var}[{self.index}]"
 
 
 # Simplified version of the real binding construct in Python.
@@ -110,7 +109,7 @@ class Binary:
     inplace: bool
 
     def __str__(self) -> str:
-        res = f'{self.left} {self.op} {self.right}'
+        res = f"{self.left} {self.op} {self.right}"
         return res
 
 
@@ -120,7 +119,7 @@ class Unary:
     var: Var
 
     def __str__(self) -> str:
-        return f'{self.op.name} {self.var}'
+        return f"{self.op.name} {self.var}"
 
 
 @dataclass(frozen=False)
@@ -133,12 +132,12 @@ class Call:
         return id(self)
 
     def __str__(self) -> str:
-        res = ''
-        if self.function != Var('TUPLE'):
-            res += f'{self.function}'
+        res = ""
+        if self.function != Var("TUPLE"):
+            res += f"{self.function}"
         res += f'({", ".join(str(x) for x in self.args)})'
         if self.kwargs:
-            res += f', kwargs={self.kwargs}'
+            res += f", kwargs={self.kwargs}"
         return res
 
 
@@ -153,9 +152,9 @@ class Import:
     feature: Optional[str] = None
 
     def __str__(self) -> str:
-        res = f'IMPORT {self.modname}'
+        res = f"IMPORT {self.modname}"
         if self.feature is not None:
-            res += f'.{self.feature}'
+            res += f".{self.feature}"
         return res
 
 
@@ -176,7 +175,19 @@ class MakeClass:
     name: str
 
 
-Expr: TypeAlias = Value | Predefined | Attribute | Subscript | Binary | Unary | Call | Yield | Import | MakeFunction | MakeClass
+Expr: TypeAlias = (
+    Value
+    | Predefined
+    | Attribute
+    | Subscript
+    | Binary
+    | Unary
+    | Call
+    | Yield
+    | Import
+    | MakeFunction
+    | MakeClass
+)
 
 
 def stackvar(x: int) -> Var:
@@ -195,13 +206,14 @@ class Nop:
 @dataclass(frozen=True)
 class Assign:
     """Assignments with no control-flow effect (other than exceptions)."""
+
     lhs: Optional[Signature]
     expr: Expr
 
     def __str__(self) -> str:
         if self.lhs is None:
-            return f'{self.expr}'
-        return f'{self.lhs} = {self.expr}'
+            return f"{self.expr}"
+        return f"{self.lhs} = {self.expr}"
 
 
 @dataclass(frozen=True)
@@ -211,8 +223,8 @@ class Jump:
 
     def __str__(self) -> str:
         if self.cond == Const(True):
-            return f'GOTO {self.jump_target}'
-        return f'IF {self.cond} GOTO {self.jump_target}'
+            return f"GOTO {self.jump_target}"
+        return f"IF {self.cond} GOTO {self.jump_target}"
 
 
 @dataclass(frozen=True)
@@ -222,7 +234,7 @@ class For:
     jump_target: int
 
     def __str__(self) -> str:
-        return f'{self.lhs} = next({self.iterator}) HANDLE: GOTO {self.jump_target}'
+        return f"{self.lhs} = next({self.iterator}) HANDLE: GOTO {self.jump_target}"
 
     def as_call(self) -> Assign:
         return Assign(self.lhs, Unary(UnOp.NEXT, self.iterator))
@@ -233,7 +245,7 @@ class Return:
     value: Var
 
     def __str__(self) -> str:
-        return f'RETURN {self.value}'
+        return f"RETURN {self.value}"
 
 
 @dataclass(frozen=True)
@@ -241,7 +253,7 @@ class Raise:
     value: Var
 
     def __str__(self) -> str:
-        return f'RAISE {self.value}'
+        return f"RAISE {self.value}"
 
 
 @dataclass(frozen=True)
@@ -264,68 +276,112 @@ NOP = Nop()
 
 def free_vars_expr(expr: Expr) -> set[Var]:
     match expr:
-        case Const(): return set()
-        case Var(): return {expr}
-        case Attribute(): return {expr.var} if isinstance(expr.var, Var) else set()
-        case Subscript(): return free_vars_expr(expr.var) | free_vars_expr(expr.index)
-        case Binary(): return free_vars_expr(expr.left) | free_vars_expr(expr.right)
-        case Unary(): return free_vars_expr(expr.var)
+        case Const():
+            return set()
+        case Var():
+            return {expr}
+        case Attribute():
+            return {expr.var} if isinstance(expr.var, Var) else set()
+        case Subscript():
+            return free_vars_expr(expr.var) | free_vars_expr(expr.index)
+        case Binary():
+            return free_vars_expr(expr.left) | free_vars_expr(expr.right)
+        case Unary():
+            return free_vars_expr(expr.var)
         case Call():
-            return free_vars_expr(expr.function) \
-                   | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args)) \
-                   | ({expr.kwargs} if expr.kwargs else set())
-        case Yield(): return free_vars_expr(expr.value)
-        case Import(): return set()
-        case MakeFunction(): return set()  # TODO: fix this
-        case Predefined(): return set()
-        case _: raise NotImplementedError(f'free_vars_expr({repr(expr)})')
+            return (
+                free_vars_expr(expr.function)
+                | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args))
+                | ({expr.kwargs} if expr.kwargs else set())
+            )
+        case Yield():
+            return free_vars_expr(expr.value)
+        case Import():
+            return set()
+        case MakeFunction():
+            return set()  # TODO: fix this
+        case Predefined():
+            return set()
+        case _:
+            raise NotImplementedError(f"free_vars_expr({repr(expr)})")
 
 
 def free_vars_lval(signature: Signature) -> set[Var]:
     match signature:
-        case Var(): return set()
-        case Attribute(): return {signature.var} if isinstance(signature.var, Var) else set()
-        case Subscript(): return free_vars_expr(signature.var) | free_vars_expr(signature.index)
-        case tuple(): return set(it.chain.from_iterable(free_vars_lval(arg) for arg in signature))
-        case None: return set()
-        case _: raise NotImplementedError(f'free_vars_lval({repr(signature)})')
+        case Var():
+            return set()
+        case Attribute():
+            return {signature.var} if isinstance(signature.var, Var) else set()
+        case Subscript():
+            return free_vars_expr(signature.var) | free_vars_expr(signature.index)
+        case tuple():
+            return set(it.chain.from_iterable(free_vars_lval(arg) for arg in signature))
+        case None:
+            return set()
+        case _:
+            raise NotImplementedError(f"free_vars_lval({repr(signature)})")
 
 
 def free_vars(tac: Tac) -> set[Var]:
     match tac:
-        case Nop(): return set()
-        case Assign(): return free_vars_lval(tac.lhs) | free_vars_expr(tac.expr)
-        case Jump(): return free_vars_expr(tac.cond)
-        case For(): return free_vars_expr(tac.iterator)
-        case Return(): return free_vars_expr(tac.value)
-        case Raise(): return free_vars_expr(tac.value)
-        case Del(): return set(tac.variables)
-        case Unsupported(): return set()
-        case Predefined(): return set()
-        case _: raise NotImplementedError(f'{tac}')
+        case Nop():
+            return set()
+        case Assign():
+            return free_vars_lval(tac.lhs) | free_vars_expr(tac.expr)
+        case Jump():
+            return free_vars_expr(tac.cond)
+        case For():
+            return free_vars_expr(tac.iterator)
+        case Return():
+            return free_vars_expr(tac.value)
+        case Raise():
+            return free_vars_expr(tac.value)
+        case Del():
+            return set(tac.variables)
+        case Unsupported():
+            return set()
+        case Predefined():
+            return set()
+        case _:
+            raise NotImplementedError(f"{tac}")
 
 
 def gens_signature(signature: Signature) -> set[Var]:
     match signature:
-        case Var() as lhs: return {lhs}
-        case tuple() as items: return set(items)
-        case Attribute(): return set()
-        case Subscript(): return set()
-        case None: return set()
-        case _: raise NotImplementedError(f'gens_signature({repr(signature)})')
+        case Var() as lhs:
+            return {lhs}
+        case tuple() as items:
+            return set(items)
+        case Attribute():
+            return set()
+        case Subscript():
+            return set()
+        case None:
+            return set()
+        case _:
+            raise NotImplementedError(f"gens_signature({repr(signature)})")
 
 
 def gens(tac: Tac) -> set[Var]:
     match tac:
-        case Nop(): return set()
-        case Assign(lhs=lhs): return gens_signature(lhs)
-        case Jump(): return set()
-        case For(lhs=lhs): return gens_signature(lhs)
-        case Return(): return set()
-        case Raise(): return set()
-        case Del(): return set(tac.variables)
-        case Unsupported(): return set()
-        case _: raise NotImplementedError(f'gens({tac})')
+        case Nop():
+            return set()
+        case Assign(lhs=lhs):
+            return gens_signature(lhs)
+        case Jump():
+            return set()
+        case For(lhs=lhs):
+            return gens_signature(lhs)
+        case Return():
+            return set()
+        case Raise():
+            return set()
+        case Del():
+            return set(tac.variables)
+        case Unsupported():
+            return set()
+        case _:
+            raise NotImplementedError(f"gens({tac})")
 
 
 def subst_var_in_expr(expr: Expr, target: Var, new_var: Var) -> Expr:
@@ -365,22 +421,33 @@ def subst_var_in_expr(expr: Expr, target: Var, new_var: Var) -> Expr:
         case Const():
             return expr
         case _:
-            raise NotImplementedError(f'subst_var_in_expr({expr}, {target}, {new_var})')
+            raise NotImplementedError(f"subst_var_in_expr({expr}, {target}, {new_var})")
 
 
-def make_tac(ins: instruction_cfg.Instruction, stack_depth: int,
-             trace_origin: dict[int, instruction_cfg.Instruction]) -> list[Tac]:
+def make_tac(
+    ins: instruction_cfg.Instruction,
+    stack_depth: int,
+    trace_origin: dict[int, instruction_cfg.Instruction],
+) -> list[Tac]:
     stack_effect = instruction_cfg.calculate_stack_effect(ins)
-    if ins.opname == 'LOAD_CONST' and isinstance(ins.argval, tuple):
+    if ins.opname == "LOAD_CONST" and isinstance(ins.argval, tuple):
         # We want to handle list and tuple literal in the same way,
         # So we load tuple as if it was a list
         lst = []
         for v in ins.argval:
-            lst += make_tac_no_dels('LOAD_CONST', v, 1, stack_depth, ins.argrepr)
+            lst += make_tac_no_dels("LOAD_CONST", v, 1, stack_depth, ins.argrepr)
             stack_depth += 1
-        tac_list = lst + make_tac_no_dels('BUILD_TUPLE', len(ins.argval), -len(ins.argval) + 1, stack_depth, ins.argrepr)
+        tac_list = lst + make_tac_no_dels(
+            "BUILD_TUPLE",
+            len(ins.argval),
+            -len(ins.argval) + 1,
+            stack_depth,
+            ins.argrepr,
+        )
     else:
-        tac_list = make_tac_no_dels(ins.opname, ins.argval, stack_effect, stack_depth, ins.argrepr)
+        tac_list = make_tac_no_dels(
+            ins.opname, ins.argval, stack_effect, stack_depth, ins.argrepr
+        )
     for tac in tac_list:
         trace_origin[id(tac)] = ins
     return tac_list  # [t._replace(starts_line=starts_line) for t in tac]
@@ -402,187 +469,265 @@ def make_class(name: str) -> Attribute:
 
 
 def make_tac_cfg(f: typing.Any) -> gu.Cfg[Tac]:
-    assert sys.version_info[:2] == (3, 11), f'Python version is {sys.version_info} but only 3.11 is supported'
+    assert sys.version_info[:2] == (
+        3,
+        11,
+    ), f"Python version is {sys.version_info} but only 3.11 is supported"
     depths, ins_cfg = instruction_cfg.make_instruction_block_cfg_from_function(f)
 
     trace_origin: dict[int, instruction_cfg.Instruction] = {}
 
-    def instruction_block_to_tac_block(n: Label, block: gu.Block[instruction_cfg.Instruction]) -> gu.Block[Tac]:
-        return gu.Block(list(it.chain.from_iterable(make_tac(ins, depths[ins.offset], trace_origin)
-                                                    for ins in block)))
+    def instruction_block_to_tac_block(
+        n: Label, block: gu.Block[instruction_cfg.Instruction]
+    ) -> gu.Block[Tac]:
+        return gu.Block(
+            list(
+                it.chain.from_iterable(
+                    make_tac(ins, depths[ins.offset], trace_origin) for ins in block
+                )
+            )
+        )
 
     def annotator(location: Location, n: Tac) -> str:
         pos = trace_origin[id(n)].positions
         if pos is None:
-            return f'None'
-        return f'{pos.lineno}:{pos.col_offset}'
+            return f"None"
+        return f"{pos.lineno}:{pos.col_offset}"
 
     tac_cfg: gu.Cfg[Tac] = gu.node_data_map(ins_cfg, instruction_block_to_tac_block)
     tac_cfg.annotator = annotator
     return tac_cfg
 
 
-def make_tac_no_dels(opname: str, val: str | int | None, stack_effect: int, stack_depth: int, argrepr: str) -> list[Tac]:
-    """Translate a bytecode operation into a list of TAC instructions.
-    """
+def make_tac_no_dels(
+    opname: str,
+    val: str | int | None,
+    stack_effect: int,
+    stack_depth: int,
+    argrepr: str,
+) -> list[Tac]:
+    """Translate a bytecode operation into a list of TAC instructions."""
     out = stack_depth + stack_effect if stack_depth is not None else None
-    match opname.split('_'):
-        case ['UNARY', sop] | ['GET', 'ITER' as sop] | ['GET', 'YIELD' as sop, 'FROM', 'ITER']:
+    match opname.split("_"):
+        case (
+            ["UNARY", sop]
+            | ["GET", "ITER" as sop]
+            | ["GET", "YIELD" as sop, "FROM", "ITER"]
+        ):
             match sop:
-                case 'POSITIVE': op = UnOp.POS
-                case 'NEGATIVE': op = UnOp.NEG
-                case 'INVERT': op = UnOp.INVERT
-                case 'NOT': op = UnOp.NOT
-                case 'ITER': op = UnOp.ITER
-                case 'YIELD': op = UnOp.YIELD_ITER
-                case _: raise NotImplementedError(f'UNARY_{sop}')
+                case "POSITIVE":
+                    op = UnOp.POS
+                case "NEGATIVE":
+                    op = UnOp.NEG
+                case "INVERT":
+                    op = UnOp.INVERT
+                case "NOT":
+                    op = UnOp.NOT
+                case "ITER":
+                    op = UnOp.ITER
+                case "YIELD":
+                    op = UnOp.YIELD_ITER
+                case _:
+                    raise NotImplementedError(f"UNARY_{sop}")
             return [Assign(stackvar(stack_depth), Unary(op, stackvar(stack_depth)))]
-        case ['BINARY', 'SUBSCR']:
+        case ["BINARY", "SUBSCR"]:
             #
             # return [call(stackvar(out), 'BUILTINS.getattr', (stackvar(stack_depth - 1), "'__getitem__'")),
             #        call(stackvar(out), stackvar(out), (stackvar(stack_depth),))]
             # IVY-Specific: :(
-            return [Assign(stackvar(out), Subscript(stackvar(stack_depth - 1), stackvar(stack_depth)))]
-        case ['BINARY' | 'COMPARE', 'OP']:
+            return [
+                Assign(
+                    stackvar(out),
+                    Subscript(stackvar(stack_depth - 1), stackvar(stack_depth)),
+                )
+            ]
+        case ["BINARY" | "COMPARE", "OP"]:
             lhs = stackvar(out)
             left = stackvar(stack_depth - 1)
             right = stackvar(stack_depth)
-            if argrepr != '!=' and argrepr[-1] == '=' and argrepr[0] != '=':
+            if argrepr != "!=" and argrepr[-1] == "=" and argrepr[0] != "=":
                 return [Assign(lhs, Binary(left, argrepr[:-1], right, inplace=True))]
             else:
                 return [Assign(lhs, Binary(left, argrepr, right, inplace=False))]
-        case ['POP', 'JUMP', 'FORWARD' | 'BACKWARD', 'IF', *v]:
-            sop = '_'.join(v)
+        case ["POP", "JUMP", "FORWARD" | "BACKWARD", "IF", *v]:
+            sop = "_".join(v)
             # 'FALSE' | 'TRUE' | 'NONE' | 'NOT_NONE'
             res: list[Tac]
-            if sop == 'FALSE':
-                res = [Assign(stackvar(stack_depth), Unary(UnOp.NOT, stackvar(stack_depth)))]
+            if sop == "FALSE":
+                res = [
+                    Assign(
+                        stackvar(stack_depth), Unary(UnOp.NOT, stackvar(stack_depth))
+                    )
+                ]
             else:
                 res = []
             assert isinstance(val, int)
             return res + [Jump(val, stackvar(stack_depth))]
-        case ['JUMP', 'ABSOLUTE' | 'FORWARD' | 'BACKWARD'] | ['BREAK', 'LOOP'] | ['CONTINUE', 'LOOP']:
+        case (
+            ["JUMP", "ABSOLUTE" | "FORWARD" | "BACKWARD"]
+            | ["BREAK", "LOOP"]
+            | ["CONTINUE", "LOOP"]
+        ):
             assert isinstance(val, int)
             return [Jump(val)]
-        case ['POP', 'TOP']:
+        case ["POP", "TOP"]:
             return []
-        case ['DELETE', 'FAST']:
+        case ["DELETE", "FAST"]:
             variables = (Var(argrepr, False),)
             return [Del(variables)]
-        case ['ROT', 'TWO']:
+        case ["ROT", "TWO"]:
             fresh = stackvar(stack_depth + 1)
-            return [Assign(fresh, stackvar(stack_depth)),
-                    Assign(stackvar(stack_depth), stackvar(stack_depth - 1)),
-                    Assign(stackvar(stack_depth - 1), fresh),
-                    Del((fresh,))]
-        case ['ROT', 'THREE']:
+            return [
+                Assign(fresh, stackvar(stack_depth)),
+                Assign(stackvar(stack_depth), stackvar(stack_depth - 1)),
+                Assign(stackvar(stack_depth - 1), fresh),
+                Del((fresh,)),
+            ]
+        case ["ROT", "THREE"]:
             fresh = stackvar(stack_depth + 1)
-            return [Assign(fresh, stackvar(stack_depth - 2)),
-                    Assign(stackvar(stack_depth - 2), stackvar(stack_depth - 1)),
-                    Assign(stackvar(stack_depth - 1), stackvar(stack_depth)),
-                    Assign(stackvar(stack_depth), fresh),
-                    Del((fresh,))]
-        case ['DUP', 'TOP']:
+            return [
+                Assign(fresh, stackvar(stack_depth - 2)),
+                Assign(stackvar(stack_depth - 2), stackvar(stack_depth - 1)),
+                Assign(stackvar(stack_depth - 1), stackvar(stack_depth)),
+                Assign(stackvar(stack_depth), fresh),
+                Del((fresh,)),
+            ]
+        case ["DUP", "TOP"]:
             return [Assign(stackvar(out), stackvar(stack_depth))]
-        case ['DUP', 'TOP', 'TWO']:
-            return [Assign(stackvar(out), stackvar(stack_depth - 2)),
-                    Assign(stackvar(out + 1), stackvar(stack_depth - 1))]
-        case ['RETURN', 'VALUE']:
+        case ["DUP", "TOP", "TWO"]:
+            return [
+                Assign(stackvar(out), stackvar(stack_depth - 2)),
+                Assign(stackvar(out + 1), stackvar(stack_depth - 1)),
+            ]
+        case ["RETURN", "VALUE"]:
             return [Return(stackvar(stack_depth))]
-        case ['YIELD', 'VALUE']:
+        case ["YIELD", "VALUE"]:
             return [Assign(stackvar(out), Yield(stackvar(stack_depth)))]
-        case ['FOR', 'ITER']:
+        case ["FOR", "ITER"]:
             assert isinstance(val, int)
             return [For(stackvar(out), stackvar(stack_depth), val)]
-        case ['LOAD', 'CONST']:
+        case ["LOAD", "CONST"]:
             return [Assign(stackvar(out), Const(val))]
-        case ['COPY']:
+        case ["COPY"]:
             # Push the i-th item to the top of the stack. The item is not removed from its original location.
             lhs = stackvar(out)
             assert isinstance(val, int)
             # print(f"COPY {val}; out={out}")
             return [Assign(lhs, stackvar(out - val))]
-        case ['LOAD', 'ASSERTION', 'ERROR']:
+        case ["LOAD", "ASSERTION", "ERROR"]:
             return []  # Assign(lhs, Const(AssertionError()))]
-        case ['LOAD', *ops]:
+        case ["LOAD", *ops]:
             lhs = stackvar(out)
-            assert isinstance(val, str), f'{opname}, {val}, {argrepr}'
+            assert isinstance(val, str), f"{opname}, {val}, {argrepr}"
             match ops:
-                case ['ATTR']:
+                case ["ATTR"]:
                     return [Assign(lhs, Attribute(stackvar(stack_depth), Var(val)))]
-                case ['METHOD']:
+                case ["METHOD"]:
                     return [Assign(lhs, Attribute(stackvar(stack_depth), Var(val)))]
-                case ['FAST' | 'NAME']:
+                case ["FAST" | "NAME"]:
                     return [Assign(lhs, Var(val))]
-                case ['DEREF']:
+                case ["DEREF"]:
                     return [Assign(lhs, make_nonlocal(val))]
-                case ['GLOBAL']:
+                case ["GLOBAL"]:
                     return [Assign(lhs, make_global(val))]
-                case ['CLOSURE']:
+                case ["CLOSURE"]:
                     print("Unknown: LOAD CLOSURE")
                     return [Assign(lhs, Const(None))]
-                case ['BUILD', 'CLASS']:
+                case ["BUILD", "CLASS"]:
                     return [Assign(lhs, make_class(val))]
                 case _:
                     assert False, ops
-        case ['STORE', 'FAST' | 'NAME']:
+        case ["STORE", "FAST" | "NAME"]:
             assert isinstance(val, str)
             return [Assign(Var(val), stackvar(stack_depth))]
-        case ['STORE', 'GLOBAL']:
+        case ["STORE", "GLOBAL"]:
             assert isinstance(val, str)
             return [Assign(make_global(val), stackvar(stack_depth))]
-        case ['STORE', 'ATTR']:
+        case ["STORE", "ATTR"]:
             assert isinstance(val, str)
             attr = Attribute(stackvar(stack_depth), Var(val))
             return [Assign(attr, stackvar(stack_depth - 1))]
-        case ['STORE', 'SUBSCR']:
-            return [Assign(Subscript(stackvar(stack_depth - 1), stackvar(stack_depth)), stackvar(stack_depth - 2))]
-        case ['POP', 'BLOCK']:
+        case ["STORE", "SUBSCR"]:
+            return [
+                Assign(
+                    Subscript(stackvar(stack_depth - 1), stackvar(stack_depth)),
+                    stackvar(stack_depth - 2),
+                )
+            ]
+        case ["POP", "BLOCK"]:
             return []
-        case ['SETUP', 'LOOP']:
+        case ["SETUP", "LOOP"]:
             return []
-        case ['RAISE', 'VARARGS']:
+        case ["RAISE", "VARARGS"]:
             return [Raise(stackvar(stack_depth))]
-        case ['UNPACK', 'SEQUENCE']:
+        case ["UNPACK", "SEQUENCE"]:
             assert isinstance(val, int)
             seq = tuple(stackvar(stack_depth + i) for i in reversed(range(val)))
             return [Assign(seq, stackvar(stack_depth))]
-        case ['IMPORT', 'NAME']:
+        case ["IMPORT", "NAME"]:
             assert isinstance(val, str)
             return [Assign(stackvar(out), Import(Var(val)))]
-        case ['IMPORT', 'FROM']:
+        case ["IMPORT", "FROM"]:
             assert isinstance(val, str)
-            return [Assign(stackvar(out), Import(Attribute(stackvar(stack_depth), Var(val))))]
-        case ['BUILD', 'SLICE']:
+            return [
+                Assign(
+                    stackvar(out), Import(Attribute(stackvar(stack_depth), Var(val)))
+                )
+            ]
+        case ["BUILD", "SLICE"]:
             args: tuple[Var, ...]
             if val == 2:
                 args = (stackvar(stack_depth - 1), stackvar(stack_depth))
             else:
-                args = (stackvar(stack_depth), stackvar(stack_depth - 1), stackvar(stack_depth - 2))
+                args = (
+                    stackvar(stack_depth),
+                    stackvar(stack_depth - 1),
+                    stackvar(stack_depth - 2),
+                )
             return [Assign(stackvar(out), Call(Predefined.SLICE, args))]
-        case ['BUILD', op]:
+        case ["BUILD", op]:
             assert isinstance(val, int)
-            return [Assign(stackvar(out),
-                           Call(Predefined.lookup(op), tuple(stackvar(i + 1) for i in range(stack_depth - val, stack_depth))))]
-        case ['SWAP']:
+            return [
+                Assign(
+                    stackvar(out),
+                    Call(
+                        Predefined.lookup(op),
+                        tuple(
+                            stackvar(i + 1)
+                            for i in range(stack_depth - val, stack_depth)
+                        ),
+                    ),
+                )
+            ]
+        case ["SWAP"]:
             a = stackvar(stack_depth - 0)
             b = stackvar(stack_depth - 1)
-            return [Assign(a, Call(Predefined.TUPLE, (b, a))),
-                    Assign((a, b), a)]
-        case ['CALL']:
+            return [Assign(a, Call(Predefined.TUPLE, (b, a))), Assign((a, b), a)]
+        case ["CALL"]:
             assert isinstance(val, int)
             nargs = val & 0xFF
             mid = [stackvar(i + 1) for i in range(stack_depth, stack_depth + nargs)]
             return [Assign(stackvar(out), Call(stackvar(stack_depth), tuple(mid)))]
-        case ['CALL', 'FUNCTION', 'KW']:
+        case ["CALL", "FUNCTION", "KW"]:
             assert isinstance(val, int)
             nargs = val
-            mid = [stackvar(i + 1) for i in range(stack_depth - nargs - 1, stack_depth - 1)]
-            res = [Assign(stackvar(out), Call(stackvar(stack_depth - nargs - 1), tuple(mid), stackvar(stack_depth)))]
+            mid = [
+                stackvar(i + 1) for i in range(stack_depth - nargs - 1, stack_depth - 1)
+            ]
+            res = [
+                Assign(
+                    stackvar(out),
+                    Call(
+                        stackvar(stack_depth - nargs - 1),
+                        tuple(mid),
+                        stackvar(stack_depth),
+                    ),
+                )
+            ]
             return res
-        case ["NOP" | 'RESUME' | 'PRECALL']:
+        case ["NOP" | "RESUME" | "PRECALL"]:
             return []
-        case ['EXTENDED', 'ARG']:
+        case ["EXTENDED", "ARG"]:
             """
             Prefixes any opcode which has an argument too big to fit into the default one byte.
             ext holds an additional byte which act as higher bits in the argument.
@@ -590,7 +735,7 @@ def make_tac_no_dels(opname: str, val: str | int | None, stack_effect: int, stac
             forming an argument from two-byte to four-byte.
             """
             return []
-        case ['KW', 'NAMES']:
+        case ["KW", "NAMES"]:
             """
             Prefixes PRECALL. Stores a reference to co_consts[consti] into an internal variable for use by CALL.
             co_consts[consti] must be a tuple of strings.
@@ -602,7 +747,7 @@ def make_tac_no_dels(opname: str, val: str | int | None, stack_effect: int, stac
             Pushes a new function object on the stack.
             From bottom to top, the consumed stack must consist of values
             if the argument carries a specified flag value:
-            
+
             0x01   a tuple of default values for positional-only and positional-or-keyword parameters in positional order
             0x02   a dictionary of keyword-only parameters’ default values
             0x04   a tuple of strings containing parameters’ annotations
@@ -629,7 +774,7 @@ def make_tac_no_dels(opname: str, val: str | int | None, stack_effect: int, stac
 
 
 def main() -> None:
-    env, imports = disassemble.read_file('examples/toy.py')
+    env, imports = disassemble.read_file("examples/toy.py")
 
     for k, func in env.items():
         cfg = make_tac_cfg(func)
