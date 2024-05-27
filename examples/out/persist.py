@@ -28,7 +28,8 @@ class Loader:
             h = m.hexdigest()[:6]
             name = pathlib.Path(module_filename).stem
             print(name)
-        self.filename = f'cache/{name}-{h}.pickle'
+        self.filename = pathlib.Path('examples/cache/{name}-{h}.pickle')
+        self.filename.parent.mkdir(parents=True, exist_ok=True)
         self.iterator = None
         self.version = 0
         self.restored_state = ()
@@ -36,7 +37,7 @@ class Loader:
     def __enter__(self) -> Loader:
         if self._now_recovering():
             print("Recovering from snapshot")
-            with open(self.filename, "rb") as snapshot:
+            with self.filename.open("rb") as snapshot:
                 version, self.restored_state, self.iterator = pickle.load(snapshot)
             print(f'Loaded {version=}: {self.restored_state}')
         return self
@@ -54,7 +55,7 @@ class Loader:
     def commit(self, *args):
         self.version += 1
 
-        temp_filename = f'{self.filename}.tmp'
+        temp_filename = self.filename.with_suffix('.tmp')
         with open(temp_filename, "wb") as snapshot:
             pickle.dump((self.version, args, self.iterator), snapshot)
 
