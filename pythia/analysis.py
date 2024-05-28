@@ -134,7 +134,7 @@ def run(
     module_type: ts.Module,
     function_name: str,
 ) -> dict[str, InvariantPair]:
-    gu.pretty_print_cfg(cfg)
+    # gu.pretty_print_cfg(cfg)
     liveness_invariants = analyze(cfg, LivenessVarLattice())
 
     typed_pointer_analysis = typed_pointer.TypedPointerLattice(
@@ -172,6 +172,11 @@ def analyze_function(
 ) -> None:
     functions, imports = disassemble.read_file(filename)
     module_type = ts.parse_file(filename)
+
+    if not function_names:
+        if not functions:
+            raise ValueError("No functions with for loops found")
+        function_names = tuple(functions.keys())
 
     dirty_map: dict[str, set[str]] = {}
     for function_name in function_names:

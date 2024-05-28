@@ -45,7 +45,10 @@ def read_file(file_path: str) -> tuple[dict[str, object], Any]:
 
     for node in code.body:
         if isinstance(node, ast.FunctionDef):
-            module.body.append(node)
+            for n in ast.walk(node):
+                if isinstance(n, ast.For):
+                    # if n.type_comment:
+                    module.body.append(node)
     functions = compile(module, "", "exec", dont_inherit=True, flags=0, optimize=0)
     env: dict[str, object] = {}
     # exec should be safe here, since it cannot have any side effects

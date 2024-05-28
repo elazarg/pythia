@@ -30,9 +30,9 @@ class Loader:
             m = hashlib.md5()
             m.update(f.read())
             h = m.hexdigest()[:6]
-            name = module_filename.stem
-            print(name)
-        self.filename = pathlib.Path(f"examples/cache/{name}-{h}.pickle")
+        self.filename = pathlib.Path(
+            f"experiment/{module_filename.parent.name}/cache/{h}.pickle"
+        )
         self.filename.parent.mkdir(parents=True, exist_ok=True)
         self.iterator = None
         self.version = 0
@@ -65,6 +65,7 @@ class Loader:
 
         pathlib.Path(self.filename).unlink(missing_ok=True)
         pathlib.Path(temp_filename).rename(self.filename)
+        self.restored_state = (self.version, args, self.iterator)
 
     def _now_recovering(self) -> bool:
         return pathlib.Path(self.filename).exists()
@@ -92,24 +93,33 @@ def connect(tag: str) -> socket.socket:
 
 
 class SimpleTcpClient:
-    restored_state = ()
+    loader: Loader
     socket: socket.socket
     i: Any
 
-    def __init__(self, tag: str) -> None:
+    def __init__(self, tag: str, loader: Loader) -> None:
+        self.loader = loader
         self.socket = connect(tag)
         self.i = None
 
-    def commit(self) -> None:
-        self.socket.send(struct.pack("Q", self.i))
-        self.socket.recv(128)  # wait for snapshot
+    @property
+    def restored_state(self) -> tuple[Any, ...]:
+        return self.loader.restored_state
+
+    def commit(self, *args) -> None:
+        self.loader.commit(*args)
+        data = struct.pack("Q", self.i, *self.restored_state)
+        self.socket.send(data)
+        self.socket.recv(256)  # wait for snapshot
 
     def __enter__(self) -> "SimpleTcpClient":
+        self.loader = self.loader.__enter__()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.loader.__exit__(exc_type, exc_val, exc_tb)
         self.socket.close()
 
     def iterate(self, iterable: typing.Iterable[T]) -> typing.Iterable[T]:
-        for self.i in iterable:
+        for self.i in self.loader.iterate(iterable):
             yield self.i
