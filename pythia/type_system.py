@@ -1,6 +1,7 @@
 from __future__ import annotations as _
 
 import ast
+import contextlib
 import enum
 import os
 import typing
@@ -11,10 +12,6 @@ from pathlib import Path
 @dataclass(frozen=True)
 class TypeExpr:
     pass
-
-
-T = typing.TypeVar("T", bound=TypeExpr)
-K = typing.TypeVar("K")
 
 
 @dataclass(frozen=True)
@@ -374,9 +371,11 @@ def overload(functions: typing.Iterable[FunctionType | Overloaded]) -> Overloade
         if isinstance(f, Overloaded):
             assert all(isinstance(x, FunctionType) for x in f.items)
             collect.extend(f.items)
-        else:
-            assert isinstance(f, FunctionType), f
+        elif isinstance(f, FunctionType):
             collect.append(f)
+        else:
+            assert f == BOTTOM
+            raise TypeError(f"Trying add a bottom function")
     # assert len(collect) > 0
     return Overloaded(tuple(collect))
 
@@ -830,7 +829,9 @@ def access(t: TypeExpr, arg: TypeExpr) -> Overloaded | Module:
             ):
                 return TOP
             result = overload(types)
-            assert free_vars_expr(result) == set(), f"{result!r}"
+            assert (
+                free_vars_expr(result) == set()
+            ), f"{result!r}, {free_vars_expr(result)}"
             return result
         case Class() as t, arg:
             getter = access(t, literal("__getitem__"))
@@ -1123,7 +1124,11 @@ def subscr(selftype: TypeExpr, index: TypeExpr) -> TypeExpr:
     if attr_type == TOP:
         # non-existent attribute
         return BOTTOM
-    result = bind_self(attr_type, selftype)
+    try:
+        result = bind_self(attr_type, selftype)
+    except TypeError as ex:
+        ex.add_note(f"for c[{index!r}] where c is {selftype!r}")
+        raise
     if isinstance(result, FunctionType):
         result = overload([result])
     assert not free_vars_expr(result), f"{result!r}"
@@ -1415,262 +1420,105 @@ def pretty_print_type(t: Module | TypeExpr, indent: int = 0) -> None:
             raise NotImplementedError(f"{t!r}, {type(t)}")
 
 
-def parse_side_effect(stmt: ast.stmt) -> SideEffect:
-    assert isinstance(stmt, ast.Assign)
-    assert len(stmt.targets) == 1
-    target = stmt.targets[0]
-    assert isinstance(target, ast.Name)
+# def parse_side_effect(stmt: ast.stmt) -> SideEffect:
+#     assert isinstance(stmt, ast.Assign)
+#     assert len(stmt.targets) == 1
+#     target = stmt.targets[0]
+#     assert isinstance(target, ast.Name)
+#
+#     return SideEffect(
+#         new="new" in name_decorators and not is_immutable(returns),
+#         update=update_type,
+#         points_to_args="points_to_args" in name_decorators,
+#     )
 
-    return SideEffect(
-        new="new" in name_decorators and not is_immutable(returns),
-        update=update_type,
-        points_to_args="points_to_args" in name_decorators,
-    )
+
+def make_typevar(t: ast.TypeVar | ast.TypeVarTuple) -> TypeVar:
+    return TypeVar(t.name, is_args=isinstance(t, ast.TypeVarTuple))
 
 
-def module_to_type(module: ast.Module, module_name: str) -> Module:
-    def free_vars(node: ast.expr | ast.arg) -> set[str]:
-        return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+def generic_types(*vars: ast.TypeVar | ast.TypeVarTuple) -> tuple[TypeVar, ...]:
+    return tuple(make_typevar(var) for var in vars)
 
-    def expr_to_type(expr: typing.Optional[ast.expr]) -> TypeExpr:
-        match expr:
-            case None:
-                return ANY
-            case ast.Constant(value):
-                return literal(value)
-            case ast.Name(id=id):
-                if id in generic_vars:
-                    return generic_vars[id]
-                if id in global_aliases:
-                    return Ref(global_aliases[id])
-                if id in global_names:
-                    return Ref(f"{module_name}.{id}")
-                else:
-                    return Ref(f"builtins.{id}")
-            case ast.Starred(value=ast.Name(id=id)):
-                return TypeVar(id, is_args=True)
-            case ast.Subscript(value=value, slice=slice):
-                generic = expr_to_type(value)
-                if isinstance(generic, TypeVar):
-                    return Access(generic, expr_to_type(slice))
-                match slice:
-                    case ast.Tuple(elts=[arg, ast.Constant(value=x)]) if str(
-                        x
-                    ) == "Ellipsis":
-                        raise NotImplementedError(
-                            f"{generic}[{expr_to_type(arg)}, ...]"
-                        )
-                    case ast.Tuple(elts=elts):
-                        items = tuple(expr_to_type(x) for x in elts)
-                    case expr:
-                        items = (expr_to_type(expr),)
-                return Instantiation(generic, items)
-            case ast.Attribute(value=value, attr=attr):
-                ref: TypeExpr = expr_to_type(value)
-                assert isinstance(ref, Ref), f"Expected Ref, got {ref!r} for {value!r}"
-                return Ref(f"{ref.name}.{attr}")
-            case ast.BinOp(left=left, op=op, right=right):
-                left_type = expr_to_type(left)
-                right_type = expr_to_type(right)
-                if isinstance(op, ast.BitOr):
-                    return union([left_type, right_type])
-                raise NotImplementedError(f"{left_type} {op} {right_type}")
-            case _:
-                raise NotImplementedError(f"{expr!r}")
 
-    def parse_generic_arguments(slice: ast.expr) -> tuple[TypeVar, ...]:
-        match slice:
+class SymbolTable:
+    def __init__(self, scope_name: str | None, parent: SymbolTable | None = None):
+        self.generic_vars: dict[str, TypeVar] = {}
+        self.aliases: dict[str, str] = {}
+        self.names: set[str] = set()
+        self.scope_name: str = scope_name
+        self.parent: SymbolTable = parent
+
+    def add_generics(
+        self, *vars: ast.TypeVar | ast.TypeVarTuple
+    ) -> tuple[TypeVar, ...]:
+        typevars = [make_typevar(var) for var in vars]
+        for var, t in zip(vars, typevars):
+            self.generic_vars[var.name] = t
+        return tuple(typevars)
+
+    def lookup(self, name: str) -> TypeExpr:
+        if name in self.generic_vars:
+            return self.generic_vars[name]
+        if name in self.aliases:
+            return Ref(self.aliases[name])
+        if name in self.names:
+            assert self.parent is None
+            # FIX: give magic name to avoid aliasing
+            return Ref(f"{self.scope_name}.{name}")
+        if self.parent is not None:
+            return self.parent.lookup(name)
+        return Ref(f"builtins.{name}")
+
+
+class TypeExpressionParser(ast.NodeVisitor):
+    def __init__(self, symtable: SymbolTable):
+        self.symtable = symtable
+
+    def to_type(self, expr: ast.expr) -> TypeExpr:
+        return self.visit(expr)
+
+    def visit_None(self, expr: None) -> TypeExpr:
+        return ANY
+
+    def visit_Constant(self, value: ast.Constant) -> TypeExpr:
+        return literal(value.value)
+
+    def visit_Name(self, name) -> TypeExpr:
+        return self.symtable.lookup(name.id)
+
+    def visit_Starred(self, starred: ast.Starred) -> TypeExpr:
+        assert isinstance(starred.value, ast.Name), f"{starred!r}"
+        return TypeVar(starred.value.id, is_args=True)
+
+    def visit_Subscript(self, subscr: ast.Subscript) -> TypeExpr:
+        generic = self.to_type(subscr.value)
+        if isinstance(generic, TypeVar):
+            return Access(generic, self.to_type(subscr.slice))
+        match subscr.slice:
+            case ast.Tuple(elts=[arg, ast.Constant(value=x)]) if str(x) == "Ellipsis":
+                raise NotImplementedError(f"{generic}[{self.to_type(arg)}, ...]")
             case ast.Tuple(elts=elts):
-                return tuple(y for x in elts for y in parse_generic_arguments(x))
-            case ast.Name(id=id):
-                return (TypeVar(id),)
-            case ast.Starred(value=ast.Name(id=id)):
-                return (TypeVar(id, is_args=True),)
-            case _:
-                raise NotImplementedError(f"{slice!r}")
+                items = tuple(self.to_type(x) for x in elts)
+            case expr:
+                items = (self.to_type(expr),)
+        return Instantiation(generic, items)
 
-    # convert a Python ast to a type expression
-    def stmt_to_rows(definition: ast.stmt, index: int) -> typing.Iterator[Row]:
-        match definition:
-            case ast.Pass():
-                return
-            case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
-                yield make_row(index, name, expr_to_type(annotation))
-            case ast.Import(names=aliases):
-                for alias in aliases:
-                    asname = alias.asname
-                    if asname is None:
-                        continue
-                    yield make_row(index, asname, Ref(alias.name))
-            case ast.ClassDef(
-                name=class_name,
-                body=body,
-                bases=base_expressions,
-                decorator_list=decorator_list,
-            ):
-                base_classes_list = []
-                protocol = False
-                type_params: tuple[TypeVar, ...] = ()
-                for base in base_expressions:
-                    match base:
-                        case ast.Name(id="Protocol"):
-                            protocol = True
-                        case ast.Subscript(
-                            value=ast.Name(id=("Protocol" | "Generic") as id),
-                            slice=param_slice,
-                        ):
-                            protocol = id == "Protocol"
-                            type_params = parse_generic_arguments(param_slice)
-                        case ast.Name(id=id):
-                            base_classes_list.append(Ref(id))
-                        case _:
-                            raise NotImplementedError(f"{base!r}")
+    def visit_Attribute(self, attribute: ast.Attribute) -> TypeExpr:
+        ref: TypeExpr = self.to_type(attribute.value)
+        assert isinstance(ref, Ref), f"Expected Ref, got {ref!r} for {attr.value!r}"
+        return Ref(f"{ref.name}.{attribute.attr}")
 
-                name_decorators = {
-                    decorator.id: decorator
-                    for decorator in decorator_list
-                    if isinstance(decorator, ast.Name)
-                }
-                res: TypeExpr
-                if "module" in name_decorators:
-                    module_dict = typed_dict(
-                        [
-                            row
-                            for index, stmt in enumerate(body)
-                            for row in stmt_to_rows(stmt, index)
-                        ]
-                    )
-                    res = Module(f"{module_name}.{class_name}", module_dict)
-                    yield make_row(index, class_name, res)
-                else:
-                    class_dict = typed_dict(
-                        [
-                            infer_self(row)
-                            for index, stmt in enumerate(body)
-                            for row in stmt_to_rows(stmt, index)
-                        ]
-                    )
+    def visit_BinOp(self, binop: ast.BinOp) -> TypeExpr:
+        left_type = self.to_type(binop.left)
+        right_type = self.to_type(binop.right)
+        if isinstance(binop.op, ast.BitOr):
+            return union([left_type, right_type])
+        raise NotImplementedError(f"{left_type} {binop.op} {right_type}")
 
-                    res = Class(
-                        class_name,
-                        class_dict,
-                        inherits=tuple(base_classes_list),
-                        protocol=protocol,
-                        type_params=type_params,
-                    )
-                    typetype = Instantiation(Ref("builtins.type"), (res,))
-                    metaclass = Class(
-                        f"__{class_name}_metaclass__",
-                        typed_dict(
-                            [
-                                make_row(
-                                    0,
-                                    "__call__",
-                                    FunctionType(
-                                        typed_dict(
-                                            [
-                                                make_row(0, "cls", TypeVar("Infer")),
-                                            ]
-                                        ),
-                                        Ref("type"),
-                                        side_effect=SideEffect(new=True),
-                                        is_property=False,
-                                        type_params=(),
-                                    ),
-                                ),
-                            ]
-                        ),
-                        inherits=(Ref("builtins.type"),),
-                        protocol=False,
-                        type_params=type_params,
-                    )
-                    yield make_row(index, class_name, typetype)
 
-            case ast.FunctionDef() as fdef:
-                freevars = {x for node in fdef.args.args for x in free_vars(node)}
-                returns = expr_to_type(fdef.returns)
-                name_decorators = {
-                    decorator.id: decorator
-                    for decorator in fdef.decorator_list
-                    if isinstance(decorator, ast.Name)
-                }
-                call_decorators = {
-                    decorator.func.id: decorator
-                    for decorator in fdef.decorator_list
-                    if isinstance(decorator, ast.Call)
-                }
-                update = call_decorators.get("update")
-                if update is not None:
-                    assert isinstance(update, ast.Call)
-                    assert len(update.args) == 1
-                    update_type = expr_to_type(update.args[0])
-                else:
-                    update_type = None
-                # side_effect = parse_side_effect(fdef.body)
-                side_effect = SideEffect(
-                    new="new" in name_decorators and not is_immutable(returns),
-                    update=update_type,
-                    points_to_args="points_to_args" in name_decorators,
-                    name=fdef.name,
-                )
-                is_property = "property" in name_decorators
-                type_params = tuple(
-                    generic_vars[x] for x in freevars if x in generic_vars
-                )
-                params = typed_dict(
-                    [
-                        make_row(index, arg.arg, expr_to_type(arg.annotation))
-                        for index, arg in enumerate(fdef.args.args)
-                    ]
-                )
-                f = FunctionType(
-                    params=params,
-                    return_type=returns,
-                    side_effect=side_effect,
-                    is_property=is_property,
-                    type_params=type_params,
-                )
-
-                yield make_row(index, fdef.name, f)
-            case ast.If():
-                return
-            case ast.Expr():
-                return []
-            case _:
-                raise NotImplementedError(f"{definition!r}, {type(definition)}")
-
-    global_names = {
-        node.name
-        for node in module.body
-        if isinstance(node, (ast.ClassDef, ast.FunctionType))
-    }
-    generic_vars = {
-        node.targets[0].id: TypeVar(
-            node.targets[0].id, node.value.func.id == "TypeVarTuple"
-        )
-        for node in module.body
-        if isinstance(node, ast.Assign)
-        and isinstance(node.value, ast.Call)
-        and isinstance(node.value.func, ast.Name)
-        and node.value.func.id in ["TypeVar", "TypeVarTuple"]
-        and isinstance(node.targets[0], ast.Name)
-    }
-    global_aliases = {
-        name.asname: name.name
-        for node in module.body
-        if isinstance(node, ast.Import)
-        for name in node.names
-        if name.asname is not None
-    }
-    class_dict = typed_dict(
-        [
-            row
-            for index, stmt in enumerate(module.body)
-            if not isinstance(stmt, ast.Assign)
-            for row in stmt_to_rows(stmt, index)
-        ]
-    )
-    return Module(module_name, class_dict)
+def free_vars(node: ast.expr | ast.arg) -> set[str]:
+    return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
 
 
 def is_immutable(value: TypeExpr) -> bool:
@@ -1712,11 +1560,210 @@ def is_immutable(value: TypeExpr) -> bool:
             return False
 
 
+class TypeCollector:
+    def __init__(self):
+        self.symtable: SymbolTable | None = None
+
+    @contextlib.contextmanager
+    def enter_scope(self, name: str | None) -> None:
+        self.symtable = SymbolTable(name, parent=self.symtable)
+        yield
+        self.symtable = self.symtable.parent
+
+    def expr_to_type(self, expr: ast.expr) -> TypeExpr:
+        if expr is None:
+            return ANY
+        return TypeExpressionParser(self.symtable).visit(expr)
+
+    def visit_ClassDef(self, cdef: ast.ClassDef) -> Class | Module | Instantiation:
+        with self.enter_scope(cdef.name):
+            type_params = self.symtable.add_generics(*cdef.type_params)
+            base_classes_list = []
+            protocol = False
+            for base in cdef.bases:
+                match base:
+                    case ast.Name(id="Protocol"):
+                        protocol = True
+                    case ast.Subscript(
+                        value=ast.Name(id=("Protocol" | "Generic") as id),
+                    ):
+                        protocol |= id == "Protocol"
+                    case ast.Name(id=id):
+                        base_classes_list.append(Ref(id))
+                    case _:
+                        raise NotImplementedError(f"{base!r}")
+
+            name_decorators = {
+                decorator.id: decorator
+                for decorator in cdef.decorator_list
+                if isinstance(decorator, ast.Name)
+            }
+            if "module" in name_decorators:
+                module_dict = typed_dict(
+                    [
+                        row
+                        for index, stmt in enumerate(cdef.body)
+                        for row in self.stmt_to_rows(stmt, index)
+                    ]
+                )
+                return Module(f"{self.symtable.scope_name}.{cdef.name}", module_dict)
+            else:
+                class_dict = typed_dict(
+                    [
+                        infer_self(row)
+                        for index, stmt in enumerate(cdef.body)
+                        for row in self.stmt_to_rows(stmt, index)
+                    ]
+                )
+
+                res = Class(
+                    cdef.name,
+                    class_dict,
+                    inherits=tuple(base_classes_list),
+                    protocol=protocol,
+                    type_params=type_params,
+                )
+                typetype = Instantiation(Ref("builtins.type"), (res,))
+                metaclass = Class(
+                    f"__{cdef.name}_metaclass__",
+                    typed_dict(
+                        [
+                            make_row(
+                                0,
+                                "__call__",
+                                FunctionType(
+                                    typed_dict(
+                                        [
+                                            make_row(0, "cls", TypeVar("Infer")),
+                                        ]
+                                    ),
+                                    Ref("type"),
+                                    side_effect=SideEffect(new=True),
+                                    is_property=False,
+                                    type_params=(),
+                                ),
+                            ),
+                        ]
+                    ),
+                    inherits=(Ref("builtins.type"),),
+                    protocol=False,
+                    type_params=type_params,
+                )
+                return typetype
+
+    def visit_FunctionDef(self, fdef: ast.FunctionDef) -> FunctionType:
+        with self.enter_scope(fdef.name):
+            type_params = self.symtable.add_generics(*fdef.type_params)
+
+            returns = self.expr_to_type(fdef.returns)
+            name_decorators = {
+                decorator.id: decorator
+                for decorator in fdef.decorator_list
+                if isinstance(decorator, ast.Name)
+            }
+            call_decorators = {
+                decorator.func.id: decorator
+                for decorator in fdef.decorator_list
+                if isinstance(decorator, ast.Call)
+                and isinstance(decorator.func, ast.Name)
+            }
+            update = call_decorators.get("update")
+            if update is not None:
+                assert isinstance(update, ast.Call)
+                assert len(update.args) == 1
+                update_type = self.expr_to_type(update.args[0])
+            else:
+                update_type = None
+            # side_effect = parse_side_effect(fdef.body)
+            side_effect = SideEffect(
+                new="new" in name_decorators and not is_immutable(returns),
+                update=update_type,
+                points_to_args="points_to_args" in name_decorators,
+                name=fdef.name,
+            )
+            is_property = "property" in name_decorators
+
+            params = typed_dict(
+                [
+                    make_row(index, arg.arg, self.expr_to_type(arg.annotation))
+                    for index, arg in enumerate(fdef.args.args)
+                ]
+            )
+
+            # Trick: add free generic vars to type_params
+            free_generic_vars = {
+                t
+                for node in fdef.args.args
+                for x in free_vars(node)
+                if isinstance(t := self.symtable.lookup(x), TypeVar)
+                if t not in type_params
+            }
+            type_params = (*type_params, *free_generic_vars)
+
+            f = FunctionType(
+                params=params,
+                return_type=returns,
+                side_effect=side_effect,
+                is_property=is_property,
+                type_params=type_params,
+            )
+            return f
+
+    def stmt_to_rows(self, definition: ast.stmt, index: int) -> typing.Iterator[Row]:
+        match definition:
+            case ast.Pass():
+                return
+            case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation):
+                yield make_row(index, name, self.expr_to_type(annotation))
+            case ast.Import(names=aliases):
+                for alias in aliases:
+                    asname = alias.asname
+                    if asname is None:
+                        continue
+                    yield make_row(index, asname, Ref(alias.name))
+            case ast.ClassDef() as cdef:
+                t = self.visit_ClassDef(cdef)
+                yield make_row(index, cdef.name, t)
+            case ast.FunctionDef() as fdef:
+                t = self.visit_FunctionDef(fdef)
+                yield make_row(index, fdef.name, t)
+            case ast.If():
+                return
+            case ast.Expr():
+                return []
+            case _:
+                raise NotImplementedError(f"{definition!r}, {type(definition)}")
+
+    def visit_Module(self, module: ast.Module) -> Module:
+        self.symtable.names = {
+            node.name
+            for node in module.body
+            if isinstance(node, (ast.ClassDef, ast.FunctionType))
+        }
+        self.symtable.aliases = {
+            name.asname: name.name
+            for node in module.body
+            if isinstance(node, ast.Import)
+            for name in node.names
+            if name.asname is not None
+        }
+        class_dict = typed_dict(
+            [
+                row
+                for index, stmt in enumerate(module.body)
+                if not isinstance(stmt, ast.Assign)
+                for row in self.stmt_to_rows(stmt, index)
+            ]
+        )
+        return Module(self.symtable.scope_name, class_dict)
+
+
 def parse_file(path: str) -> Module:
     with open(path) as f:
         tree = ast.parse(f.read())
-    module = module_to_type(tree, Path(path).stem)
-    return module
+    module = TypeCollector()
+    with module.enter_scope(Path(path).stem):
+        return module.visit_Module(tree)
 
 
 TYPESHED_DIR = os.path.abspath(

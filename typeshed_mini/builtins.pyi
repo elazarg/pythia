@@ -1,7 +1,3 @@
-T = TypeVar('T')
-Q = TypeVar('Q')
-Args = TypeVarTuple('Args')
-N = TypeVar('N', Literal[int])
 
 class object:
     __dict__: dict
@@ -89,20 +85,20 @@ class str:
 class slice:
     def __bool__(self) -> bool: ...
 
-class tuple(Generic[*Args]):
+class tuple[*Args]:
     def __bool__(self) -> bool: ...
-    def __getitem__(self: tuple[*Args], item: N) -> Args[N]: ...
+    def __getitem__[N: Literal[int]](self: tuple[*Args], item: N) -> Args[N]: ...
     def __init__(self: tuple[*Args], *args: Args) -> None: ...
     def __add__(self: tuple[*Args], other: tuple) -> tuple: pass
     # def __add__(self: tuple[*Args], other: tuple[*Args2]) -> tuple[*Args, *Args2]: pass
 
-class list(Generic[T]):
+class list[T]:
     def __bool__(self) -> bool: ...
-    def __getitem__(self: list[T], index: N) -> T:
+    def __getitem__[N: Literal[int]](self: list[T], index: N) -> T:
         result = self[index]
 
     @update(list[T|Q])
-    def __setitem__(self: list[T], index: N, value: Q) -> None:
+    def __setitem__[Q](self: list[T], index: N, value: Q) -> None:
         self[index] = value
 
     @new
@@ -121,15 +117,15 @@ class list(Generic[T]):
         del self[:]
 
     @update(list[T|Q])
-    def append(self: list[T], x: Q) -> None:
+    def append[Q](self: list[T], x: Q) -> None:
         self[_] = x
 
     @update(list[T | Q])
-    def insert(self: list[T], i: int, x: Q) -> None:
+    def insert[Q](self: list[T], i: int, x: Q) -> None:
         self[_] = x
 
     @update(list[T | Q])
-    def extend(self: list[T], x: list[Q]) -> None:
+    def extend[Q](self: list[T], x: list[Q]) -> None:
         self += x
 
     @update(list[T])
@@ -150,22 +146,22 @@ class list(Generic[T]):
         self += self
 
     @new
-    def __add__(self: list[T], other: list[Q]) -> list[T|Q]: pass
+    def __add__[Q](self: list[T], other: list[Q]) -> list[T|Q]: pass
 
-class SupportsNext(Protocol[T]):
+class SupportsNext[T](Protocol):
     @update(SupportsNext[T])
     def __next__(self: SupportsNext[T]) -> T: ...
 
-class Iterable(Protocol[T]):
+class Iterable[T](Protocol):
     def __bool__(self) -> bool: ...
     @new
     def __iter__(self: Iterable[T]) -> SupportsNext[T]: ...
 
-class Indexable(Protocol[T]):
+class Indexable[T](Protocol):
     @new
     def __getitem__(self: Indexable[T], slice) -> T: ...
 
-class Iterator(Protocol[T]):
+class Iterator[T](Protocol):
     @new
     @update(Iterator[T])
     def __next__(self: Iterator[T]) -> T: ...
@@ -188,22 +184,22 @@ def all(x) -> bool: pass
 def any(x) -> bool: pass
 
 @new
-def sorted(x: list[T]) -> Iterable[T]:
+def sorted[T](x: list[T]) -> Iterable[T]:
     result += x
 
 @new
-def sorted(x: set[T]) -> Iterable[T]:
+def sorted[T](x: set[T]) -> Iterable[T]:
     result += x
 
-def zip(x: Iterable[T], y: Iterable[Q]) -> Iterable[tuple[T, Q]]: pass
+def zip[T, Q](x: Iterable[T], y: Iterable[Q]) -> Iterable[tuple[T, Q]]: pass
 
 @new
-def iter(xs: list[T]) -> SupportsNext[T]:
+def iter[T](xs: list[T]) -> SupportsNext[T]:
     result += xs
 
 @update(SupportsNext[T])
-def next(xs: SupportsNext[T]) -> T:
+def next[T](xs: SupportsNext[T]) -> T:
     result = xs[_]
 
-def enumerate(xs: T) -> Iterable[tuple[int, T]]:
+def enumerate[T](xs: Iterable[T]) -> Iterable[tuple[int, T]]:
     pass

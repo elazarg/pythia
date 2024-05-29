@@ -60,6 +60,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[Inv]) -> InvariantPai
             except Exception as e:
                 e.add_note(f"At {location}")
                 e.add_note(f"from {ins}")
+                e.add_note(f"original command: {_cfg.annotator(location, ins)}")
                 e.add_note(f"pre: {pre_result[location]}")
                 raise e
 
