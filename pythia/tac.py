@@ -474,7 +474,7 @@ def make_tac_cfg(f: typing.Any) -> gu.Cfg[Tac]:
         sys.version_info[:2] in allowed
     ), f"Python version is {sys.version_info} but only {allowed} is supported"
     depths, ins_cfg = instruction_cfg.make_instruction_block_cfg_from_function(f)
-
+    # gu.pretty_print_cfg(gu.simplify_cfg(ins_cfg))
     trace_origin: dict[int, instruction_cfg.Instruction] = {}
 
     def instruction_block_to_tac_block(
@@ -742,8 +742,11 @@ def make_tac_no_dels(
             ]
         case ["SWAP"]:
             a = stackvar(stack_depth - 0)
-            b = stackvar(stack_depth - 1)
-            return [Assign(a, Call(Predefined.TUPLE, (b, a))), Assign((a, b), a)]
+            b = stackvar(stack_depth - val + 1)
+            return [
+                Assign(a, Call(Predefined.TUPLE, (b, a))),
+                Assign((a, b), a),
+            ]
         case ["CALL"]:
             assert isinstance(val, int)
             nargs = val & 0xFF
