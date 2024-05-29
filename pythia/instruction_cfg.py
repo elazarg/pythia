@@ -103,8 +103,6 @@ def make_instruction_block_cfg(
     instructions: Iterable[Instruction],
 ) -> tuple[dict[gu.Label, int], Cfg]:
     instructions = list(instructions)
-    # for i, ins in enumerate(instructions):
-    #     print(i, ins)
     next_instruction: list[gu.Label] = [
         instructions[i + 1].offset for i in range(len(instructions) - 1)
     ]
