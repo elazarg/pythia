@@ -1,8 +1,8 @@
-networkx==3.2.1
-numpy==1.25.0
-matplotlib==3.7.1
-pytest==7.4.0
-pyelftools==0.29
-qemu.qmp==0.0.2
-scikit-learn==1.2.2
+networkx==3.3.0
+numpy==1.26.4
+matplotlib==3.9.0
+pytest==8.2.1
+pyelftools==0.31
+qemu.qmp==0.0.3
+scikit-learn==1.5.0
 black==24.4.2

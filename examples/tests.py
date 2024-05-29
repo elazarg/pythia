@@ -60,6 +60,8 @@ def build_aliased_list_of_known_lists(k: int, xs: list[int], i: int) -> None:
 def iterate(x: int):
     for i in range(x):
         pass
+    x = 5
+    print(x)
 
 
 def cmp(a: float, b: float) -> bool:

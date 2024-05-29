@@ -56,12 +56,19 @@ def calculate_stack_effect(ins: Instruction) -> int:
     see https://github.com/python/cpython/blob/master/Python/compile.c#L860"""
     if ins.opname in ["SETUP_EXCEPT", "SETUP_FINALLY", "POP_EXCEPT", "END_FINALLY"]:
         assert False, "for all we know. we assume no exceptions"
-    if is_raise(ins):
-        # if we wish to analyze exception path, we should break to except: and push 3, or something.
-        return -1
-    if ins.opname == "BREAK_LOOP" and ins.argrepr.startswith("FOR"):
-        return -1
-    return dis.stack_effect(ins.opcode, ins.arg)
+    # if is_raise(ins):
+    #     # if we wish to analyze exception path, we should break to except: and push 3, or something.
+    #     return -1
+    # if ins.opname == "BREAK_LOOP" and ins.argrepr.startswith("FOR"):
+    #     return -1
+    if ins.opname == "END_FOR":
+        return 0
+    if hasattr(dis, "hasarg"):
+        arg = ins.arg if ins.opcode in dis.hasarg else None
+    else:
+        arg = ins.arg if ins.opcode >= dis.HAVE_ARGUMENT else None
+    res = dis.stack_effect(ins.opcode, arg)
+    return res
 
 
 def is_for_iter(ins: Instruction) -> bool:
@@ -96,7 +103,8 @@ def make_instruction_block_cfg(
     instructions: Iterable[Instruction],
 ) -> tuple[dict[gu.Label, int], Cfg]:
     instructions = list(instructions)
-
+    # for i, ins in enumerate(instructions):
+    #     print(i, ins)
     next_instruction: list[gu.Label] = [
         instructions[i + 1].offset for i in range(len(instructions) - 1)
     ]
@@ -120,4 +128,4 @@ def make_instruction_block_cfg(
 
 
 def make_instruction_block_cfg_from_function(f: Any) -> tuple[dict[gu.Label, int], Cfg]:
-    return make_instruction_block_cfg(dis.get_instructions(f))
+    return make_instruction_block_cfg(dis.get_instructions(f, show_caches=False))

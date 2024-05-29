@@ -469,10 +469,10 @@ def make_class(name: str) -> Attribute:
 
 
 def make_tac_cfg(f: typing.Any) -> gu.Cfg[Tac]:
-    assert sys.version_info[:2] == (
-        3,
-        11,
-    ), f"Python version is {sys.version_info} but only 3.11 is supported"
+    allowed = {(3, 11), (3, 12)}
+    assert (
+        sys.version_info[:2] in allowed
+    ), f"Python version is {sys.version_info} but only {allowed} is supported"
     depths, ins_cfg = instruction_cfg.make_instruction_block_cfg_from_function(f)
 
     trace_origin: dict[int, instruction_cfg.Instruction] = {}
@@ -509,6 +509,8 @@ def make_tac_no_dels(
     """Translate a bytecode operation into a list of TAC instructions."""
     out = stack_depth + stack_effect if stack_depth is not None else None
     match opname.split("_"):
+        case ["CACHE"]:
+            return []
         case (
             ["UNARY", sop]
             | ["GET", "ITER" as sop]
@@ -541,7 +543,7 @@ def make_tac_no_dels(
                     Subscript(stackvar(stack_depth - 1), stackvar(stack_depth)),
                 )
             ]
-        case ["BINARY" | "COMPARE", "OP"]:
+        case ["BINARY", "OP"] | ["COMPARE", "OP"] | ["IS", "OP"] | ["CONTAINS", "OP"]:
             lhs = stackvar(out)
             left = stackvar(stack_depth - 1)
             right = stackvar(stack_depth)
@@ -549,7 +551,11 @@ def make_tac_no_dels(
                 return [Assign(lhs, Binary(left, argrepr[:-1], right, inplace=True))]
             else:
                 return [Assign(lhs, Binary(left, argrepr, right, inplace=False))]
-        case ["POP", "JUMP", "FORWARD" | "BACKWARD", "IF", *v]:
+        case (
+            ["POP", "JUMP", "FORWARD", "IF", *v]
+            | ["POP", "JUMP", "BACKWARD", "IF", *v]
+            | ["POP", "JUMP", "IF", *v]
+        ):
             sop = "_".join(v)
             # 'FALSE' | 'TRUE' | 'NONE' | 'NOT_NONE'
             res: list[Tac]
@@ -570,11 +576,13 @@ def make_tac_no_dels(
         ):
             assert isinstance(val, int)
             return [Jump(val)]
-        case ["POP", "TOP"]:
+        case ["POP", "TOP"] | ["END", "FOR"]:
             return []
         case ["DELETE", "FAST"]:
             variables = (Var(argrepr, False),)
             return [Del(variables)]
+        case ["DELETE", "DEREF"]:
+            assert False, "added in python3.12"
         case ["ROT", "TWO"]:
             fresh = stackvar(stack_depth + 1)
             return [
@@ -601,6 +609,11 @@ def make_tac_no_dels(
             ]
         case ["RETURN", "VALUE"]:
             return [Return(stackvar(stack_depth))]
+        case ["RETURN", "CONST"]:
+            return [
+                Assign(stackvar(stack_depth + 1), Const(val)),
+                Return(stackvar(stack_depth + 1)),
+            ]
         case ["YIELD", "VALUE"]:
             return [Assign(stackvar(out), Yield(stackvar(stack_depth)))]
         case ["FOR", "ITER"]:
@@ -608,6 +621,10 @@ def make_tac_no_dels(
             return [For(stackvar(out), stackvar(stack_depth), val)]
         case ["LOAD", "CONST"]:
             return [Assign(stackvar(out), Const(val))]
+        case ["LOAD", "LOCALS"]:
+            assert False, "added in python3.12"
+        case ["LOAD", "FROM", "DICT", "OR", "GLOBALS"]:
+            assert False, "added in python3.12"
         case ["COPY"]:
             # Push the i-th item to the top of the stack. The item is not removed from its original location.
             lhs = stackvar(out)
@@ -621,13 +638,18 @@ def make_tac_no_dels(
             assert isinstance(val, str), f"{opname}, {val}, {argrepr}"
             match ops:
                 case ["ATTR"]:
+                    # Changed in version 3.12: If the low bit of namei is set, then a NULL or self
+                    # is pushed to the stack before the attribute or unbound method respectively.
                     return [Assign(lhs, Attribute(stackvar(stack_depth), Var(val)))]
                 case ["METHOD"]:
+                    # removed in python3.12
                     return [Assign(lhs, Attribute(stackvar(stack_depth), Var(val)))]
-                case ["FAST" | "NAME"]:
+                case ["FAST"] | ["NAME"] | ["FAST", "CHECK"] | ["FAST", "AND", "CLEAR"]:
                     return [Assign(lhs, Var(val))]
                 case ["DEREF"]:
                     return [Assign(lhs, make_nonlocal(val))]
+                case ["FROM", "DICT", "OR", "DEREF"]:
+                    assert False, "added in python3.12"
                 case ["GLOBAL"]:
                     return [Assign(lhs, make_global(val))]
                 case ["CLOSURE"]:
@@ -654,6 +676,8 @@ def make_tac_no_dels(
                     stackvar(stack_depth - 2),
                 )
             ]
+        case ["PUSH", "NULL"]:
+            return []
         case ["POP", "BLOCK"]:
             return []
         case ["SETUP", "LOOP"]:
@@ -685,6 +709,23 @@ def make_tac_no_dels(
                     stackvar(stack_depth - 2),
                 )
             return [Assign(stackvar(out), Call(Predefined.SLICE, args))]
+        case ["BINARY", "SLICE"]:
+            end = stackvar(stack_depth)
+            start = stackvar(stack_depth - 1)
+            container = stackvar(stack_depth - 2)
+            return [
+                Assign(stackvar(out), Call(Predefined.SLICE, (start, end))),
+                Assign(stackvar(out), Subscript(container, stackvar(out))),
+            ]
+        case ["STORE", "SLICE"]:
+            end = stackvar(stack_depth)
+            start = stackvar(stack_depth - 1)
+            container = stackvar(stack_depth - 2)
+            value = stackvar(stack_depth - 3)
+            return [
+                Assign(stackvar(out), Call(Predefined.SLICE, (start, end))),
+                Assign(Subscript(container, stackvar(out)), value),
+            ]
         case ["BUILD", op]:
             assert isinstance(val, int)
             return [
@@ -706,8 +747,12 @@ def make_tac_no_dels(
         case ["CALL"]:
             assert isinstance(val, int)
             nargs = val & 0xFF
+            if sys.version_info[:2] == (3, 12):
+                stack_depth -= nargs
             mid = [stackvar(i + 1) for i in range(stack_depth, stack_depth + nargs)]
             return [Assign(stackvar(out), Call(stackvar(stack_depth), tuple(mid)))]
+        case ["CALL", "INTRINSIC", v]:
+            assert False, "added in python3.12"
         case ["CALL", "FUNCTION", "KW"]:
             assert isinstance(val, int)
             nargs = val
@@ -725,7 +770,10 @@ def make_tac_no_dels(
                 )
             ]
             return res
-        case ["NOP" | "RESUME" | "PRECALL"]:
+        case ["NOP" | "RESUME"]:
+            return []
+        case ["PRECALL"]:
+            # removed in python3.12
             return []
         case ["EXTENDED", "ARG"]:
             """

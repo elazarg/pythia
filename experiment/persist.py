@@ -24,12 +24,12 @@ class Loader:
     version: int
     filename: pathlib.Path
 
-    def __init__(self, module_filename: str | pathlib.Path):
+    def __init__(self, module_filename: str | pathlib.Path) -> None:
         module_filename = pathlib.Path(module_filename)
-        with module_filename.open("rb") as f:
-            m = hashlib.md5()
-            m.update(f.read())
-            h = m.hexdigest()[:6]
+
+        # make sure the cache is invalidated when the module changes
+        h = compute_hash(module_filename)
+
         self.filename = pathlib.Path(
             f"experiment/{module_filename.parent.name}/cache/{h}.pickle"
         )
@@ -69,6 +69,14 @@ class Loader:
 
     def _now_recovering(self) -> bool:
         return pathlib.Path(self.filename).exists()
+
+
+def compute_hash(module_filename: pathlib.Path) -> str:
+    with module_filename.open("rb") as f:
+        m = hashlib.md5()
+        m.update(f.read())
+        h = m.hexdigest()[:6]
+    return h
 
 
 class PseudoLoader(Loader):

@@ -36,7 +36,7 @@ def read_function_using_compile(file_path: str, function_name: str) -> object:
     raise ValueError(f"Could not find function {function_name} in {file_path}")
 
 
-def read_file(file_path: str) -> tuple[dict[str, object], Any]:
+def read_file(file_path: str, filter_for_loops=True) -> tuple[dict[str, object], Any]:
     module = ast.parse("from __future__ import annotations\n", filename=file_path)
 
     with open(file_path, "r", encoding="utf-8") as file:
@@ -45,15 +45,20 @@ def read_file(file_path: str) -> tuple[dict[str, object], Any]:
 
     for node in code.body:
         if isinstance(node, ast.FunctionDef):
+            if not filter_for_loops:
+                module.body.append(node)
+                continue
             for n in ast.walk(node):
                 if isinstance(n, ast.For):
                     # if n.type_comment:
                     module.body.append(node)
+                    break
     functions = compile(module, "", "exec", dont_inherit=True, flags=0, optimize=0)
-    env: dict[str, object] = {}
+    env: dict[str, object] = {"new": lambda f: f}
     # exec should be safe here, since it cannot have any side effects
     exec(functions, {}, env)
     del env["annotations"]
+    del env["new"]
 
     globals_dict: dict[str, str] = {}
     for node in code.body:

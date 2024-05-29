@@ -6,18 +6,27 @@ from pythia.analysis import analyze_function
 
 
 def main() -> None:
-    this, module, *args = sys.argv
-    base_dir = f"experiment/{module}"
-    instrumented = f"{base_dir}/instrumented.py"
+    this, pythonfile, *args = sys.argv
+    if not pythonfile.endswith(".py"):
+        print(f"Usage: {this} <pythonfile> [<args>...]", file=sys.stderr)
+        sys.exit(1)
+    instrumented = pythonfile[:-3] + "_instrumented.py"
     analyze_function(
-        f"{base_dir}/main.py",
+        pythonfile,
         print_invariants=False,
         outfile=instrumented,
         simplify=True,
     )
-    subprocess.run(
-        [sys.executable, instrumented] + args, env={"PYTHONPATH": os.getcwd()}
-    )
+    try:
+        subprocess.run(
+            [sys.executable, instrumented] + args, env={"PYTHONPATH": os.getcwd()}
+        )
+    except subprocess.CalledProcessError as ex:
+        print(f"Error running {instrumented}: {ex}", file=sys.stderr)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print(f"Interrupted", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

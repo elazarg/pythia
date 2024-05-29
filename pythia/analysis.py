@@ -170,7 +170,9 @@ def analyze_function(
     outfile: str,
     simplify: bool,
 ) -> None:
-    functions, imports = disassemble.read_file(filename)
+    functions, imports = disassemble.read_file(
+        filename, filter_for_loops=not bool(function_names)
+    )
     module_type = ts.parse_file(filename)
 
     if not function_names:
@@ -185,6 +187,7 @@ def analyze_function(
         cfg = gu.simplify_cfg(cfg)
         if not simplify:
             cfg = gu.refine_to_chain(cfg)
+        # gu.pretty_print_cfg(cfg)
         try:
             for_location, loop_end = gu.find_first_for_loop(
                 cfg, lambda b: isinstance(b, tac.For)
