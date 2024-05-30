@@ -99,6 +99,10 @@ def calculate_stack_depth(cfg: Cfg) -> dict[gu.Label, int]:
     return res
 
 
+def pos_str(p: dis.Positions) -> str:
+    return f"{p.lineno}:{p.col_offset}-{p.end_lineno}:{p.end_col_offset}"
+
+
 def make_instruction_block_cfg(
     instructions: Iterable[Instruction],
 ) -> tuple[dict[gu.Label, int], Cfg]:
@@ -120,6 +124,7 @@ def make_instruction_block_cfg(
         if dbs.get(j) is not None
     ]
     cfg: Cfg = gu.Cfg(edges, blocks={k: [v] for k, v in dbs.items()})
+    cfg.annotator = lambda i, ins: f"{pos_str(ins.positions)}"
     depths = calculate_stack_depth(cfg)
     # each node will hold a block of dictionaries - instruction and stack_depth
     return depths, cfg

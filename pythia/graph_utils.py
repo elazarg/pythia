@@ -211,6 +211,7 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
     The label of the chain is the label of its first element.
     """
     # pretty_print_cfg(cfg)
+
     g = cfg.graph
     starts = set(
         chain(
@@ -225,11 +226,11 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
         n = label
         instructions = []
         while True:
-            instructions += g.nodes[n][BLOCK_NAME]
+            instructions.extend(g.nodes[n][BLOCK_NAME])
             if g.out_degree(n) != 1:
                 break
             next_n = next(iter(g.successors(n)))
-            if instructions and g.in_degree(next_n) != 1:
+            if next_n in starts:
                 break
             if len(instructions) and type(instructions[-1]).__name__ == "Jump":
                 del instructions[-1]
@@ -238,6 +239,19 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
         edges.extend((label, suc) for suc in g.successors(n))
         blocks[label] = instructions
     simplified_cfg = Cfg(edges, blocks=blocks, add_sink=True)
+
+    # remove empty blocks, and connect their predecessors to their successors
+    empty = {
+        label
+        for label, block in simplified_cfg.items()
+        if not block and label != simplified_cfg.exit_label
+    }
+    for label in empty:
+        for pred in simplified_cfg.predecessors(label):
+            for suc in simplified_cfg.successors(label):
+                simplified_cfg.graph.add_edge(pred, suc)
+        simplified_cfg.graph.remove_node(label)
+
     simplified_cfg.annotator = cfg.annotator
     return simplified_cfg
 
@@ -294,8 +308,9 @@ def pretty_print_cfg(cfg: Cfg[T]) -> None:
     for label, block in sorted(cfg.items()):
         if math.isinf(label):
             continue
+        print(list(cfg.graph.predecessors(label)))
         print_block(label, block, cfg.annotator)
-        print(list(cfg.graph.neighbors(label)))
+        print(list(cfg.graph.successors(label)))
         print()
 
 

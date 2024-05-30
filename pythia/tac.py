@@ -575,7 +575,7 @@ def make_tac_no_dels(
             | ["CONTINUE", "LOOP"]
         ):
             assert isinstance(val, int)
-            return [Jump(val)]
+            return []  # Jump(val)]
         case ["POP", "TOP"] | ["END", "FOR"]:
             return []
         case ["DELETE", "FAST"]:

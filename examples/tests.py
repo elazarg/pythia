@@ -32,7 +32,19 @@ def counter(i: int, j: int, f: np.ndarray) -> None:
     res[i] += j
 
 
+@new
+def empty_list_of_ints() -> list[int]:
+    return []
+
 # TODO: positives
+
+def build_list_of_ints(k: int) -> None:
+    clusters = []
+    for x in range(k):
+        clusters = []
+        for x in range(k):
+            clusters.append(empty_list_of_ints())
+    return clusters
 
 
 def build_list_of_lists(k: int) -> None:
@@ -62,6 +74,12 @@ def iterate(x: int):
         pass
     x = 5
     print(x)
+
+
+def double_iterate(xxs: list[list[int]], ys: list[int]):
+    for xs in range(xxs):
+        for x in range(xs):
+            ys[x] = x
 
 
 def cmp(a: float, b: float) -> bool:

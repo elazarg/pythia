@@ -25,7 +25,7 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
 
     nsamples, features = X.shape
     centroids = X[np.random.choice(nsamples, k)]
-    clusters: list[list[int]] = []
+    # clusters: list[list[int]] = []
     # Iterate until convergence or for max iterations
     for i in range(max_iterations):  # type: int
         # print(f"{max_iterations}/{i}", end="\r", flush=True)
