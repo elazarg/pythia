@@ -1,6 +1,7 @@
 # Data flow analysis and stuff.
 import math
 import typing
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import TypeVar, TypeAlias
 
@@ -51,7 +52,7 @@ def analyze(_cfg: Cfg, analysis: domain.InstructionLattice[Inv]) -> InvariantPai
 
         location = (label, block.first_index())
         pre = pre_result[location]
-        post = invariant = post_result[location] = analysis.copy(pre)
+        post = invariant = post_result[location] = deepcopy(pre)
         for index, ins in block.items():
             location = (label, index)
             pre_result[location] = post

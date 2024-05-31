@@ -65,9 +65,6 @@ class TypeLattice(ValueLattice[TypeExpr]):
     def bottom(self) -> TypeExpr:
         return ts.BOTTOM
 
-    def copy(self, values: TypeExpr) -> TypeExpr:
-        return values
-
     def is_less_than(self, left: TypeExpr, right: TypeExpr) -> bool:
         return ts.is_subtype(left, right)
 

@@ -75,9 +75,6 @@ class Lattice(typing.Protocol[T]):
     def is_less_than(self, left: T, right: T) -> bool:
         raise NotImplementedError
 
-    def copy(self, values: T) -> T:
-        raise NotImplementedError
-
 
 @dataclass(frozen=True)
 class Top:
@@ -414,9 +411,6 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
             return False
         return all(self.lattice.is_less_than(left[k], right[k]) for k in left.keys())
         # return self.join(left, right) == right
-
-    def copy(self, values: VarMapDomain[T]) -> VarMapDomain[T]:
-        return deepcopy(values)
 
     def is_bottom(self, values: VarMapDomain[T]) -> bool:
         return isinstance(values, Bottom)

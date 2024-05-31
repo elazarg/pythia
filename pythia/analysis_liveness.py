@@ -79,9 +79,6 @@ class LivenessLattice(Lattice[Liveness]):
     def is_less_than(self, left: Liveness, right: Liveness) -> bool:
         return self.join(left, right) == right
 
-    def copy(self, values: Liveness) -> Liveness:
-        return values
-
     def default(self) -> Liveness:
         return BOTTOM
 
@@ -107,9 +104,6 @@ class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
         self, left: VarMapDomain[Liveness], right: VarMapDomain[Liveness]
     ) -> bool:
         return self.join(left, right) == right
-
-    def copy(self, values: VarMapDomain[Liveness]) -> VarMapDomain[Liveness]:
-        return deepcopy(values)
 
     def is_top(self, elem: T) -> bool:
         return isinstance(elem, Top)

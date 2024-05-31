@@ -462,9 +462,6 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     def is_less_than(self, left: TypedPointer, right: TypedPointer) -> bool:
         return left.is_less_than(right)
 
-    def copy(self, tp: TypedPointer) -> TypedPointer:
-        return deepcopy(tp)
-
     def initial(self) -> TypedPointer:
         return TypedPointer.initial(self.annotations)
 
