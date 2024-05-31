@@ -2,6 +2,7 @@ from __future__ import annotations as _
 
 import math
 import typing
+from copy import deepcopy
 from dataclasses import dataclass
 from itertools import chain
 from typing import TypeVar, Generic, Callable, Iterator, TypeAlias, Optional
@@ -190,7 +191,7 @@ class Cfg(Generic[T]):
     def successors(self, label: Label) -> Iterator[Label]:
         return self.graph.successors(label)
 
-    def copy(self: Cfg) -> Cfg:
+    def __deepcopy__(self, memodict={}) -> Cfg:
         return Cfg(self.graph.copy(), add_sink=False)
 
     def dominance_frontiers(self) -> dict[Label, set[Label]]:
@@ -212,7 +213,7 @@ def simplify_cfg(cfg: Cfg, exception_labels=None) -> Cfg:
     """
     if exception_labels is None:
         exception_labels = set()
-    pretty_print_cfg(cfg)
+    # pretty_print_cfg(cfg)
 
     g = cfg.graph
     starts = (
@@ -247,7 +248,7 @@ def simplify_cfg(cfg: Cfg, exception_labels=None) -> Cfg:
             if not {label, suc} & exception_labels
         )
         blocks[label] = instructions
-    print(edges)
+    # print(edges)
     simplified_cfg = Cfg(edges, blocks=blocks, add_sink=False)
 
     # remove empty blocks, and connect their predecessors to their successors
@@ -262,7 +263,7 @@ def simplify_cfg(cfg: Cfg, exception_labels=None) -> Cfg:
         )
 
     simplified_cfg.annotator = cfg.annotator
-    pretty_print_cfg(simplified_cfg)
+    # pretty_print_cfg(simplified_cfg)
     return simplified_cfg
 
 
@@ -294,7 +295,7 @@ def refine_to_chain(cfg: Cfg) -> Cfg:
 
 
 def node_data_map(cfg: Cfg[T], f: Callable[[Label, Block[T]], Block[Q]]) -> Cfg[Q]:
-    cfg = cfg.copy()
+    cfg = deepcopy(cfg)
     for n, data in cfg.nodes.items():
         data[BLOCK_NAME] = f(n, data[BLOCK_NAME])
     return typing.cast(Cfg[Q], cfg)

@@ -24,6 +24,7 @@ Here:
 from __future__ import annotations as _
 
 import typing
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import TypeVar
 
@@ -108,7 +109,7 @@ class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
         return self.join(left, right) == right
 
     def copy(self, values: VarMapDomain[Liveness]) -> VarMapDomain[Liveness]:
-        return values.copy()
+        return deepcopy(values)
 
     def is_top(self, elem: T) -> bool:
         return isinstance(elem, Top)
@@ -127,7 +128,7 @@ class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
         self, d: typing.Optional[dict[tac.Var, Liveness]] = None
     ) -> Map[tac.Var, Liveness]:
         d = d or {}
-        return Map(default=self.lattice.default(), d=d)
+        return Map(default=self.lattice.default, d=d)
 
     def top(self) -> Map[tac.Var, Liveness]:
         return self.make_map()
@@ -155,7 +156,7 @@ class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
     ) -> VarMapDomain[Liveness]:
         if isinstance(values, Bottom):
             return BOTTOM
-        values = values.copy()
+        values = deepcopy(values)
         for v in tac.gens(ins):
             values[v] = BOTTOM
         for v in tac.free_vars(ins):
@@ -167,7 +168,7 @@ class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
     ) -> VarMapDomain[Liveness]:
         if isinstance(values, Bottom):
             return BOTTOM
-        values = values.copy()
+        values = deepcopy(values)
         to_update = self.back_transfer(values, ins, location)
         if isinstance(to_update, Bottom):
             return BOTTOM

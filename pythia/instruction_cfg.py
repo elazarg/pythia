@@ -111,7 +111,7 @@ def pos_str(p: dis.Positions) -> str:
 def make_instruction_block_cfg(f: Any) -> tuple[dict[gu.Label, int], Cfg]:
     b = dis.Bytecode(f, show_caches=False)
     instructions = list(b)
-    print(b.dis())
+    # print(b.dis())
     next_instruction: list[gu.Label] = [
         instructions[i + 1].offset for i in range(len(instructions) - 1)
     ]
@@ -131,7 +131,6 @@ def make_instruction_block_cfg(f: Any) -> tuple[dict[gu.Label, int], Cfg]:
     # add each exception target from b.exception_table as an edge from entry:
     for ex_entry in b.exception_entries:
         edge = (0, ex_entry.target, {"stack_effect": ex_entry.depth})
-        print(edge)
         edges.append(edge)
 
     cfg: Cfg = gu.Cfg(
@@ -141,7 +140,7 @@ def make_instruction_block_cfg(f: Any) -> tuple[dict[gu.Label, int], Cfg]:
         add_source=False,
     )
     cfg.annotator = lambda i, ins: f"{pos_str(ins.positions)}"
-    gu.pretty_print_cfg(cfg)
+    # gu.pretty_print_cfg(cfg)
     depths = calculate_stack_depth(cfg)
     cfg = gu.simplify_cfg(
         cfg, exception_labels={ex.target for ex in b.exception_entries}

@@ -77,30 +77,30 @@ def make_fields(
     d: typing.Optional[typing.Mapping[tac.Var, ObjectSet]] = None
 ) -> Fields:
     d = d or {}
-    return domain.Map(default=domain.Set(), d=d)
+    return domain.Map(default=domain.Set, d=d)
 
 
 def make_graph(d: typing.Optional[typing.Mapping[Object, Fields]] = None) -> Graph:
     d = d or {}
-    return domain.Map(default=make_fields(), d=d)
+    return domain.Map(default=make_fields, d=d)
 
 
 def make_dirty(
     d: typing.Optional[typing.Mapping[Object, typing.Iterable[tac.Var]]] = None
 ) -> Dirty:
     d = d or {}
-    return domain.Map(default=domain.Set(), d={k: domain.Set(v) for k, v in d.items()})
+    return domain.Map(default=domain.Set, d={k: domain.Set(v) for k, v in d.items()})
 
 
 def make_dirty_from_keys(keys: ObjectSet, field: DirtySet) -> Dirty:
-    return domain.Map(default=domain.Set(), d={k: field for k in keys.as_set()})
+    return domain.Map(default=domain.Set, d={k: field for k in keys.as_set()})
 
 
 def make_type_map(
     d: typing.Optional[typing.Mapping[Object, ts.TypeExpr]] = None
 ) -> domain.Map[Object, ts.TypeExpr]:
     d = d or {}
-    return domain.Map(default=ts.BOTTOM, d=d)
+    return domain.Map(default=(lambda: ts.BOTTOM), d=d)
 
 
 @dataclass
@@ -126,8 +126,8 @@ class Pointer:
             for field in self.graph[obj]
         )
 
-    def copy(self) -> Pointer:
-        return Pointer(self.graph)
+    def __deepcopy__(self, memodict={}):
+        return Pointer(deepcopy(self.graph, memodict))
 
     @staticmethod
     def bottom() -> Pointer:
@@ -137,7 +137,7 @@ class Pointer:
         return False
 
     def join(self, other: Pointer) -> Pointer:
-        pointers = self.graph.copy()
+        pointers = deepcopy(self.graph)
         for obj, fields in other.graph.items():
             if obj in pointers:
                 for field, values in fields.items():
@@ -259,8 +259,8 @@ class TypeMap:
         # TODO: check
         return all(ts.is_subtype(self.map[obj], other.map[obj]) for obj in self.map)
 
-    def copy(self) -> TypeMap:
-        return TypeMap(self.map)
+    def __deepcopy__(self, memodict={}):
+        return TypeMap(deepcopy(self.map, memodict))
 
     @staticmethod
     def bottom() -> TypeMap:
@@ -344,8 +344,12 @@ class TypedPointer:
             and self.dirty.is_less_than(other.dirty)
         )
 
-    def copy(self: TypedPointer) -> TypedPointer:
-        return TypedPointer(self.pointers.copy(), self.types.copy(), self.dirty.copy())
+    def __deepcopy__(self, memodict={}):
+        return TypedPointer(
+            deepcopy(self.pointers, memodict),
+            deepcopy(self.types, memodict),
+            deepcopy(self.dirty, memodict),
+        )
 
     @staticmethod
     def bottom() -> TypedPointer:
@@ -425,7 +429,7 @@ def parse_annotations(
         if row.index.name is not None
     }
     # annotations[Param(tac.Var('return'))] = this_signature.return_type
-    return domain.Map(default=ts.BOTTOM, d=annotations)
+    return domain.Map(default=(lambda: ts.BOTTOM), d=annotations)
 
 
 def flatten(xs: typing.Iterable[ObjectSet]) -> ObjectSet:
@@ -459,7 +463,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         return left.is_less_than(right)
 
     def copy(self, tp: TypedPointer) -> TypedPointer:
-        return tp.copy()
+        return deepcopy(tp)
 
     def initial(self) -> TypedPointer:
         return TypedPointer.initial(self.annotations)
@@ -795,8 +799,8 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     def transfer(
         self, prev_tp: TypedPointer, ins: tac.Tac, _location: Location
     ) -> TypedPointer:
-        tp = prev_tp.copy()
-        prev_tp = deepcopy(prev_tp)  # defensive copy; should not be needed
+        tp = deepcopy(prev_tp)
+        # prev_tp = deepcopy(prev_tp)  # defensive copy; should not be needed
 
         if _location == self.for_location:
             tp.dirty = make_dirty()

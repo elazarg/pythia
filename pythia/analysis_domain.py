@@ -1,5 +1,6 @@
 from __future__ import annotations as _
 
+import collections
 import typing
 from copy import deepcopy
 from dataclasses import dataclass
@@ -83,9 +84,6 @@ class Top:
     def __str__(self) -> str:
         return "⊤"
 
-    def copy(self: T) -> T:
-        return self
-
     def __or__(self, other: object) -> Top:
         return self
 
@@ -104,7 +102,8 @@ class Top:
     def __copy__(self):
         return self
 
-    def __deepcopy__(self, memo):
+    def __deepcopy__(self, memodict={}):
+        memodict[id(self)] = self
         return self
 
 
@@ -113,7 +112,8 @@ class Bottom:
     def __str__(self) -> str:
         return "⊥"
 
-    def copy(self: T) -> T:
+    def __deepcopy__(self, memodict={}):
+        memodict[id(self)] = self
         return self
 
     def __or__(self, other: T) -> T:
@@ -139,7 +139,7 @@ class Set(typing.Generic[T]):
     def __init__(self, s: typing.Optional[typing.Iterable[T] | Top] = None):
         if s is None:
             self._set = frozenset()
-        elif isinstance(s, Top):
+        elif s is TOP:
             self._set = TOP
         else:
             self._set = frozenset(s)
@@ -149,6 +149,14 @@ class Set(typing.Generic[T]):
             return "Set(TOP)"
         items = ", ".join(repr(x) for x in self._set)
         return f"Set({items})"
+
+    def __deepcopy__(self, memodict={}):
+        if isinstance(self._set, Top):
+            result = Set(TOP)
+        else:
+            result = Set([deepcopy(x, memodict) for x in self._set])
+        memodict[id(self)] = result
+        return result
 
     @classmethod
     def top(cls: typing.Type[Set[T]]) -> Set[T]:
@@ -229,17 +237,24 @@ class Map(typing.Generic[K, T]):
     _map: dict[K, T]
     default: T
 
-    def __init__(self, default: T, d: typing.Optional[typing.Mapping[K, T]] = None):
+    def __init__(
+        self,
+        default: typing.Callable[[], T],
+        d: typing.Optional[typing.Mapping[K, T]] = None,
+    ):
         self.default = default
         self._map = {}
         if d is not None:
             self.update(d)
 
     def __getitem__(self, key: K) -> T:
-        return self._map.get(key, deepcopy(self.default))
+        m = self._map
+        if key in m:
+            return m[key]
+        return self.default()
 
     def __setitem__(self, key: K, value: T) -> None:
-        if value == self.default:
+        if value == self.default():
             if key in self._map:
                 del self._map[key]
         else:
@@ -248,8 +263,16 @@ class Map(typing.Generic[K, T]):
             self._map[key] = value
 
     def update(self, dictionary: typing.Mapping[K, T] | Map) -> None:
-        for k, v in dictionary.items():
-            self[k] = v
+        default = self.default()
+        m = self._map
+        for key, value in dictionary.items():
+            if value == default:
+                if key in m:
+                    del m[key]
+            else:
+                # assert not isinstance(value, dict)
+                # assert not isinstance(value, Map)
+                m[key] = value
 
     def __iter__(self) -> typing.Iterator[K]:
         return iter(self._map)
@@ -285,8 +308,10 @@ class Map(typing.Generic[K, T]):
     def keys(self) -> set[K]:
         return set(self._map.keys())
 
-    def copy(self) -> Map:
-        return Map(self.default, deepcopy(self._map))
+    def __deepcopy__(self, memodict={}):
+        return Map(
+            self.default, {k: deepcopy(v, memodict) for k, v in self._map.items()}
+        )
 
     def print(self) -> None:
         print(str(self))
@@ -391,14 +416,14 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
         # return self.join(left, right) == right
 
     def copy(self, values: VarMapDomain[T]) -> VarMapDomain[T]:
-        return values.copy()
+        return deepcopy(values)
 
     def is_bottom(self, values: VarMapDomain[T]) -> bool:
         return isinstance(values, Bottom)
 
     def make_map(self, d: typing.Optional[dict[tac.Var, T]] = None) -> Map[tac.Var, T]:
         d = d or {}
-        return Map(default=self.lattice.default(), d=d)
+        return Map(default=self.lattice.default, d=d)
 
     def top(self) -> Map[tac.Var, T]:
         return self.make_map()
@@ -516,7 +541,7 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
     ) -> VarMapDomain[T]:
         if isinstance(values, Bottom):
             return BOTTOM
-        values = values.copy()
+        values = deepcopy(values)
         try:
             # print(f'values: {values}')
             # print(f'{location}: {ins}')
