@@ -11,6 +11,7 @@ Cfg = gu.Cfg[Instruction]
 def is_sequencer(ins: Instruction) -> bool:
     return ins.opname in (
         "RETURN_VALUE",
+        "RETURN_CONST",
         "CONTINUE_LOOP",
         "BREAK_LOOP",
         "RAISE_VARARGS",
@@ -21,7 +22,7 @@ def is_sequencer(ins: Instruction) -> bool:
 
 
 def is_return(ins: Instruction) -> bool:
-    return ins.opname == "RETURN_VALUE"
+    return ins.opname.startswith("RETURN_")
 
 
 def is_jump_source(ins: Instruction) -> bool:
@@ -34,6 +35,7 @@ def is_jump(ins: Instruction) -> bool:
     return ins.opcode in dis.hasjrel or ins.opcode in dis.hasjabs
 
 
+# returns a list of (label, stack_effect) pairs
 def next_list(
     ins: Instruction, fallthrough: gu.Label, stack_effect: int
 ) -> list[tuple[gu.Label, int]]:
@@ -103,10 +105,10 @@ def pos_str(p: dis.Positions) -> str:
     return f"{p.lineno}:{p.col_offset}-{p.end_lineno}:{p.end_col_offset}"
 
 
-def make_instruction_block_cfg(
-    instructions: Iterable[Instruction],
-) -> tuple[dict[gu.Label, int], Cfg]:
-    instructions = list(instructions)
+def make_instruction_block_cfg(f: Any) -> tuple[dict[gu.Label, int], Cfg]:
+    b = dis.Bytecode(f, show_caches=False)
+    instructions = list(b)
+    print(b.dis())
     next_instruction: list[gu.Label] = [
         instructions[i + 1].offset for i in range(len(instructions) - 1)
     ]
@@ -123,12 +125,22 @@ def make_instruction_block_cfg(
         )
         if dbs.get(j) is not None
     ]
-    cfg: Cfg = gu.Cfg(edges, blocks={k: [v] for k, v in dbs.items()})
+    # add each exception target from b.exception_table as an edge from entry:
+    for ex_entry in b.exception_entries:
+        edge = (0, ex_entry.target, {"stack_effect": ex_entry.depth})
+        print(edge)
+        edges.append(edge)
+
+    cfg: Cfg = gu.Cfg(
+        edges,
+        blocks={k: [v] for k, v in dbs.items()},
+        add_sink=True,
+    )
     cfg.annotator = lambda i, ins: f"{pos_str(ins.positions)}"
+    gu.pretty_print_cfg(cfg)
     depths = calculate_stack_depth(cfg)
+    cfg = gu.simplify_cfg(
+        cfg, exception_labels={ex.target for ex in b.exception_entries}
+    )
     # each node will hold a block of dictionaries - instruction and stack_depth
     return depths, cfg
-
-
-def make_instruction_block_cfg_from_function(f: Any) -> tuple[dict[gu.Label, int], Cfg]:
-    return make_instruction_block_cfg(dis.get_instructions(f, show_caches=False))

@@ -29,16 +29,11 @@ def recursive_cn(g: dict[int, set[int]], root: int, max_only: bool = False):
     return cn([])
 
 
-@new
-def new_counter() -> collections.Counter[int]:
-    return collections.Counter()
-
-
 def run(
     g: dict[int, set[int]], root: int, max_only: bool = False
 ) -> collections.Counter[int]:
     root_to_leaf_path = [root]
-    counter = new_counter()
+    counter = collections.Counter[int]()
     for r in range(10**100):  # type: int
         if not root_to_leaf_path:
             break

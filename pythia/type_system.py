@@ -115,9 +115,12 @@ def make_row(
     )
 
 
+NULL = ...
+
+
 @dataclass(frozen=True)
 class Literal(TypeExpr):
-    value: int | str | bool | float | tuple | TypeVar | None
+    value: int | str | bool | float | tuple | TypeVar | None | Ellipsis
     ref: Ref
 
     def __repr__(self) -> str:
@@ -128,6 +131,8 @@ class Literal(TypeExpr):
 
 def literal(value: int | str | bool | float | tuple | list | TypeVar | None) -> Literal:
     match value:
+        case value if value is NULL:
+            ref = Ref("builtins.ellipsis")
         case int():
             ref = Ref("builtins.int")
         case float():
@@ -975,8 +980,25 @@ def partial(callable: TypeExpr, args: TypedDict) -> TypeExpr:
         return BOTTOM
     match callable:
         case Instantiation(Ref("builtins.type"), (arg,)):
-            assert isinstance(arg, Class)
+            assert isinstance(arg, (Ref, Instantiation))
             init = access(arg, literal("__init__"))
+            if init == overload([]):
+                return_type = arg
+                if isinstance(arg, Ref):
+                    return_type = Instantiation(arg, (BOTTOM,))
+                else:
+                    assert isinstance(arg.generic, Ref)
+                return overload(
+                    [
+                        FunctionType(
+                            params=typed_dict([]),
+                            return_type=return_type,
+                            side_effect=SideEffect(new=True),
+                            is_property=False,
+                            type_params=(),
+                        )
+                    ]
+                )
             side_effect = SideEffect(
                 new=True, bound_method=False, update=None, points_to_args=True
             )
@@ -1120,6 +1142,15 @@ def subscr(selftype: TypeExpr, index: TypeExpr) -> TypeExpr:
         return TOP
     if selftype == BOTTOM:
         return BOTTOM
+    match selftype, index:
+        case Instantiation(Ref("builtins.type"), (arg1,)), Instantiation(
+            Ref("builtins.type"), (arg2,)
+        ):
+            inner = Instantiation(
+                arg1,
+                (arg2,),
+            )
+            return Instantiation(Ref("builtins.type"), (inner,))
     attr_type = access(selftype, index)
     if attr_type == TOP:
         # non-existent attribute
@@ -1156,11 +1187,26 @@ def make_list_constructor() -> Overloaded:
     return overload(
         [
             FunctionType(
-                params=typed_dict([make_row(0, "self", args)]),
+                params=typed_dict([make_row(0, "args", args)]),
                 return_type=return_type,
                 side_effect=SideEffect(new=True, points_to_args=True, name="[]"),
                 is_property=False,
                 type_params=(args,),
+            )
+        ]
+    )
+
+
+def make_set_constructor() -> Overloaded:
+    return_type = Instantiation(Ref("builtins.set"), (union([]),))
+    return overload(
+        [
+            FunctionType(
+                params=typed_dict([]),
+                return_type=return_type,
+                side_effect=SideEffect(new=True, points_to_args=True, name="{}"),
+                is_property=False,
+                type_params=(),
             )
         ]
     )
@@ -1172,7 +1218,7 @@ def make_tuple_constructor() -> Overloaded:
     return overload(
         [
             FunctionType(
-                params=typed_dict([make_row(0, "self", args)]),
+                params=typed_dict([make_row(0, "args", args)]),
                 return_type=return_type,
                 side_effect=SideEffect(new=True, points_to_args=True, name="()"),
                 is_property=False,
@@ -1506,7 +1552,9 @@ class TypeExpressionParser(ast.NodeVisitor):
 
     def visit_Attribute(self, attribute: ast.Attribute) -> TypeExpr:
         ref: TypeExpr = self.to_type(attribute.value)
-        assert isinstance(ref, Ref), f"Expected Ref, got {ref!r} for {attr.value!r}"
+        assert isinstance(
+            ref, Ref
+        ), f"Expected Ref, got {ref!r} for {attribute.value!r}"
         return Ref(f"{ref.name}.{attribute.attr}")
 
     def visit_BinOp(self, binop: ast.BinOp) -> TypeExpr:

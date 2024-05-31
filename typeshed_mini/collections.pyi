@@ -1,6 +1,5 @@
 
 class Counter[T]:
-    def __init__(self) -> None: ...
     @update(Counter[T])
     def __setitem__(self: Counter[T], key: T, value) -> None: ...
 

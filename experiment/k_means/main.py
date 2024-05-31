@@ -1,15 +1,6 @@
 import numpy as np
 
 
-def new(f):
-    return f
-
-
-@new
-def empty_list_of_ints() -> list[int]:
-    return []
-
-
 def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     """A simple clustering method that forms k clusters by iteratively reassigning
     samples to the closest centroids and after that moves the centroids to the center
@@ -34,9 +25,7 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
         for sample_i in range(len(X)):
             centroid_i = np.argmin(np.linalg.norm(X[sample_i] - centroids, axis=1))
             centroid_is.append((centroid_i, sample_i))
-        clusters = []
-        for _ in range(k):
-            clusters.append(empty_list_of_ints())
+        clusters = [list[int]() for _ in range(k)]
         for centroid_i, sample_i in centroid_is:
             clusters[centroid_i].append(sample_i)
 

@@ -1,4 +1,7 @@
 
+class ellipsis:
+    ...
+
 class object:
     __dict__: dict
     __module__: str
@@ -93,6 +96,7 @@ class tuple[*Args]:
     # def __add__(self: tuple[*Args], other: tuple[*Args2]) -> tuple[*Args, *Args2]: pass
 
 class list[T]:
+    def __init__(self) -> None: ...
     def __bool__(self) -> bool: ...
     def __getitem__[N: Literal[int]](self: list[T], index: N) -> T:
         result = self[index]
@@ -147,6 +151,37 @@ class list[T]:
 
     @new
     def __add__[Q](self: list[T], other: list[Q]) -> list[T|Q]: pass
+
+class set[T]:
+    def __bool__(self) -> bool: ...
+
+    @new
+    def __iter__(self: set[T]) -> SupportsNext[T]:
+        result += self
+
+    def __eq__(self, __o) -> bool: ...
+    def __ne__(self, __o) -> bool: ...
+
+    @new
+    def copy(self: set[T]) -> set[T]:
+        result += self
+
+    @update(set[T])
+    def clear(self: set[T]) -> None:
+        del self[:]
+
+    @update(set[T|Q])
+    def add[Q](self: set[T], x: Q) -> None:
+        self[_] = x
+
+    @update(set[T])
+    def remove(self: set[T], x: T) -> None: pass
+
+    @update(set[T])
+    def pop(self: set[T]) -> T: pass
+
+    @new
+    def __add__[Q](self: set[T], other: set[Q]) -> set[T|Q]: pass
 
 class SupportsNext[T](Protocol):
     @update(SupportsNext[T])
@@ -203,3 +238,9 @@ def next[T](xs: SupportsNext[T]) -> T:
 
 def enumerate[T](xs: Iterable[T]) -> Iterable[tuple[int, T]]:
     pass
+
+class Counter[T]:
+    @update(Counter[T])
+    def __setitem__(self: Counter[T], key: T, value) -> None: ...
+
+    def __getitem__(self: Counter[T], key: T) -> int: ...

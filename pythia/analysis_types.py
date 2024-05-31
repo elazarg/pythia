@@ -1,5 +1,7 @@
 from __future__ import annotations as _
 
+from dataclasses import replace
+
 import typing
 
 import pythia.type_system as ts
@@ -131,6 +133,8 @@ class TypeLattice(ValueLattice[TypeExpr]):
         match name:
             case Predefined.LIST:
                 return ts.make_list_constructor()
+            case Predefined.SET:
+                return ts.make_set_constructor()
             case Predefined.TUPLE:
                 return ts.make_tuple_constructor()
             case Predefined.SLICE:
@@ -148,12 +152,18 @@ class TypeLattice(ValueLattice[TypeExpr]):
     def const(self, value: object) -> TypeExpr:
         return ts.literal(value)
 
-    def attribute(self, var: TypeExpr, attr: tac.Var) -> TypeExpr:
-        mod = self.resolve(var)
-        assert mod != ts.TOP, f"Cannot resolve {attr} in {var}"
+    def attribute(self, t: TypeExpr, attr: tac.Var) -> TypeExpr:
+        mod = self.resolve(t)
+        assert mod != ts.TOP, f"Cannot resolve {attr} in {t}"
         try:
             # FIX: How to differentiate nonexistent attributes from attributes that are TOP?
             res = ts.subscr(mod, ts.literal(attr.name))
+            match mod, res:
+                case ts.Ref(name=modname), ts.Instantiation(
+                    ts.Ref("builtins.type"), (ts.Class(),)
+                ):
+                    arg = ts.Ref(f"{modname}.{attr.name}")
+                    return replace(res, type_args=(arg,))
             if self.is_bottom(res):
                 if mod == self.globals:
                     return ts.subscr(self.builtins, ts.literal(attr.name))

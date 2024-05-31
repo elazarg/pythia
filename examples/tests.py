@@ -36,6 +36,16 @@ def counter(i: int, j: int, f: np.ndarray) -> None:
 def empty_list_of_ints() -> list[int]:
     return []
 
+def length():
+    return collections.Counter[int]()
+
+def comprehension(xs: list[int], k: int):
+    # x = set()
+    # x.add(k)
+    x = [k for k in xs]
+    y = [k for k in xs]
+    return x
+
 # TODO: positives
 
 def build_list_of_ints(k: int) -> None:

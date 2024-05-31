@@ -2,7 +2,7 @@ from __future__ import annotations as _
 
 import typing
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TypeAlias, Final
 
 from pythia.analysis_types import TypeLattice
@@ -395,7 +395,7 @@ class TypedPointer:
     #     for obj, fields in self.pointers.items():
     #         for field, pointed in fields.items():
     #             new_pointers[obj, field] = frozenset(p if not isinstance(p, Immutable)
-    #                                                  else min(((k, v) for k, v in self.types.map.items() if v == self.types[p]),
+    #                                        else min(((k, v) for k, v in self.types.map.items() if v == self.types[p]),
     #                                                           key=str)[0]
     #                                                  for p in pointed)
     #     self.pointers = new_pointers
@@ -492,13 +492,22 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Var() as var:
                 objs = prev_tp.pointers[LOCALS, var]
                 types = prev_tp.types[objs]
+                if var.or_null and len(objs.as_set()) == 0:
+                    t = ts.literal(ts.NULL)
+                    return (immutable(t), t, make_dirty())
                 return (objs, types, make_dirty())
             case tac.Attribute(var=tac.Predefined.GLOBALS, field=tac.Var() as field):
                 global_objs = prev_tp.pointers[GLOBALS, field]
                 assert not global_objs
                 t = ts.subscr(self.this_module, ts.literal(field.name))
                 if t == ts.BOTTOM:
-                    t = ts.resolve_static_ref(ts.Ref(f"builtins.{field}"))
+                    builtins_ref = ts.Ref(f"builtins.{field}")
+                    t = ts.resolve_static_ref(builtins_ref)
+                match t:
+                    case ts.Instantiation(ts.Ref("builtins.type"), (ts.Class(),)) as t:
+                        t = replace(t, type_args=((builtins_ref,)))
+                    case ts.Class():
+                        t = ts.get_return(t)
                 # TODO: class through type
                 return (immutable(t), t, make_dirty())
             case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
@@ -535,10 +544,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 index_objs = prev_tp.pointers[LOCALS, index]
                 index_type = prev_tp.types[index_objs]
                 var_type = prev_tp.types[var_objs]
-                t = ts.subscr(
-                    self.type_lattice.resolve(var_type),
-                    self.type_lattice.resolve(index_type),
-                )
+                selftype = self.type_lattice.resolve(var_type)
+                index = self.type_lattice.resolve(index_type)
+                t = ts.subscr(selftype, index)
                 any_new = all_new = False
                 if isinstance(t, ts.Overloaded) and any(
                     item.is_property for item in t.items
@@ -737,6 +745,8 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         t: ts.TypeExpr,
     ) -> None:
         match signature:
+            case None:
+                pass
             case tuple() as signature:  # type: ignore
                 unknown = tp.pointers[pointed, tac.Var("*")]
                 indirect_pointed = [

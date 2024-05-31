@@ -26,11 +26,12 @@ class Predefined(enum.Enum):
     LOCALS = 1
     NONLOCALS = 2
     LIST = 3
-    TUPLE = 4
-    SLICE = 5
-    CONST_KEY_MAP = 6
-    NOT = 7
-    STRING = 8
+    SET = 4
+    TUPLE = 5
+    SLICE = 6
+    CONST_KEY_MAP = 7
+    NOT = 8
+    STRING = 9
 
     def __str__(self) -> str:
         return self.name
@@ -65,10 +66,13 @@ class Const:
 class Var:
     name: str
     is_stackvar: bool = False
+    or_null: bool = False
 
     def __str__(self) -> str:
         if self.is_stackvar:
             return f"${self.name}"
+        if self.or_null:
+            return f"{self.name}?"
         return self.name
 
     def __repr__(self) -> str:
@@ -473,7 +477,7 @@ def make_tac_cfg(f: typing.Any) -> gu.Cfg[Tac]:
     assert (
         sys.version_info[:2] in allowed
     ), f"Python version is {sys.version_info} but only {allowed} is supported"
-    depths, ins_cfg = instruction_cfg.make_instruction_block_cfg_from_function(f)
+    depths, ins_cfg = instruction_cfg.make_instruction_block_cfg(f)
     # gu.pretty_print_cfg(gu.simplify_cfg(ins_cfg))
     trace_origin: dict[int, instruction_cfg.Instruction] = {}
 
@@ -551,6 +555,18 @@ def make_tac_no_dels(
                 return [Assign(lhs, Binary(left, argrepr[:-1], right, inplace=True))]
             else:
                 return [Assign(lhs, Binary(left, argrepr, right, inplace=False))]
+        case ["LIST", "APPEND"]:
+            fresh = stackvar(stack_depth + 1)
+            return [
+                Assign(fresh, Attribute(stackvar(stack_depth - val), Var("append"))),
+                Assign(None, Call(fresh, (stackvar(stack_depth),))),
+            ]
+        case ["SET", "ADD"]:
+            fresh = stackvar(stack_depth + 1)
+            return [
+                Assign(fresh, Attribute(stackvar(stack_depth - val), Var("add"))),
+                Assign(None, Call(fresh, (stackvar(stack_depth),))),
+            ]
         case (
             ["POP", "JUMP", "FORWARD", "IF", *v]
             | ["POP", "JUMP", "BACKWARD", "IF", *v]
@@ -644,8 +660,10 @@ def make_tac_no_dels(
                 case ["METHOD"]:
                     # removed in python3.12
                     return [Assign(lhs, Attribute(stackvar(stack_depth), Var(val)))]
-                case ["FAST"] | ["NAME"] | ["FAST", "CHECK"] | ["FAST", "AND", "CLEAR"]:
+                case ["FAST"] | ["NAME"] | ["FAST", "CHECK"]:
                     return [Assign(lhs, Var(val))]
+                case ["FAST", "AND", "CLEAR"]:
+                    return [Assign(lhs, Var(val, or_null=True))]
                 case ["DEREF"]:
                     return [Assign(lhs, make_nonlocal(val))]
                 case ["FROM", "DICT", "OR", "DEREF"]:
@@ -744,8 +762,8 @@ def make_tac_no_dels(
             a = stackvar(stack_depth - 0)
             b = stackvar(stack_depth - val + 1)
             return [
-                Assign(a, Call(Predefined.TUPLE, (b, a))),
-                Assign((a, b), a),
+                Assign((a, b), Call(Predefined.TUPLE, (b, a))),
+                # Assign((a, b), a),
             ]
         case ["CALL"]:
             assert isinstance(val, int)

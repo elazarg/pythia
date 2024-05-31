@@ -204,21 +204,26 @@ class Cfg(Generic[T]):
         return {(y, x) for x, y in nx.transitive_closure(dominators).edges}
 
 
-def simplify_cfg(cfg: Cfg) -> Cfg:
+def simplify_cfg(cfg: Cfg, exception_labels=None) -> Cfg:
     """Contract chains with in_degree=out_degree=1:
     i.e. turns > [-] [-] [-] <
          into  >[---]<
     The label of the chain is the label of its first element.
     """
-    # pretty_print_cfg(cfg)
+    if exception_labels is None:
+        exception_labels = set()
+    pretty_print_cfg(cfg)
 
     g = cfg.graph
-    starts = set(
-        chain(
-            (n for n in g if g.in_degree(n) != 1),
-            chain.from_iterable(g.successors(n) for n in g if g.out_degree(n) > 1),
+    starts = (
+        set(
+            chain(
+                (n for n in g if g.in_degree(n) != 1),
+                chain.from_iterable(g.successors(n) for n in g if g.out_degree(n) > 1),
+            )
         )
-    )
+        | {cfg.exit_label}
+    ) - exception_labels
     blocks = {}
     labels = set()
     edges: list[tuple[Label, Label]] = []
@@ -236,23 +241,28 @@ def simplify_cfg(cfg: Cfg) -> Cfg:
                 del instructions[-1]
             n = next_n
         labels.add(label)
-        edges.extend((label, suc) for suc in g.successors(n))
+        edges.extend(
+            (label, suc)
+            for suc in g.successors(n)
+            if not {label, suc} & exception_labels
+        )
         blocks[label] = instructions
-    simplified_cfg = Cfg(edges, blocks=blocks, add_sink=True)
+    print(edges)
+    simplified_cfg = Cfg(edges, blocks=blocks, add_sink=False)
 
     # remove empty blocks, and connect their predecessors to their successors
-    empty = {
-        label
-        for label, block in simplified_cfg.items()
-        if not block and label != simplified_cfg.exit_label
-    }
+    empty = {label for label, block in simplified_cfg.items() if not block}
+    empty.remove(simplified_cfg.exit_label)
     for label in empty:
-        for pred in simplified_cfg.predecessors(label):
-            for suc in simplified_cfg.successors(label):
-                simplified_cfg.graph.add_edge(pred, suc)
+        preds = set(simplified_cfg.predecessors(label)) - empty
+        sucs = set(simplified_cfg.successors(label)) - empty
         simplified_cfg.graph.remove_node(label)
+        simplified_cfg.graph.add_edges_from(
+            [(pred, suc) for pred in preds for suc in sucs]
+        )
 
     simplified_cfg.annotator = cfg.annotator
+    pretty_print_cfg(simplified_cfg)
     return simplified_cfg
 
 
