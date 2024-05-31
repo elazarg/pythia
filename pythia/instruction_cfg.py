@@ -8,27 +8,32 @@ import pythia.graph_utils as gu
 Cfg = gu.Cfg[Instruction]
 
 
-def is_sequencer(ins: Instruction) -> bool:
-    return ins.opname in (
-        "RETURN_VALUE",
-        "RETURN_CONST",
+def is_unconditional_jump(ins: Instruction) -> bool:
+    return ins.opname in {
         "CONTINUE_LOOP",
         "BREAK_LOOP",
-        "RAISE_VARARGS",
         "JUMP_BACKWARD",
         "JUMP_FORWARD",
         "JUMP_ABSOLUTE",
-    )
+    }
 
 
 def is_return(ins: Instruction) -> bool:
     return ins.opname.startswith("RETURN_")
 
 
+def is_raise(ins: Instruction) -> bool:
+    return ins.opname in {"RERAISE", "RAISE_VARARGS"}
+
+
+def is_sequencer(ins: Instruction) -> bool:
+    return is_return(ins) or is_unconditional_jump(ins) or is_raise(ins)
+
+
 def is_jump_source(ins: Instruction) -> bool:
-    return is_jump(ins) or is_sequencer(ins)
     # YIELD_VALUE does not interrupt the flow
-    # exceptions do not count, since they can occur practically anywhere
+    # exceptions are handled through the exception table
+    return is_jump(ins) or is_sequencer(ins)
 
 
 def is_jump(ins: Instruction) -> bool:
@@ -77,10 +82,6 @@ def is_for_iter(ins: Instruction) -> bool:
     return ins.opname == "FOR_ITER"
 
 
-def is_raise(ins: Instruction) -> bool:
-    return ins.opname == "RAISE_VARARGS"
-
-
 def calculate_stack_depth(cfg: Cfg) -> dict[gu.Label, int]:
     """The stack depth is supposed to be independent of path, so dijkstra on the undirected graph suffices
     (and may be too strong, since we don't need minimality).
@@ -102,6 +103,8 @@ def calculate_stack_depth(cfg: Cfg) -> dict[gu.Label, int]:
 
 
 def pos_str(p: dis.Positions) -> str:
+    if p.lineno is None:
+        return ""
     return f"{p.lineno}:{p.col_offset}-{p.end_lineno}:{p.end_col_offset}"
 
 
@@ -135,6 +138,7 @@ def make_instruction_block_cfg(f: Any) -> tuple[dict[gu.Label, int], Cfg]:
         edges,
         blocks={k: [v] for k, v in dbs.items()},
         add_sink=True,
+        add_source=False,
     )
     cfg.annotator = lambda i, ins: f"{pos_str(ins.positions)}"
     gu.pretty_print_cfg(cfg)

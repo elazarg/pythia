@@ -494,9 +494,9 @@ def make_tac_cfg(f: typing.Any) -> gu.Cfg[Tac]:
 
     def annotator(location: Location, n: Tac) -> str:
         pos = trace_origin[id(n)].positions
-        if pos is None:
-            return f"None"
-        return f"{pos.lineno}:{pos.col_offset}"
+        # if pos is None:
+        #     return f""
+        return instruction_cfg.pos_str(pos)  # f"{pos.lineno}:{pos.col_offset}"
 
     tac_cfg: gu.Cfg[Tac] = gu.node_data_map(ins_cfg, instruction_block_to_tac_block)
     tac_cfg.annotator = annotator

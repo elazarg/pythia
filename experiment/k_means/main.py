@@ -32,9 +32,7 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
         # Save current centroids for convergence check
         prev_centroids = centroids
         # Calculate new centroids from the clusters
-        res = []
-        for j in range(len(clusters)):
-            res.append(np.mean(X[clusters[j]], axis=0))
+        res = [np.mean(X[clusters[j]], axis=0) for j in range(len(clusters))]
         centroids = np.array(res)
         # If no centroids have changed => convergence
         diff = centroids - prev_centroids
