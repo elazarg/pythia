@@ -66,13 +66,10 @@ class Const:
 class Var:
     name: str
     is_stackvar: bool = False
-    or_null: bool = False
 
     def __str__(self) -> str:
         if self.is_stackvar:
             return f"${self.name}"
-        if self.or_null:
-            return f"{self.name}?"
         return self.name
 
     def __repr__(self) -> str:
@@ -213,9 +210,11 @@ class Assign:
 
     lhs: Optional[Signature]
     expr: Expr
+    or_null: bool = False
 
     def __str__(self) -> str:
         if self.lhs is None:
+            assert not isinstance(self.expr, Var)
             return f"{self.expr}"
         return f"{self.lhs} = {self.expr}"
 
@@ -663,7 +662,7 @@ def make_tac_no_dels(
                 case ["FAST"] | ["NAME"] | ["FAST", "CHECK"]:
                     return [Assign(lhs, Var(val))]
                 case ["FAST", "AND", "CLEAR"]:
-                    return [Assign(lhs, Var(val, or_null=True))]
+                    return [Assign(lhs, Var(val), or_null=True)]
                 case ["DEREF"]:
                     return [Assign(lhs, make_nonlocal(val))]
                 case ["FROM", "DICT", "OR", "DEREF"]:

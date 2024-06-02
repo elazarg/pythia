@@ -16,24 +16,20 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
 
     nsamples, features = X.shape
     centroids = X[np.random.choice(nsamples, k)]
-    # clusters: list[list[int]] = []
+    clusters = list[list[int]]()
     # Iterate until convergence or for max iterations
     for i in range(max_iterations):  # type: int
         # print(f"{max_iterations}/{i}", end="\r", flush=True)
         # Assign samples to the closest centroids (create clusters)
-        centroid_is = []
-        for sample_i in range(len(X)):
-            centroid_i = np.argmin(np.linalg.norm(X[sample_i] - centroids, axis=1))
-            centroid_is.append((centroid_i, sample_i))
         clusters = [list[int]() for _ in range(k)]
-        for centroid_i, sample_i in centroid_is:
-            clusters[centroid_i].append(sample_i)
+        for sample_i in range(len(X)):
+            r = np.argmin(np.linalg.norm(X[sample_i] - centroids, axis=1))
+            clusters[r].append(sample_i)
 
         # Save current centroids for convergence check
         prev_centroids = centroids
         # Calculate new centroids from the clusters
-        res = [np.mean(X[clusters[j]], axis=0) for j in range(len(clusters))]
-        centroids = np.array(res)
+        centroids = np.array([np.mean(X[cluster], axis=0) for cluster in clusters])
         # If no centroids have changed => convergence
         diff = centroids - prev_centroids
         if not diff.any():

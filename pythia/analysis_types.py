@@ -182,6 +182,8 @@ def main():
     import sys
     from collections import defaultdict
     from pythia import analysis
+    from pythia import analysis_domain
+    from pythia import analysis_allocation
     from pythia import disassemble
     from pythia import tac
 
@@ -192,18 +194,20 @@ def main():
     module_type = ts.parse_file(filename)
 
     f = functions[function_name]
-    cfg = analysis.make_tac_cfg(f, simplify=False)
+    cfg = tac.make_tac_cfg(f)
     annotations = {tac.Var(k): v for k, v in f.__annotations__.items()}
     liveness_invariants = analysis.analyze(
         cfg, analysis.LivenessVarLattice(), annotations
     )
-    type_analysis = analysis.domain.VarLattice(
-        TypeLattice(function_name, module_type), liveness_invariants.post
+    type_analysis = analysis_domain.VarLattice(
+        TypeLattice(function_name, module_type), liveness_invariants.intermediate
     )
     type_invariants = analysis.analyze(cfg, type_analysis, annotations)
     invariant_pairs = {
         "Type": type_invariants,
     }
     analysis.print_analysis(
-        cfg, invariant_pairs, defaultdict(lambda: analysis.AllocationType.NONE)
+        cfg,
+        invariant_pairs,
+        defaultdict(lambda: analysis_allocation.AllocationType.NONE),
     )

@@ -162,10 +162,10 @@ class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
     ) -> VarMapDomain[Liveness]:
         if isinstance(values, Bottom):
             return BOTTOM
-        values = deepcopy(values)
         to_update = self.back_transfer(values, ins, location)
         if isinstance(to_update, Bottom):
             return BOTTOM
+        values = deepcopy(values)
         for var in tac.gens(ins):
             if var in values:
                 del values[var]

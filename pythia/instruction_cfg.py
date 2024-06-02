@@ -1,7 +1,7 @@
 import dis
 import math
 from dis import Instruction
-from typing import Iterable, Any
+from typing import Any
 
 import pythia.graph_utils as gu
 

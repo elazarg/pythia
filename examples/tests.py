@@ -40,11 +40,9 @@ def length():
     return collections.Counter[int]()
 
 def comprehension(xs: list[int], k: int):
-    # x = set()
-    # x.add(k)
     x = [k for k in xs]
-    y = [k for k in xs]
-    return x
+    # y = [k for k in xs]
+    return k
 
 # TODO: positives
 

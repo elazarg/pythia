@@ -1,6 +1,5 @@
 from __future__ import annotations as _
 
-import collections
 import typing
 from copy import deepcopy
 from dataclasses import dataclass
@@ -9,13 +8,9 @@ from pythia import graph_utils as gu
 from pythia import tac
 from pythia.graph_utils import Label, Location
 
-T = typing.TypeVar("T")
-K = typing.TypeVar("K", covariant=True)
-Q = typing.TypeVar("Q")
-
 
 @dataclass
-class ForwardIterationStrategy(typing.Generic[T]):
+class ForwardIterationStrategy[T]:
     cfg: gu.Cfg[T]
 
     @property
@@ -25,15 +20,18 @@ class ForwardIterationStrategy(typing.Generic[T]):
     def successors(self, label: Label) -> typing.Iterator[Label]:
         return self.cfg.successors(label)
 
+    def predecessors(self, label: Label) -> typing.Iterator[Label]:
+        return self.cfg.predecessors(label)
+
     def __getitem__(self, label: Label) -> gu.Block:
         return self.cfg[label]
 
-    def order(self, pair: tuple[K, Q]) -> tuple[K, Q]:
+    def order[K, Q](self, pair: tuple[K, Q]) -> tuple[K, Q]:
         return pair
 
 
 @dataclass
-class BackwardIterationStrategy(typing.Generic[T]):
+class BackwardIterationStrategy[T]:
     cfg: gu.Cfg[T]
 
     @property
@@ -43,19 +41,26 @@ class BackwardIterationStrategy(typing.Generic[T]):
     def successors(self, label: Label) -> typing.Iterator[Label]:
         return self.cfg.predecessors(label)
 
+    def predecessors(self, label: Label) -> typing.Iterator[Label]:
+        return self.cfg.successors(label)
+
     def __getitem__(self, label: Label) -> gu.BackwardBlock:
         return typing.cast(gu.BackwardBlock, reversed(self.cfg[label]))
 
-    def order(self, pair: tuple[K, Q]) -> tuple[Q, K]:
+    def order[K, Q](self, pair: tuple[K, Q]) -> tuple[Q, K]:
         return pair[1], pair[0]
 
 
-IterationStrategy: typing.TypeAlias = (
-    ForwardIterationStrategy | BackwardIterationStrategy
-)
+type IterationStrategy = ForwardIterationStrategy | BackwardIterationStrategy
 
 
-class Lattice(typing.Protocol[T]):
+def iteration_strategy(
+    cfg: gu.Cfg[tac.Tac], backward: bool
+) -> IterationStrategy[tac.Tac]:
+    return BackwardIterationStrategy(cfg) if backward else ForwardIterationStrategy(cfg)
+
+
+class Lattice[T](typing.Protocol):
 
     def name(self) -> str:
         raise NotImplementedError
@@ -72,6 +77,11 @@ class Lattice(typing.Protocol[T]):
     def join(self, left: T, right: T) -> T:
         raise NotImplementedError
 
+    def join_all(self, inv: T, *invs: T) -> T:
+        for arg in invs:
+            inv = self.join(inv, arg)
+        return inv
+
     def is_less_than(self, left: T, right: T) -> bool:
         raise NotImplementedError
 
@@ -87,10 +97,10 @@ class Top:
     def __ror__(self, other: object) -> Top:
         return self
 
-    def __and__(self, other: T) -> T:
+    def __and__[T](self, other: T) -> T:
         return other
 
-    def __rand__(self, other: T) -> T:
+    def __rand__[T](self, other: T) -> T:
         return other
 
     def __contains__(self, item: object) -> bool:
@@ -100,7 +110,6 @@ class Top:
         return self
 
     def __deepcopy__(self, memodict={}):
-        memodict[id(self)] = self
         return self
 
 
@@ -113,10 +122,10 @@ class Bottom:
         memodict[id(self)] = self
         return self
 
-    def __or__(self, other: T) -> T:
+    def __or__[T](self, other: T) -> T:
         return other
 
-    def __ror__(self, other: T) -> T:
+    def __ror__[T](self, other: T) -> T:
         return other
 
     def __rand__(self, other: object) -> Bottom:
@@ -130,7 +139,7 @@ BOTTOM = Bottom()
 TOP = Top()
 
 
-class Set(typing.Generic[T]):
+class Set[T]:
     _set: frozenset[T] | Top
 
     def __init__(self, s: typing.Optional[typing.Iterable[T] | Top] = None):
@@ -229,7 +238,7 @@ class Set(typing.Generic[T]):
         return self._set
 
 
-class Map(typing.Generic[K, T]):
+class Map[K, T]:
     # Essentially a defaultdict, but a defaultdict makes values appear out of nowhere
     _map: dict[K, T]
     default: T
@@ -241,7 +250,7 @@ class Map(typing.Generic[K, T]):
     ):
         self.default = default
         self._map = {}
-        if d is not None:
+        if d:
             self.update(d)
 
     def __getitem__(self, key: K) -> T:
@@ -269,7 +278,7 @@ class Map(typing.Generic[K, T]):
             else:
                 # assert not isinstance(value, dict)
                 # assert not isinstance(value, Map)
-                m[key] = value
+                m[key] = deepcopy(value)
 
     def __iter__(self) -> typing.Iterator[K]:
         return iter(self._map)
@@ -306,9 +315,8 @@ class Map(typing.Generic[K, T]):
         return set(self._map.keys())
 
     def __deepcopy__(self, memodict={}):
-        return Map(
-            self.default, {k: deepcopy(v, memodict) for k, v in self._map.items()}
-        )
+        # deepcopy is done in the constructor
+        return Map(self.default, {k: v for k, v in self._map.items()})
 
     def print(self) -> None:
         print(str(self))
@@ -334,11 +342,11 @@ class Map(typing.Generic[K, T]):
         return all(v.is_less_than(other[k]) for k, v in self.items())
 
 
-MapDomain: typing.TypeAlias = Map[K, T] | Bottom
-VarMapDomain: typing.TypeAlias = MapDomain[tac.Var, T]
+type MapDomain[K, T] = Map[K, T] | Bottom
+type VarMapDomain[K, T] = MapDomain[tac.Var, T]
 
 
-class InstructionLattice(Lattice[T], typing.Protocol[T]):
+class InstructionLattice[T](Lattice[T], typing.Protocol):
     backward: bool
 
     def transfer(self, values: T, ins: tac.Tac, location: Location) -> T:
@@ -348,7 +356,7 @@ class InstructionLattice(Lattice[T], typing.Protocol[T]):
         return self.top()
 
 
-class ValueLattice(Lattice[T], typing.Protocol[T]):
+class ValueLattice[T](Lattice[T], typing.Protocol):
     def const(self, value: object) -> T:
         return self.top()
 
@@ -384,18 +392,18 @@ class ValueLattice(Lattice[T], typing.Protocol[T]):
         return self.top()
 
 
-InvariantMap: typing.TypeAlias = dict[Location, T]
+type InvariantMap[T] = dict[Label, T]
 
 
-class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
+class VarLattice[T](InstructionLattice[VarMapDomain[T]]):
     lattice: ValueLattice[T]
-    liveness: InvariantMap[VarMapDomain[Top | Bottom]]
+    liveness: dict[Location, VarMapDomain[Top | Bottom]]
     backward: bool = False
 
     def __init__(
         self,
         lattice: ValueLattice[T],
-        liveness: InvariantMap[VarMapDomain[Top | Bottom]],
+        liveness: dict[Location, VarMapDomain[Top | Bottom]],
     ):
         super().__init__()
         self.lattice = lattice
@@ -447,9 +455,7 @@ class VarLattice(InstructionLattice[VarMapDomain[T]], typing.Generic[T]):
 
     def transformer_expr(self, values: Map[tac.Var, T], expr: tac.Expr) -> T:
         def eval(expr: tac.Var | tac.Predefined) -> T:
-            res = self.transformer_expr(values, expr)
-            # assert not self.lattice.is_bottom(res)
-            return res
+            return self.transformer_expr(values, expr)
 
         match expr:
             case tac.Var():

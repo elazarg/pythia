@@ -26,6 +26,14 @@ EOF
   cloud-localds ${user_data} ${yaml_file} --disk-format=qcow2
 fi
 
+# run:
+# sudo apt update
+# sudo apt upgrade
+# sudo apt install python3-pip
+# git clone https://github.com/elazarg/pythia
+# cd pythia
+# pip3 install -r requirements.txt
+
 args=(
   -cpu host
   -smp 1

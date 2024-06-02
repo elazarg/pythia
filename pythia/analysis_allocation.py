@@ -1,7 +1,6 @@
 from __future__ import annotations as _
 
 import enum
-import typing
 
 from pythia import type_system as ts, tac, analysis_domain as domain
 from pythia.analysis_domain import InvariantMap, VarMapDomain, VarLattice
@@ -16,7 +15,7 @@ class AllocationType(enum.StrEnum):
     UNKNOWN = "Unknown"
 
 
-Allocation: typing.TypeAlias = AllocationType
+type Allocation = AllocationType
 
 
 class AllocationChecker:

@@ -5,23 +5,19 @@ import typing
 from copy import deepcopy
 from dataclasses import dataclass
 from itertools import chain
-from typing import TypeVar, Generic, Callable, Iterator, TypeAlias, Optional
+from typing import Callable, Iterator, Optional
 
-import networkx as nx  # type: ignore
-from networkx.classes.reportviews import NodeView  # type: ignore
+import networkx as nx
+from networkx.classes.reportviews import NodeView
 
 BLOCK_NAME = "block"
 
-T = TypeVar("T")
-Q = TypeVar("Q")
-
-
-Label: TypeAlias = int | float
-Location: TypeAlias = tuple[Label, int]
+type Label = int | float
+type Location = tuple[Label, int]
 
 
 @dataclass
-class Block(Generic[T]):
+class Block[T]:
     _instructions: list[T]
 
     def __init__(self, instructions: list[T]):
@@ -37,7 +33,7 @@ class Block(Generic[T]):
         return 0
 
     def last_index(self) -> int:
-        return (len(self) - 1) if len(self) > 0 else 0
+        return max(len(self) - 1, 0)
 
     def __len__(self) -> int:
         return len(self._instructions)
@@ -48,18 +44,12 @@ class Block(Generic[T]):
     def __getitem__(self, index: int) -> T:
         return self._instructions[index]
 
-    def __setitem__(self, index: int, item: T) -> None:
-        self._instructions[index] = item
-
-    def __delitem__(self, index: int) -> None:
-        del self._instructions[index]
-
     def __reversed__(self) -> BackwardBlock[T]:
         return BackwardBlock(self)
 
 
 @dataclass
-class BackwardBlock(Generic[T]):
+class BackwardBlock[T]:
     block: Block[T]
 
     def __iter__(self) -> Iterator[T]:
@@ -87,7 +77,7 @@ class BackwardBlock(Generic[T]):
         return self.block
 
 
-class Cfg(Generic[T]):
+class Cfg[T]:
     graph: nx.DiGraph
     _annotator: Callable[[Location, T], str]
 
@@ -294,16 +284,18 @@ def refine_to_chain(cfg: Cfg) -> Cfg:
     return simplified_cfg
 
 
-def node_data_map(cfg: Cfg[T], f: Callable[[Label, Block[T]], Block[Q]]) -> Cfg[Q]:
+def node_data_map[
+    T, Q
+](cfg: Cfg[T], f: Callable[[Label, Block[T]], Block[Q]]) -> Cfg[Q]:
     cfg = deepcopy(cfg)
     for n, data in cfg.nodes.items():
         data[BLOCK_NAME] = f(n, data[BLOCK_NAME])
     return typing.cast(Cfg[Q], cfg)
 
 
-def print_block(
-    label: Label, block: Block[T], *annotators: Callable[[Location, T], object]
-) -> None:
+def print_block[
+    T
+](label: Label, block: Block[T], *annotators: Callable[[Location, T], object]) -> None:
     print(label, ":")
     for index, ins in enumerate(block):
         location = (label, index)
@@ -315,7 +307,7 @@ def print_block(
         )
 
 
-def pretty_print_cfg(cfg: Cfg[T]) -> None:
+def pretty_print_cfg[T](cfg: Cfg[T]) -> None:
     for label, block in sorted(cfg.items()):
         if math.isinf(label):
             continue
@@ -331,13 +323,13 @@ def single_source_dijkstra_path_length(
     return nx.single_source_dijkstra_path_length(cfg.graph, source, weight=weight)
 
 
-def find_first_for_loop(
-    cfg: Cfg[T], is_for: Callable[[T], bool]
-) -> tuple[Location, Location]:
+def find_first_for_loop[
+    T
+](cfg: Cfg[T], is_for: Callable[[T], bool]) -> tuple[Label, Label]:
     first_label = min(
         label for label, block in cfg.items() if block and any(is_for(b) for b in block)
     )
     block = cfg[first_label]
     assert len(block) == 1
     prev, *_, after = sorted(cfg.predecessors(first_label))
-    return ((first_label, 0), (after, cfg[after].last_index()))
+    return (first_label, after)
