@@ -1397,7 +1397,7 @@ def infer_self(row: Row) -> Row:
     self_args, other_args = params.split_by_index(0)
     [self_arg_row] = self_args.row_items()
     type_params = function.type_params
-    if self_arg_row.type == ANY:
+    if self_arg_row.type == TOP:
         self_type = TypeVar("Self")
         self_arg_row = replace(self_arg_row, type=self_type)
         type_params = (self_type, *type_params)
@@ -1409,21 +1409,26 @@ def infer_self(row: Row) -> Row:
     return Row(row.index, g)
 
 
-def pretty_print_type(t: Module | TypeExpr, indent: int = 0) -> None:
+def pretty_print_type(t: Module | TypeExpr, indent: int = 0, max_len: int = 0) -> None:
     match t:
         case TypedDict(items):
+            max_len = max([len(str(row.index)) for row in items], default=0)
             for row in items:
-                pretty_print_type(row, indent)
+                pretty_print_type(row, indent, max_len=max_len)
         case Overloaded(items):
             for row in items:
                 pretty_print_type(row, indent)
-        case Row(index, typeexpr):
+        case Row(index, Instantiation(Ref("builtins.type"), (typeexpr,))) | Row(
+            index, typeexpr
+        ):
             if index.name is None:
                 print(" " * indent, end="")
             else:
-                print(" " * indent, index.name, "=", end="", sep="")
+                print(" " * indent, index.name, "=", end="" * max_len, sep="")
             if isinstance(typeexpr, (Overloaded, TypedDict)):
                 print()
+            elif not isinstance(typeexpr, (Class, Module)):
+                print(" " * (max_len - len(str(index.name))), end="")
             pretty_print_type(typeexpr, indent)
         case FunctionType(params, return_type, side_effect, is_property, type_params):
             # pretty_params = ', '.join(f'{row.index.name}: {row.type}'
@@ -1618,9 +1623,9 @@ class TypeCollector:
         yield
         self.symtable = self.symtable.parent
 
-    def expr_to_type(self, expr: ast.expr) -> TypeExpr:
+    def expr_to_type(self, expr: ast.expr, default: TypeExpr = ANY) -> TypeExpr:
         if expr is None:
-            return ANY
+            return default
         return TypeExpressionParser(self.symtable).visit(expr)
 
     def visit_ClassDef(self, cdef: ast.ClassDef) -> Class | Module | Instantiation:
@@ -1733,7 +1738,9 @@ class TypeCollector:
 
             params = typed_dict(
                 [
-                    make_row(index, arg.arg, self.expr_to_type(arg.annotation))
+                    make_row(
+                        index, arg.arg, self.expr_to_type(arg.annotation, default=TOP)
+                    )
                     for index, arg in enumerate(fdef.args.args)
                 ]
             )

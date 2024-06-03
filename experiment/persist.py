@@ -1,13 +1,11 @@
 import typing
-from typing import Any, TypeVar
+from typing import Any
 
 import pickle
 import pathlib
 import hashlib
 import socket
 import struct
-
-T = TypeVar("T")
 
 
 class Iter:
@@ -128,6 +126,6 @@ class SimpleTcpClient:
         self.loader.__exit__(exc_type, exc_val, exc_tb)
         self.socket.close()
 
-    def iterate(self, iterable: typing.Iterable[T]) -> typing.Iterable[T]:
+    def iterate[T](self, iterable: typing.Iterable[T]) -> typing.Iterable[T]:
         for self.i in self.loader.iterate(iterable):
             yield self.i
