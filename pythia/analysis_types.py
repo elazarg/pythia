@@ -44,7 +44,8 @@ class TypeLattice(ValueLattice[TypeExpr]):
     def annotation(self, name: tac.Var, t: str) -> TypeExpr:
         return self.annotations[name]
 
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         return "Type"
 
     def join(self, left: TypeExpr, right: TypeExpr) -> TypeExpr:
@@ -56,13 +57,16 @@ class TypeLattice(ValueLattice[TypeExpr]):
     def meet(self, left: TypeExpr, right: TypeExpr) -> TypeExpr:
         return ts.meet(left, right)
 
-    def top(self) -> TypeExpr:
+    @classmethod
+    def top(cls) -> TypeExpr:
         return ts.TOP
 
-    def is_bottom(self, elem: TypeExpr) -> bool:
+    @classmethod
+    def is_bottom(cls, elem: TypeExpr) -> bool:
         return elem == ts.BOTTOM
 
-    def bottom(self) -> TypeExpr:
+    @classmethod
+    def bottom(cls) -> TypeExpr:
         return ts.BOTTOM
 
     def is_less_than(self, left: TypeExpr, right: TypeExpr) -> bool:

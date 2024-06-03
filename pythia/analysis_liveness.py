@@ -23,151 +23,70 @@ Here:
 
 from __future__ import annotations as _
 
-import typing
-from copy import deepcopy
-from dataclasses import dataclass
-from typing import TypeVar
-
 from pythia import tac
 from pythia.analysis_domain import (
     Top,
     Bottom,
     TOP,
     BOTTOM,
-    VarMapDomain,
-    Lattice,
-    Map,
+    Set,
+    SetDomain,
     InstructionLattice,
 )
 from pythia.graph_utils import Location
 
-T = TypeVar("T")
+type Liveness = SetDomain[tac.Var]
 
 
-Liveness = Top | Bottom
-
-
-@dataclass(frozen=True)
-class LivenessLattice(Lattice[Liveness]):
-    def join(self, left: Liveness, right: Liveness) -> Liveness:
-        if self.is_bottom(left) or self.is_top(right):
-            return right
-        if self.is_bottom(right) or self.is_top(left):
-            return left
-        if left == right:
-            return left
-        return self.top()
-
-    def meet(self, left: Liveness, right: Liveness) -> Liveness:
-        if self.is_top(left) or self.is_bottom(right):
-            return left
-        if self.is_top(right) or self.is_bottom(left):
-            return right
-        if left == right:
-            return left
-        return self.bottom()
-
-    def top(self) -> Liveness:
-        return TOP
-
-    def is_top(self, elem: Liveness) -> bool:
-        return isinstance(elem, Top)
-
-    def is_bottom(self, elem: Liveness) -> bool:
-        return isinstance(elem, Bottom)
-
-    def is_less_than(self, left: Liveness, right: Liveness) -> bool:
-        return self.join(left, right) == right
-
-    def default(self) -> Liveness:
-        return BOTTOM
-
-    def bottom(self) -> Liveness:
-        return BOTTOM
-
-    def name(self) -> str:
-        return "Liveness"
-
-
-class LivenessVarLattice(InstructionLattice[VarMapDomain[Liveness]]):
-    lattice: LivenessLattice
+class LivenessVarLattice(InstructionLattice[Liveness]):
+    lattice: Liveness
     backward: bool = True
 
     def __init__(self) -> None:
         super().__init__()
-        self.lattice = LivenessLattice()
+        self.lattice = Set[tac.Var]()
 
-    def name(self) -> str:
-        return f"{self.lattice.name()}"
+    @classmethod
+    def name(cls) -> str:
+        return "Liveness"
 
-    def is_less_than(
-        self, left: VarMapDomain[Liveness], right: VarMapDomain[Liveness]
-    ) -> bool:
+    def initial(self) -> Liveness:
+        return Set[tac.Var]()
+
+    def is_less_than(self, left: Liveness, right: Liveness) -> bool:
         return self.join(left, right) == right
 
-    def is_top(self, elem: T) -> bool:
+    @classmethod
+    def is_top(cls, elem: Liveness) -> bool:
         return isinstance(elem, Top)
 
-    def is_bottom(self, values: VarMapDomain[Liveness]) -> bool:
-        return isinstance(values, Bottom)
+    @classmethod
+    def is_bottom(cls, elem: Liveness) -> bool:
+        return isinstance(elem, Bottom)
 
-    def normalize(self, values: VarMapDomain[T]) -> VarMapDomain[T]:
-        if isinstance(values, Bottom):
-            return BOTTOM
-        if any(isinstance(v, Bottom) for v in values.values()):
-            return BOTTOM
-        return values
+    def top(self) -> Liveness:
+        return TOP
 
-    def make_map(
-        self, d: typing.Optional[dict[tac.Var, Liveness]] = None
-    ) -> Map[tac.Var, Liveness]:
-        d = d or {}
-        return Map(default=self.lattice.default, d=d)
-
-    def top(self) -> Map[tac.Var, Liveness]:
-        return self.make_map()
-
-    def bottom(self) -> VarMapDomain[Liveness]:
+    def bottom(self) -> Liveness:
         return BOTTOM
 
-    def join(
-        self, left: VarMapDomain[Liveness], right: VarMapDomain[Liveness]
-    ) -> VarMapDomain[Liveness]:
+    def join(self, left: Liveness, right: Liveness) -> Liveness:
         match left, right:
-            case (Bottom(), _):
-                return right
-            case (_, Bottom()):
-                return left
-            case (Map() as left, Map() as right):
-                res = self.top()
-                for k in left.keys() | right.keys():
-                    res[k] = self.lattice.join(left[k], right[k])
-                return self.normalize(res)
-        return self.top()
+            case (Bottom(), val) | (val, Bottom()):
+                return val
+            case (Top(), _) | (_, Top()):
+                return TOP
+            case (Set() as left, Set() as right):
+                return left | right
+            case _, _:
+                raise ValueError(f"Invalid join: {left!r} and {right!r}")
 
-    def back_transfer(
-        self, values: VarMapDomain[Liveness], ins: tac.Tac, location: Location
-    ) -> VarMapDomain[Liveness]:
+    def transfer(self, values: Liveness, ins: tac.Tac, location: Location) -> Liveness:
         if isinstance(values, Bottom):
             return BOTTOM
-        values = deepcopy(values)
-        for v in tac.gens(ins):
-            values[v] = BOTTOM
-        for v in tac.free_vars(ins):
-            values[v] = TOP
-        return values
+        # for v in tac.gens(ins):
+        #     if v.is_stackvar:
+        #         assert v in values
 
-    def transfer(
-        self, values: VarMapDomain[Liveness], ins: tac.Tac, location: Location
-    ) -> VarMapDomain[Liveness]:
-        if isinstance(values, Bottom):
-            return BOTTOM
-        to_update = self.back_transfer(values, ins, location)
-        if isinstance(to_update, Bottom):
-            return BOTTOM
-        values = deepcopy(values)
-        for var in tac.gens(ins):
-            if var in values:
-                del values[var]
-        values.update(to_update)
-        return self.normalize(values)
+        res = (values - Set[tac.Var](tac.gens(ins))) | Set[tac.Var](tac.free_vars(ins))
+        return res

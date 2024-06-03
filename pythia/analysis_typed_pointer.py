@@ -5,12 +5,13 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from typing import Final
 
+from pythia.analysis_liveness import LivenessVarLattice
 from pythia.analysis_types import TypeLattice
 from pythia import tac
 from pythia.graph_utils import Location
 from pythia import analysis_domain as domain
 from pythia import analysis_liveness
-from pythia.analysis_domain import InstructionLattice, InvariantMap, VarMapDomain
+from pythia.analysis_domain import InstructionLattice, VarMapDomain
 import pythia.type_system as ts
 
 
@@ -391,13 +392,13 @@ class TypedPointer:
             Pointer.initial(annotations), TypeMap.initial(annotations), make_dirty()
         )
 
-    def collect_garbage(self, alive: VarMapDomain[analysis_liveness.Liveness]) -> None:
-        if isinstance(alive, domain.Bottom):
+    def collect_garbage(self, alive: analysis_liveness.Liveness) -> None:
+        if LivenessVarLattice.is_bottom(domain.Bottom):
             return
 
-        for var in set(self.pointers[LOCALS].keys()):
+        for var in self.pointers[LOCALS].keys():
             if var.is_stackvar or True:
-                if alive[var] == analysis_liveness.BOTTOM:
+                if var not in alive:
                     del self.pointers[LOCALS][var]
 
         reachable = find_reachable_from_vars(self.pointers)
@@ -451,11 +452,12 @@ def flatten(xs: typing.Iterable[domain.Set[Object]]) -> domain.Set[Object]:
 
 class TypedPointerLattice(InstructionLattice[TypedPointer]):
     type_lattice: TypeLattice
-    liveness: dict[Location, VarMapDomain[analysis_liveness.Liveness]]
+    liveness: dict[Location, analysis_liveness.Liveness]
     annotations: domain.Map[Param, ts.TypeExpr]
     backward: bool = False
 
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         return "TypedPointer"
 
     def __init__(
@@ -900,14 +902,14 @@ def find_reachable(
 
 
 def find_dirty_roots(
-    tp: TypedPointer, liveness: VarMapDomain[analysis_liveness.Liveness]
+    tp: TypedPointer, liveness: analysis_liveness.Liveness
 ) -> typing.Iterator[str]:
     assert not isinstance(liveness, domain.Bottom)
     for var in tp.dirty[LOCALS].as_set():
         if var.is_stackvar:
             continue
         yield var.name
-    alive = {k for k, v in liveness.items() if isinstance(v, domain.Top)}
+    alive = liveness.as_set()
     for var, target in tp.pointers[LOCALS].items():
         if var.name == "return":
             continue

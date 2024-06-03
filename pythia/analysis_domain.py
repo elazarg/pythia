@@ -62,16 +62,20 @@ def iteration_strategy(
 
 class Lattice[T](typing.Protocol):
 
-    def name(self) -> str:
+    @classmethod
+    def name(cls) -> str:
         raise NotImplementedError
 
-    def top(self) -> T:
+    @classmethod
+    def top(cls) -> T:
         raise NotImplementedError
 
-    def bottom(self) -> T:
+    @classmethod
+    def bottom(cls) -> T:
         raise NotImplementedError
 
-    def is_bottom(self, elem: T) -> bool:
+    @classmethod
+    def is_bottom(cls, elem: T) -> bool:
         raise NotImplementedError
 
     def join(self, left: T, right: T) -> T:
@@ -213,6 +217,9 @@ class Set[T]:
     def __and__(self: Set[T], other: Set[T]) -> Set[T]:
         return self.meet(other)
 
+    def __sub__(self: Set[T], other: Set[T]) -> Set[T]:
+        return Set(self._set - other._set)
+
     @classmethod
     def squeeze(cls: typing.Type[Set[T]], s: T | Set[T]) -> T | Set[T]:
         if isinstance(s, Set) and not isinstance(s._set, Top) and len(s._set) == 1:
@@ -236,6 +243,9 @@ class Set[T]:
     def as_set(self) -> frozenset[T]:
         assert not isinstance(self._set, Top)
         return self._set
+
+
+type SetDomain[K] = Set[K] | Top | Bottom
 
 
 class Map[K, T]:
@@ -317,9 +327,6 @@ class Map[K, T]:
     def __deepcopy__(self, memodict={}):
         # deepcopy is done in the constructor
         return Map(self.default, {k: v for k, v in self._map.items()})
-
-    def print(self) -> None:
-        print(str(self))
 
     def keep_keys(self, keys: typing.Iterable[K]) -> None:
         for k in list(self._map.keys()):

@@ -16,6 +16,9 @@ from pythia.graph_utils import Location
 
 type Cfg = gu.Cfg[tac.Tac]
 
+TYPE_INV_NAME = typed_pointer.TypedPointerLattice.name()
+LIVENESS_INV_NAME = LivenessVarLattice.name()
+
 
 @dataclass
 class InvariantTriple[Inv]:
@@ -86,14 +89,14 @@ def print_analysis(
             for name, invariant_pair in invariants.items():
                 pre_invariant = invariant_pair.pre[label]
                 print(f"\t{name}: ", end="")
-                pre_invariant.print()
+                print(str(pre_invariant))
         gu.print_block(label, block, cfg.annotator)
         if print_invariants:
             print("Post:")
             for name, invariant_pair in invariants.items():
                 post_invariant = invariant_pair.post[label]
                 print(f"\t{name}:", end="")
-                post_invariant.print()
+                print(str(post_invariant))
             print()
         if loop_end is not None and label == loop_end:
             print(f"Dirty Locals:", ", ".join(dirty_locals))
@@ -110,7 +113,7 @@ def run(
 ) -> dict[str, InvariantTriple]:
     # gu.pretty_print_cfg(cfg)
     liveness_invariants = analyze(cfg, LivenessVarLattice(), keep_intermediate=True)
-    print_analysis(cfg, {"Liveness": liveness_invariants}, for_location, set())
+    print_analysis(cfg, {LIVENESS_INV_NAME: liveness_invariants}, for_location, set())
 
     typed_pointer_analysis = typed_pointer.TypedPointerLattice(
         liveness_invariants.intermediate, function_name, module_type, for_location
@@ -120,8 +123,8 @@ def run(
     )
 
     invariant_pairs: dict[str, InvariantTriple] = {
-        "Liveness": liveness_invariants,
-        "TypedPointer": typed_pointer_invariants,
+        LIVENESS_INV_NAME: liveness_invariants,
+        TYPE_INV_NAME: typed_pointer_invariants,
     }
 
     return invariant_pairs
@@ -134,8 +137,8 @@ def find_dirty_roots(
         return set()
     return set(
         typed_pointer.find_dirty_roots(
-            invariants["TypedPointer"].post[loop_end],
-            invariants["Liveness"].post[loop_end],
+            invariants[TYPE_INV_NAME].post[loop_end],
+            invariants[LIVENESS_INV_NAME].post[loop_end],
         )
     )
 
@@ -164,7 +167,7 @@ def analyze_function(
         cfg = gu.simplify_cfg(cfg)
         if not simplify:
             cfg = gu.refine_to_chain(cfg)
-        gu.pretty_print_cfg(cfg)
+        # gu.pretty_print_cfg(cfg)
         try:
             for_location, loop_end = gu.find_first_for_loop(
                 cfg, lambda b: isinstance(b, tac.For)
