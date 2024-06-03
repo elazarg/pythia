@@ -302,7 +302,7 @@ def print_block[
         str_location = f"{label}.{index}"
         print(
             f"\t{str_location:6}",
-            *[f"{annotator(location, ins):7}" for annotator in annotators],
+            *[f"{annotator(location, ins):14}" for annotator in annotators],
             ins,
         )
 
