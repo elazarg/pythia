@@ -6,7 +6,7 @@ img=ubuntu-24.04-server-cloudimg-amd64.img
 if [ ! -f "$POOL/$img" ]; then
   cd $POOL
   wget "https://cloud-images.ubuntu.com/releases/24.04/release-20240523.1/${img}"
-  ${QEMU_DIR}qemu-img resize ${img} 4G
+  ${QEMU_DIR}qemu-img resize ${img} +2G
   cd ..
 fi
 
