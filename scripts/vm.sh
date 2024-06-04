@@ -28,11 +28,13 @@ fi
 
 # run:
 # sudo apt update
-# sudo apt upgrade
-# sudo apt install python3-pip
+# sudo apt -y upgrade
+# sudo apt -y install python3-pip python3.12-venv
 # git clone https://github.com/elazarg/pythia
 # cd pythia
-# pip3 install -r requirements.txt
+# python3.12 -m venv venv
+# source venv/bin/activate
+# pip install -r experiment/requirements.txt -r experiment/{experiment}/requirements.txt
 
 args=(
   -cpu host
