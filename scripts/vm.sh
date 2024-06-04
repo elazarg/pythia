@@ -25,6 +25,7 @@ ssh_pwauth: True
 ssh_keys:
   rsa_public:
     - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDGH30o05x9IAN5Hw28DATHVkt7u6iWogvki1VhN5/gSYwwGAs8dqT6/wWo6exD+dIY+Om/ttrqZY0n00SoluO/YUZujjk7t
+    - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGJDEoZGebh43l4BCC8jutkRB5hwaAZ+luMBGZWeGa9C elazarg@gmail.com
 
 packages:
   - python3-pip
