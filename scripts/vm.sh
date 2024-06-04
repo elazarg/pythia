@@ -6,6 +6,7 @@ img=ubuntu-24.04-server-cloudimg-amd64.img
 if [ ! -f "$POOL/$img" ]; then
   cd $POOL
   wget "https://cloud-images.ubuntu.com/releases/24.04/release-20240523.1/${img}"
+  ${QEMU_DIR}qemu-img resize ${img} 4G
   cd ..
 fi
 
@@ -29,8 +30,7 @@ ssh_keys:
 
 packages:
   - python3-pip
-  - python3.12-venv
-  - python-is-python3
+  - python3-venv
 
 package_update: true
 package_upgrade: true
@@ -41,10 +41,10 @@ runcmd:
   - cd pythia
   - python3 -m venv venv
   - source venv/bin/activate
-  - pip install -r experiment/requirements.txt
-  - pip install -r experiment/feature_selection/requirements.txt
-  - pip install -r experiment/k_means/requirements.txt
-  - pip install -r experiment/pivoter/requirements.txt
+  - pip3 install -r experiment/requirements.txt
+  - pip3 install -r experiment/feature_selection/requirements.txt
+  - pip3 install -r experiment/k_means/requirements.txt
+  - pip3 install -r experiment/pivoter/requirements.txt
 EOF
   cloud-localds ${user_data} ${yaml_file} --disk-format=qcow2
 fi
