@@ -22,6 +22,28 @@ if [ ! -f "$user_data" ]; then
 password: asdfqwer
 chpasswd: { expire: False }
 ssh_pwauth: True
+ssh_keys:
+  rsa_public:
+    - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDGH30o05x9IAN5Hw28DATHVkt7u6iWogvki1VhN5/gSYwwGAs8dqT6/wWo6exD+dIY+Om/ttrqZY0n00SoluO/YUZujjk7t
+
+packages:
+  - python3-pip
+  - python3.12-venv
+  - python-is-python3
+
+package_update: true
+package_upgrade: true
+package_reboot_if_required: true
+
+runcmd:
+  - git clone https://github.com/elazarg/pythia
+  - cd pythia
+  - python3 -m venv venv
+  - source venv/bin/activate
+  - pip install -r experiment/requirements.txt
+  - pip install -r experiment/feature_selection/requirements.txt
+  - pip install -r experiment/k_means/requirements.txt
+  - pip install -r experiment/pivoter/requirements.txt
 EOF
   cloud-localds ${user_data} ${yaml_file} --disk-format=qcow2
 fi
