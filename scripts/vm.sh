@@ -37,14 +37,12 @@ package_upgrade: true
 package_reboot_if_required: true
 
 runcmd:
-  - git clone https://github.com/elazarg/pythia
-  - cd pythia
-  - python3 -m venv venv
-  - source venv/bin/activate
-  - pip3 install -r experiment/requirements.txt
-  - pip3 install -r experiment/feature_selection/requirements.txt
-  - pip3 install -r experiment/k_means/requirements.txt
-  - pip3 install -r experiment/pivoter/requirements.txt
+  - [su, ubuntu, -c, "git clone https://github.com/elazarg/pythia /home/ubuntu/pythia"]
+  - [su, ubuntu, -c, "python3 -m venv /home/ubuntu/pythia/venv"]
+  - [su, ubuntu, -c, "/home/ubuntu/pythia/venv/bin/pip install -r /home/ubuntu/pythia/experiment/requirements.txt"]
+  - [su, ubuntu, -c, "/home/ubuntu/pythia/venv/bin/pip install -r /home/ubuntu/pythia/experiment/feature_selection/requirements.txt"]
+  - [su, ubuntu, -c, "/home/ubuntu/pythia/venv/bin/pip install -r /home/ubuntu/pythia/experiment/k_means/requirements.txt"]
+  - [su, ubuntu, -c, "/home/ubuntu/pythia/venv/bin/pip install -r /home/ubuntu/pythia/experiment/pivoter/requirements.txt"]
 EOF
   cloud-localds ${user_data} ${yaml_file} --disk-format=qcow2
 fi
