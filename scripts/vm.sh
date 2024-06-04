@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
+# install qemu-9.0.0 with:
+# ./configure --target-list=x86_64-softmmu --disable-glusterfs --disable-seccomp --disable-{bzip2,snappy,lzo} --disable-usb-redir --disable-libusb --disable-libnfs  --disable-libiscsi --disable-rbd --disable-spice --disable-attr --disable-cap-ng --disable-linux-aio --disable-brlapi --disable-vnc-{jpeg,sasl} --disable-rdma --disable-curl --disable-curses --disable-sdl --disable-gtk  --disable-tpm --disable-vte --disable-vnc  --disable-xen --disable-opengl
+# make -j$(nproc)
+
 POOL=pool
 # This is already in qcow2 format.
-# https://cloud-images.ubuntu.com/releases/24.04/release-20240523.1/ubuntu-24.04-server-cloudimg-amd64.img
-img=ubuntu-24.04-server-cloudimg-amd64.img
+# https://cloud-images.ubuntu.com/minimal/releases/noble/release/ubuntu-24.04-minimal-cloudimg-amd64.img
+img=ubuntu-24.04-minimal-cloudimg-amd64.img
 if [ ! -f "$POOL/$img" ]; then
   cd $POOL
-  wget "https://cloud-images.ubuntu.com/releases/24.04/release-20240523.1/${img}"
+  wget "https://cloud-images.ubuntu.com/minimal/releases/noble/release/${img}"
   ${QEMU_DIR}qemu-img resize ${img} +2G
   cd ..
 fi
@@ -31,6 +35,7 @@ ssh_pwauth: True
 packages:
   - python3-pip
   - python3-venv
+  - git
 
 package_update: true
 package_upgrade: true
