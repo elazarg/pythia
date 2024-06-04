@@ -111,9 +111,7 @@ def run(
     module_type: ts.Module,
     function_name: str,
 ) -> dict[str, InvariantTriple]:
-    # gu.pretty_print_cfg(cfg)
     liveness_invariants = analyze(cfg, LivenessVarLattice(), keep_intermediate=True)
-    print_analysis(cfg, {LIVENESS_INV_NAME: liveness_invariants}, for_location, set())
 
     typed_pointer_analysis = typed_pointer.TypedPointerLattice(
         liveness_invariants.intermediate, function_name, module_type, for_location
