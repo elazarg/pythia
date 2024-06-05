@@ -140,10 +140,10 @@ def make_instruction_block_cfg(f: Any) -> tuple[dict[gu.Label, int], Cfg]:
         add_source=False,
     )
     cfg.annotator = lambda i, ins: f"{pos_str(ins.positions)}"
-    # gu.pretty_print_cfg(cfg)
     depths = calculate_stack_depth(cfg)
     cfg = gu.simplify_cfg(
         cfg, exception_labels={ex.target for ex in b.exception_entries}
     )
+    gu.pretty_print_cfg(cfg)
     # each node will hold a block of dictionaries - instruction and stack_depth
     return depths, cfg

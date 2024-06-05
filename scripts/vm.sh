@@ -16,40 +16,7 @@ fi
 
 user_data=$POOL/user-data.qcow2
 if [ ! -f "$user_data" ]; then
-  yaml_file=$POOL/user-data.yaml
-  # For the password.
-  # user: "ubuntu"
-  # https://stackoverflow.com/questions/29137679/login-credentials-of-ubuntu-cloud-server-image/53373376#53373376
-  # https://serverfault.com/questions/920117/how-do-i-set-a-password-on-an-ubuntu-cloud-image/940686#940686
-  # https://askubuntu.com/questions/507345/how-to-set-a-password-for-ubuntu-cloud-images-ie-not-use-ssh/1094189#1094189
-  cat >${yaml_file} <<EOF
-#cloud-config
-password: asdfqwer
-chpasswd: { expire: False }
-ssh_pwauth: True
-#ssh_keys:
-#  rsa_public:
-#    - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDGH30o05x9IAN5Hw28DATHVkt7u6iWogvki1VhN5/gSYwwGAs8dqT6/wWo6exD+dIY+Om/ttrqZY0n00SoluO/YUZujjk7t
-#    - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGJDEoZGebh43l4BCC8jutkRB5hwaAZ+luMBGZWeGa9C elazarg@gmail.com
-
-packages:
-  - python3-pip
-  - python3-venv
-  - git
-
-package_update: true
-package_upgrade: true
-package_reboot_if_required: true
-
-runcmd:
-  - [su, ubuntu, -c, "git clone https://github.com/elazarg/pythia /home/ubuntu/pythia"]
-  - [su, ubuntu, -c, "python3 -m venv /home/ubuntu/pythia/venv"]
-  - [su, ubuntu, -c, "/home/ubuntu/pythia/venv/bin/pip install -r /home/ubuntu/pythia/experiment/requirements.txt"]
-  - [su, ubuntu, -c, "/home/ubuntu/pythia/venv/bin/pip install -r /home/ubuntu/pythia/experiment/feature_selection/requirements.txt"]
-  - [su, ubuntu, -c, "/home/ubuntu/pythia/venv/bin/pip install -r /home/ubuntu/pythia/experiment/k_means/requirements.txt"]
-  - [su, ubuntu, -c, "/home/ubuntu/pythia/venv/bin/pip install -r /home/ubuntu/pythia/experiment/pivoter/requirements.txt"]
-EOF
-  cloud-localds ${user_data} ${yaml_file} --disk-format=qcow2
+  cloud-localds ${user_data} $POOL/user-data.yaml --disk-format=qcow2
 fi
 
 # run:

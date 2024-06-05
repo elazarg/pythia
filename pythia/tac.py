@@ -216,7 +216,10 @@ class Assign:
         if self.lhs is None:
             assert not isinstance(self.expr, Var)
             return f"{self.expr}"
-        return f"{self.lhs} = {self.expr}"
+        res = f"{self.lhs} = {self.expr}"
+        if self.or_null:
+            res += "?"
+        return res
 
 
 @dataclass(frozen=True)
