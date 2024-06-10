@@ -34,9 +34,9 @@ def run(
 ) -> collections.Counter[int]:
     root_to_leaf_path = [root]
     counter = collections.Counter[int]()
-    with persist.Loader(__file__) as transaction:
-        if transaction.restored_state:
-            [counter, root_to_leaf_path] = transaction.restored_state
+    with persist.Loader(__file__, locals()) as transaction:
+        if transaction:
+            [counter, root_to_leaf_path] = transaction.move()
         for r in transaction.iterate(range(10**100)):  # type: int
             if not root_to_leaf_path:
                 break

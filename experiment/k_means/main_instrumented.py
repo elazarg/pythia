@@ -1,5 +1,6 @@
 from experiment import persist
 import numpy as np
+import sklearn.datasets
 
 
 def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
@@ -18,8 +19,8 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     centroids = X[np.random.choice(nsamples, k)]
     clusters = list[list[int]]()
     with persist.Loader(__file__) as transaction:
-        if transaction.restored_state:
-            [clusters] = transaction.restored_state
+        if transaction:
+            [clusters] = transaction.move()
         for i in transaction.iterate(range(max_iterations)):  # type: int
             clusters = [list[int]() for _ in range(k)]
             for sample_i in range(len(X)):
@@ -39,8 +40,6 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
 
 
 def compute_random(n_samples: int, k: int, plot: bool) -> None:
-    import sklearn.datasets
-
     X, y = sklearn.datasets.make_blobs(
         n_samples=n_samples, n_features=2, centers=k, cluster_std=1.8, shuffle=True
     )

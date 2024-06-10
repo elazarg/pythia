@@ -1,4 +1,5 @@
 import numpy as np
+import sklearn.datasets
 
 
 def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
@@ -43,8 +44,6 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
 
 
 def compute_random(n_samples: int, k: int, plot: bool) -> None:
-    import sklearn.datasets
-
     X, y = sklearn.datasets.make_blobs(
         n_samples=n_samples, n_features=2, centers=k, cluster_std=1.8, shuffle=True
     )

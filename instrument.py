@@ -19,7 +19,8 @@ def main() -> None:
     )
     try:
         subprocess.run(
-            [sys.executable, instrumented] + args, env={"PYTHONPATH": os.getcwd()}
+            [sys.executable, instrumented] + args,
+            env=os.environ | {"PYTHONPATH": os.getcwd()},
         )
     except subprocess.CalledProcessError as ex:
         print(f"Error running {instrumented}: {ex}", file=sys.stderr)

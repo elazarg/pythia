@@ -8,28 +8,23 @@ import socket
 import struct
 
 
-class Iter:
-    def __init__(self, iterable):
-        self.iterator = iter(iterable)
-
-    def __iter__(self):
-        return self.iterator
-
-
 class Loader:
     restored_state: tuple[Any, ...]
-    iterator: typing.Optional[Iter]
+    iterator: typing.Optional[typing.Iterable]
     version: int
     filename: pathlib.Path
 
-    def __init__(self, module_filename: str | pathlib.Path) -> None:
+    def __init__(self, module_filename: str | pathlib.Path, env) -> None:
         module_filename = pathlib.Path(module_filename)
 
         # make sure the cache is invalidated when the module changes
-        h = compute_hash(module_filename)
+        h = compute_hash(module_filename, env)
 
         self.filename = pathlib.Path(
             f"experiment/{module_filename.parent.name}/cache/{h}.pickle"
+        )
+        self.csv_filename = pathlib.Path(
+            f"experiment/{module_filename.parent.name}/cache/times.csv"
         )
         self.filename.parent.mkdir(parents=True, exist_ok=True)
         self.iterator = None
@@ -41,7 +36,9 @@ class Loader:
             print("Recovering from snapshot")
             with self.filename.open("rb") as snapshot:
                 self.version, self.restored_state, self.iterator = pickle.load(snapshot)
-            print(f"Loaded {self.version=}: {self.restored_state}")
+            print(f"Loaded {self.version=}: {self.restored_state}, {self.iterator}")
+        with self.csv_filename.open("w"):
+            pass
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
@@ -49,9 +46,9 @@ class Loader:
             print("Finished successfully")
             self.filename.unlink()
 
-    def iterate(self, iterable) -> Iter:
+    def iterate(self, iterable) -> typing.Iterable:
         if self.iterator is None:
-            self.iterator = Iter(iterable)
+            self.iterator = iter(iterable)
         return self.iterator
 
     def commit(self, *args) -> None:
@@ -63,16 +60,28 @@ class Loader:
 
         pathlib.Path(self.filename).unlink(missing_ok=True)
         pathlib.Path(temp_filename).rename(self.filename)
-        self.restored_state = (self.version, args, self.iterator)
+
+        with open(self.csv_filename, "a") as f:
+            size = pickle.dumps((self.version, args, self.iterator)).__sizeof__()
+            print(self.version, size, repr(args), end="\n", flush=True, file=f)
+
+    def __bool__(self) -> bool:
+        return self._now_recovering()
+
+    def move(self):
+        res = self.restored_state
+        del self.restored_state
+        return res
 
     def _now_recovering(self) -> bool:
         return pathlib.Path(self.filename).exists()
 
 
-def compute_hash(module_filename: pathlib.Path) -> str:
+def compute_hash(module_filename: pathlib.Path, *env) -> str:
     with module_filename.open("rb") as f:
         m = hashlib.md5()
         m.update(f.read())
+        m.update(repr(env).encode("utf8"))
         h = m.hexdigest()[:6]
     return h
 

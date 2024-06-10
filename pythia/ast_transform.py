@@ -56,13 +56,13 @@ def make_for(for_loop: ast.For, filename: str, _dirty: set[str]) -> ast.With:
     res = ast.With(
         items=[
             ast.withitem(
-                context_expr=parse_expression("persist.Loader(__file__)"),
+                context_expr=parse_expression("persist.Loader(__file__, locals())"),
                 optional_vars=ast.Name(id="transaction", ctx=ast.Store()),
             )
         ],
         body=[
             ast.If(
-                test=parse_expression("transaction.restored_state"),
+                test=parse_expression("transaction"),
                 body=[
                     ast.Assign(
                         targets=[
@@ -71,7 +71,7 @@ def make_for(for_loop: ast.For, filename: str, _dirty: set[str]) -> ast.With:
                                 ctx=ast.Store(),
                             )
                         ],
-                        value=parse_expression("transaction.restored_state"),
+                        value=parse_expression("transaction.move()"),
                     )
                 ],
                 orelse=[],

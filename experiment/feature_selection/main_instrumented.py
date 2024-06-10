@@ -18,9 +18,9 @@ def log(idx: int, k: int) -> None:
 
 def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     S = np.array([], "int")
-    with persist.Loader(__file__) as transaction:
-        if transaction.restored_state:
-            [S] = transaction.restored_state
+    with persist.Loader(__file__, locals()) as transaction:
+        if transaction:
+            [S] = transaction.move()
         for idx in transaction.iterate(range(k)):  # type: int
             log(idx, k)
             dims = np.unique(S[S >= 0])
