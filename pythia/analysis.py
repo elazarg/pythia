@@ -148,6 +148,7 @@ def analyze_function(
     outfile: str,
     simplify: bool,
 ) -> None:
+    print(filename, function_names, print_invariants, outfile, simplify)
     functions, imports = disassemble.read_file(
         filename, filter_for_loops=not bool(function_names)
     )
@@ -160,6 +161,7 @@ def analyze_function(
 
     dirty_map: dict[str, set[str]] = {}
     for function_name in function_names:
+        print(function_name)
         f = functions[function_name]
         cfg = tac.make_tac_cfg(f)
         cfg = gu.simplify_cfg(cfg)

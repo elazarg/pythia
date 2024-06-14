@@ -36,8 +36,10 @@ def counter(i: int, j: int, f: np.ndarray) -> None:
 def empty_list_of_ints() -> list[int]:
     return []
 
-def length():
-    return collections.Counter[int]()
+
+def length(xs: Iterable[int]) -> int:
+    return max(xs)
+
 
 def comprehension(xs: list[int], k: int):
     x = [k for k in xs]
@@ -45,6 +47,15 @@ def comprehension(xs: list[int], k: int):
     return k
 
 # TODO: positives
+def loopfor():
+    for x in range(5):
+        return x
+
+
+def test_dict(g: dict[int, bool]) -> list[int]:
+    ks = g.keys()
+    return set(ks)
+
 
 def build_list_of_ints(k: int) -> None:
     clusters = []

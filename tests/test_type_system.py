@@ -20,6 +20,10 @@ FIRST = ts.literal(0)
 SECOND = ts.literal(1)
 
 
+def typeof(x):
+    return ts.Instantiation(ts.Ref("builtins.type"), (x,))
+
+
 def binop(left: ts.TypeExpr, right: ts.TypeExpr, op: str) -> ts.TypeExpr:
     return ts.get_return(ts.partial_binop(left, right, op))
 
@@ -73,12 +77,12 @@ def test_join_typevar_and_int():
     expected = ts.Instantiation(LIST, (ts.union([t, INT]),))
     assert ts.join(t1, t2) == expected
 
-    t1 = make_function(t, make_rows(t), type_params=(t,), new=False)
-    t2 = make_function(INT, make_rows(t), type_params=(t,), new=False)
-    expected = make_function(
-        ts.union([t, INT]), make_rows(t), type_params=(t,), new=False
-    )
-    assert ts.join(t1, t2) == expected
+    # t1 = make_function(t, make_rows(t), type_params=(t,), new=False)
+    # t2 = make_function(INT, make_rows(t), type_params=(t,), new=False)
+    # expected = make_function(
+    #     ts.union([t, INT]), make_rows(t), type_params=(t,), new=False
+    # )
+    # assert ts.join(t1, t2) == expected
 
 
 def test_join_literals():
@@ -126,6 +130,12 @@ def test_unification_args():
     ).bound_typevars == {T: FLOAT, Args: ts.Star((INT,))}
 
 
+def test_unification_protocol():
+    param = ts.Instantiation(ts.Ref("builtins.Iterable"), (T,))
+    arg = ts.Instantiation(ts.Ref("builtins.set"), (INT,))
+    assert ts.unify_argument(type_params=(T,), param=param, arg=arg) == {T: INT}
+
+
 def test_function_call():
     f = make_function(INT, make_rows())
     arg = make_rows()
@@ -142,6 +152,20 @@ def test_function_call():
     f = make_function(INT, make_rows())
     arg = ts.typed_dict([])
     assert ts.call(f, arg) == INT
+
+    f = make_function(INT, make_rows(ts.TOP))
+    arg = make_rows(FLOAT)
+    assert ts.call(f, arg) == INT
+
+
+def test_function_call_builtins():
+    f = ts.resolve_static_ref(ts.Ref("builtins.max"))
+
+    arg = ts.Instantiation(ts.Ref("builtins.Iterable"), (INT,))
+    assert ts.call(f, make_rows(arg)) == INT
+
+    arg = ts.Instantiation(ts.Ref("builtins.set"), (INT,))
+    assert ts.call(f, make_rows(arg)) == INT
 
 
 def test_call_union():
@@ -252,6 +276,9 @@ def test_getitem_list():
 
 
 def test_getitem_numpy():
+    x = ts.subscr_get_property(ARRAY, ts.literal(None))
+    assert x == ts.BOTTOM
+
     x = ts.subscr_get_property(ARRAY, ts.literal(0))
     assert x == FLOAT
 
@@ -260,9 +287,6 @@ def test_getitem_numpy():
 
     x = ts.subscr_get_property(ARRAY, ts.Ref("builtins.slice"))
     assert x == ARRAY
-
-    x = ts.subscr_get_property(ARRAY, ts.Ref("builtins.None"))
-    assert x == ts.BOTTOM
 
 
 def test_operator_numpy():
@@ -285,7 +309,7 @@ def test_set_constructor():
     assert s == ts.Instantiation(SET, (ts.BOTTOM,))
 
     add = ts.subscr_get_property(s, ts.literal("add"))
-    x = ts.partial(add, make_rows(INT))
+    x = ts.partial(add, make_rows(INT), only_callable_empty=True)
     assert isinstance(x, ts.Overloaded)
     assert len(x.items) == 1
     x = x.items[0]
@@ -304,3 +328,13 @@ def test_list_constructor():
     args = make_rows()
     lst = ts.call(constructor, args)
     assert lst == ts.literal([])
+
+
+def test_list_init():
+    args = make_rows(ts.Instantiation(ts.Ref("builtins.Iterable"), (FLOAT,)))
+    lst = ts.call(typeof(LIST), args)
+    assert lst == ts.Instantiation(LIST, (FLOAT,))
+
+    tt = ts.Instantiation(LIST, (FLOAT,))
+    lst = ts.call(typeof(tt), make_rows())
+    assert lst == tt

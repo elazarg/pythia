@@ -302,7 +302,8 @@ class TypeMap:
                 # Weak update; not a singleton
                 for k in self.map.keys():
                     if k in objects:
-                        self.map[k] = ts.join(self.map[k], value)
+                        v = ts.join(self.map[k], value)
+                        self.map[k] = v
             case obj:
                 self.map[obj] = value
 
@@ -600,7 +601,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if isinstance(
                     func_type, ts.Instantiation
                 ) and func_type.generic == ts.Ref("builtins.type"):
-                    func_type = ts.partial(func_type, ts.typed_dict([]))
+                    func_type = ts.get_init_func(func_type)
                 assert isinstance(
                     func_type, ts.Overloaded
                 ), f"Expected Overloaded type, got {func_type}"
@@ -609,10 +610,13 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 assert all(
                     arg for arg in arg_objects
                 ), f"Expected non-empty arg objects, got {arg_objects}"
-                applied = ts.partial_positional(func_type, arg_types)
+                applied = ts.partial(
+                    func_type, ts.positional(*arg_types), only_callable_empty=True
+                )
                 assert isinstance(
                     applied, ts.Overloaded
                 ), f"Expected Overloaded type, got {applied}"
+
                 side_effect = ts.get_side_effect(applied)
                 dirty = make_dirty()
                 if side_effect.update is not None:
@@ -822,9 +826,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         if isinstance(ins, tac.For):
             ins = ins.as_call()
 
-        # print(f"Transfer {ins} at {location}")
-        # print_debug(ins, tp)
-        # print(f"Prev: {tp}")
+        print(f"Transfer {ins} at {location}")
+        print_debug(ins, tp)
+        print(f"Prev: {tp}")
 
         # FIX: this removes pointers and make it "bottom" instead of "top"
         for var in tac.gens(ins):
@@ -845,9 +849,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 val = tp.pointers[LOCALS, var]
                 tp.pointers[LOCALS, tac.Var("return")] = val
 
-        # print_debug(ins, tp)
-        # print(f"Post: {tp}")
-        # print()
+        print_debug(ins, tp)
+        print(f"Post: {tp}")
+        print()
 
         # tp.normalize_types()
         tp.collect_garbage(self.liveness[location])

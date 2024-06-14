@@ -18,7 +18,7 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     nsamples, features = X.shape
     centroids = X[np.random.choice(nsamples, k)]
     clusters = list[list[int]]()
-    with persist.Loader(__file__) as transaction:
+    with persist.Loader(__file__, locals()) as transaction:
         if transaction:
             [clusters] = transaction.move()
         for i in transaction.iterate(range(max_iterations)):  # type: int

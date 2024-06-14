@@ -5,6 +5,7 @@ import contextlib
 import enum
 import os
 import typing
+from collections import defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -425,18 +426,18 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
         case (Overloaded(), _) | (_, Overloaded()):
             return TOP
         case (FunctionType() as f1, FunctionType() as f2):
-            if (f1.is_property, f1.type_params) == (f2.is_property, f2.type_params):
-                # TODO: check that f1.params and f2.params are compatible
-                new_params = meet(f1.params, f2.params)
-                if isinstance(new_params, Row):
-                    new_params = typed_dict([new_params])
-                assert isinstance(new_params, TypedDict)
-                return replace(
-                    f1,
-                    params=new_params,
-                    return_type=join(f1.return_type, f2.return_type),
-                    side_effect=join(f1.side_effect, f2.side_effect),
-                )
+            # if (f1.is_property, f1.type_params) == (f2.is_property, f2.type_params):
+            #     # TODO: check that f1.params and f2.params are compatible
+            #     new_params = meet(f1.params, f2.params)
+            #     if isinstance(new_params, Row):
+            #         new_params = typed_dict([new_params])
+            #     assert isinstance(new_params, TypedDict)
+            #     return replace(
+            #         f1,
+            #         params=new_params,
+            #         return_type=join(f1.return_type, f2.return_type),
+            #         side_effect=join(f1.side_effect, f2.side_effect),
+            #     )
             return union([f1, f2])
         case (Literal() as l1, Literal() as l2):
             if l1.ref == l2.ref:
@@ -548,6 +549,11 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
                 return l1.ref
             assert l1 != l2
             assert False, f"{l1!r}, {l2!r}"
+        case (Ref() as ref, Instantiation() as inst) | (
+            Instantiation() as inst,
+            Ref() as ref,
+        ) if ref == inst.generic:
+            return inst
         case (Literal(tuple() as value, ref=ref), Instantiation() as inst) | (
             Instantiation() as inst,
             Literal(tuple() as value, ref=ref),
@@ -626,6 +632,22 @@ def match_index(param: Index, arg: Index) -> bool:
     )
 
 
+def unify_protocol(
+    type_params: tuple[TypeVar, ...], param: Instantiation, arg: Instantiation
+) -> typing.Optional[dict[TypeVar, TypeExpr]]:
+    param_class = param.generic
+    assert isinstance(param_class, Class)
+    param_dict = param_class.class_dict
+
+    arg_class = arg.generic
+    assert isinstance(arg_class, Class)
+    arg_dict = arg_class.class_dict
+
+    assert param_class.protocol
+    res = unify_argument(type_params, param_dict, arg_dict)
+    return None
+
+
 def unify_argument(
     type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeExpr
 ) -> typing.Optional[dict[TypeVar, TypeExpr]]:
@@ -664,7 +686,37 @@ def unify_argument(
             return None
         case Instantiation() as param, Instantiation() as arg:
             if param.generic != arg.generic:
-                return None
+                param_class = instantiate_static_ref(param.generic)
+                if not isinstance(param_class, Class) or not param_class.protocol:
+                    return None
+                param_dict = param_class.class_dict
+
+                arg_class = instantiate_static_ref(arg.generic)
+                if not isinstance(arg_class, Class):
+                    return None
+                arg_dict = arg_class.class_dict
+
+                unified = []
+                for param_row in param_dict.row_items():
+                    for arg_row in arg_dict.row_items():
+                        if param_row.index.name == arg_row.index.name:
+                            param_f = bind_self_function(
+                                overload([param_row.type]), param
+                            )
+                            assert isinstance(param_f, Overloaded)
+                            param_f = param_f.items[0]
+                            arg_f = bind_self_function(overload([arg_row.type]), arg)
+                            assert isinstance(arg_f, Overloaded)
+                            arg_f = arg_f.items[0]
+                            res = unify_argument(type_params, param_f, arg_f)
+                            if res is None:
+                                return None
+                            unified.append(res)
+                            break
+
+                if len(unified) != 1:
+                    return None
+                return unified[0]
             ps = typed_dict(
                 [make_row(i, None, p) for i, p in enumerate(param.type_args)]
             )
@@ -688,6 +740,16 @@ def unify_argument(
                 param,
                 Instantiation(instantiate_static_ref(param_type), param_args),
             )
+        case FunctionType() as param, FunctionType() as arg:
+            if param.is_property != arg.is_property:
+                return None
+            if param.side_effect != arg.side_effect:
+                return None
+            mid_context = unify_argument(type_params, param.params, arg.params)
+            if mid_context is None:
+                return None
+            res = unify_argument(type_params, param.return_type, arg.return_type)
+            return res
         case Literal() as param, Literal() as arg:
             if param == arg:
                 return {}
@@ -832,7 +894,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> Overloaded | Module:
                 and isinstance(t, Module)
                 and t.name not in ["builtins", "numpy", "collections"]
             ):
-                return TOP
+                return BOTTOM
             result = overload(types)
             assert (
                 free_vars_expr(result) == set()
@@ -840,10 +902,15 @@ def access(t: TypeExpr, arg: TypeExpr) -> Overloaded | Module:
             return result
         case Class() as t, arg:
             getter = access(t, literal("__getitem__"))
-            getitem = partial(getter, typed_dict([make_row(1, None, arg)]))
-            # assert free_vars_expr(getitem) == set(), f'{getitem!r} has free vars: {free_vars_expr(getitem)}'
+            getitem = partial(
+                getter, typed_dict([make_row(1, None, arg)]), only_callable_empty=False
+            )
             if getitem == BOTTOM:
                 return BOTTOM
+            assert isinstance(getitem, Overloaded), f"{getitem!r}"
+            if not getitem.items:
+                return BOTTOM
+            # assert free_vars_expr(getitem) == set(), f'{getitem!r} has free vars: {free_vars_expr(getitem)}'
             if isinstance(getitem, Union):
                 assert len(getitem.items) == 1, f"{getitem!r}"
                 [getitem] = getitem.items
@@ -927,6 +994,8 @@ def union_all(iterable: typing.Iterable[set]) -> set:
 
 def free_vars_expr(t: TypeExpr) -> set[TypeVar]:
     match t:
+        case None:
+            return set()
         case TypeVar() as t:
             return {t}
         case Star() as t:
@@ -961,6 +1030,10 @@ def free_vars_typed_dict(t: TypedDict) -> set[TypeVar]:
     return union_all(free_vars_expr(item.type) for item in t.row_items())
 
 
+def free_vars_side_effect(t: SideEffect) -> set[TypeVar]:
+    return free_vars_expr(t.update)
+
+
 def subtract_type_underapprox(argtype: TypeExpr, paramtype: TypeExpr) -> TypeExpr:
     if argtype == paramtype:
         return BOTTOM
@@ -973,21 +1046,29 @@ def subtract_type_underapprox(argtype: TypeExpr, paramtype: TypeExpr) -> TypeExp
     return argtype
 
 
-def partial(callable: TypeExpr, args: TypedDict) -> TypeExpr:
+def is_type_type(t: TypeExpr) -> bool:
+    match t:
+        case Instantiation(Ref("builtins.type"), (selftype,)):
+            return True
+        case _:
+            return False
+
+
+def get_init_func(callable: TypeExpr) -> TypeExpr:
     if callable == TOP:
         return TOP
     if callable == BOTTOM:
         return BOTTOM
     match callable:
-        case Instantiation(Ref("builtins.type"), (arg,)):
-            assert isinstance(arg, (Ref, Instantiation))
-            init = access(arg, literal("__init__"))
+        case Instantiation(Ref("builtins.type"), (selftype,)):
+            assert isinstance(selftype, (Ref, Instantiation))
+            init = access(selftype, literal("__init__"))
             if init == overload([]):
-                return_type = arg
-                if isinstance(arg, Ref):
-                    return_type = Instantiation(arg, (BOTTOM,))
+                return_type = selftype
+                if isinstance(selftype, Ref):
+                    return_type = Instantiation(selftype, (BOTTOM,))
                 else:
-                    assert isinstance(arg.generic, Ref)
+                    assert isinstance(selftype.generic, Ref)
                 return overload(
                     [
                         FunctionType(
@@ -1000,110 +1081,124 @@ def partial(callable: TypeExpr, args: TypedDict) -> TypeExpr:
                     ]
                 )
             side_effect = SideEffect(
-                new=True, bound_method=False, update=None, points_to_args=True
+                new=True, bound_method=True, update=None, points_to_args=True
             )
-            return overload(
-                replace(f, return_type=arg, side_effect=side_effect) for f in init.items
+            res = bind_self(
+                overload(
+                    replace(
+                        f,
+                        return_type=f.side_effect.update or selftype,
+                        side_effect=side_effect,
+                    )
+                    for f in init.items
+                ),
+                selftype,
             )
+            return res
+    assert False, f"{callable!r}"
+
+
+def do_bind(f: FunctionType, binding: Binding) -> FunctionType:
+    # FIX: partially-bind *Args, so when *Args is bound to (T1, T2),
+    # then Literal[*Args] becomes Literal[T1, T2, *Args]
+    side_effect = bind_typevars(f.side_effect, binding.bound_typevars)
+    assert isinstance(side_effect, SideEffect)
+    params = subtract_indices(
+        typed_dict(binding.unbound_params), typed_dict(binding.bound_params.keys())
+    )
+    stars = {e for e in free_vars_expr(params) if isinstance(e, TypeVar) and e.is_args}
+    return_type = bind_typevars(f.return_type, binding.bound_typevars)
+    type_params = tuple(
+        v for v in f.type_params if v not in binding.bound_typevars or v in stars
+    )
+    res = FunctionType(
+        type_params=type_params,
+        params=params,
+        return_type=return_type,
+        side_effect=side_effect,
+        is_property=f.is_property,
+    )
+    # bind params only when type parameters shadow the *Args
+    res = bind_typevars(res, binding.bound_typevars)
+    assert isinstance(res, FunctionType)
+    return res
+
+
+def split_by_args(callable: TypeExpr, args: TypedDict) -> TypeExpr:
+    if callable == TOP:
+        return TOP
+    if callable == BOTTOM:
+        return BOTTOM
+    match callable:
         case Overloaded(items):
-            # This returns a union of cases, so defaults to TOP.
-            applied = []
-            skip = set()
-            for i, f in enumerate(items):
-                if i in skip:
-                    continue
-                first_bound_params = None
-                overloaded = []
-                for j, f in enumerate(items[i:], i):
-                    if j in skip:
-                        continue
-
-                    binding = unify(f.type_params, f.params, args)
-                    if binding is None:
-                        if first_bound_params is not None:
-                            continue
-                        else:
-                            break
-                    if first_bound_params is None:
-                        first_bound_params = binding.bound_params
-                    if binding.bound_params == first_bound_params:
-                        skip.add(j)
-                        f = replace(
-                            f,
-                            type_params=tuple(
-                                v
-                                for v in f.type_params
-                                if v not in binding.bound_typevars
-                            ),
-                            params=subtract_indices(
-                                typed_dict(binding.unbound_params),
-                                typed_dict(binding.bound_params.keys()),
-                            ),
-                            return_type=bind_typevars(
-                                f.return_type, binding.bound_typevars
-                            ),
-                            side_effect=bind_typevars(
-                                f.side_effect, binding.bound_typevars
-                            ),
-                        )
-                        overloaded.append(f)
-                del f
-                if not overloaded:
-                    continue
-                applied.append(overload(overloaded))
-
-                if first_bound_params is None:
-                    continue
-
-                args = typed_dict(
-                    replace(arg, type=subtract_type_underapprox(arg.type, param.type))
-                    for param, arg in first_bound_params.items()
-                )
-                if any(arg.type == BOTTOM for arg in args.row_items()):
-                    break
-            return join_all(applied)
-        case FunctionType() as f:
-            binding = unify(f.type_params, f.params, args)
-            # This returns a single case, so defaults to BOTTOM.
-            if binding is None:
-                return BOTTOM
-            return replace(
-                f,
-                type_params=tuple(
-                    v for v in f.type_params if v not in binding.bound_typevars
-                ),
-                params=subtract_indices(
-                    typed_dict(binding.unbound_params),
-                    typed_dict(binding.bound_params.keys()),
-                ),
-                return_type=bind_typevars(f.return_type, binding.bound_typevars),
-                side_effect=bind_typevars(f.side_effect, binding.bound_typevars),
+            bind_list = defaultdict(list)
+            for j, f in enumerate(items):
+                b = unify(f.type_params, f.params, args)
+                if b is not None:
+                    key = typed_dict(b.bound_params.keys())
+                    bind_list[key].append(do_bind(f, b))
+            side_effect = SideEffect(new=True)
+            res = overload(
+                [
+                    FunctionType(
+                        params=bound,
+                        return_type=overload(fs),
+                        is_property=False,
+                        type_params=(),
+                        side_effect=side_effect,
+                    )
+                    for bound, fs in bind_list.items()
+                ]
             )
+            return res
+        case FunctionType() as f:
+            return split_by_args(overload([f]), args)
         case Union(items):
-            return union([partial(item, args) for item in items])
+            return union([split_by_args(item, args) for item in items])
         case Class(class_dict=class_dict), arg:
             dunder = subscr(class_dict, literal("__call__"))
-            return partial(dunder, arg)
+            return split_by_args(dunder, arg)
         case _:
             assert False, f"Cannot call {callable} with {args}"
 
 
-def partial_positional(f: TypeExpr, args: tuple[TypeExpr, ...]) -> TypeExpr:
-    return partial(
-        f, typed_dict([make_row(i, None, arg) for i, arg in enumerate(args)])
+def partial(callable: TypeExpr, args: TypedDict, only_callable_empty: bool) -> TypeExpr:
+    split = split_by_args(callable, args)
+    if not isinstance(split, Overloaded):
+        return TOP
+    if not split.items:
+        return BOTTOM
+    for item in split.items:
+        result = item.return_type
+        assert isinstance(result, Overloaded), f"{item!r}"
+        assert not free_vars_expr(result), f"{result!r}"
+        if only_callable_empty:
+            result = overload([f for f in result.items if is_callable_empty(f)])
+            if not result.items:
+                continue
+        return result
+    return BOTTOM
+
+
+def positional(*args: TypeExpr) -> TypedDict:
+    return typed_dict([make_row(i, None, arg) for i, arg in enumerate(args)])
+
+
+def bind_self_function(f: Overloaded, selftype: TypeExpr) -> Overloaded:
+    split_f = split_by_args(f, positional(selftype))
+    if not isinstance(split_f, Overloaded):
+        return TOP
+    res = []
+    for item in split_f.items:
+        assert isinstance(item.return_type, Overloaded)
+        res.append(item.return_type)
+    return overload(
+        [
+            replace(f, side_effect=replace(f.side_effect, bound_method=True))
+            for item in res
+            for f in item.items
+        ]
     )
-
-
-def bind_self_function(f: FunctionType, selftype: TypeExpr) -> FunctionType:
-    res = partial(f, typed_dict([make_row(0, "self", selftype)]))
-    if isinstance(res, FunctionType):
-        res = replace(res, side_effect=replace(res.side_effect, bound_method=True))
-    elif isinstance(res, Overloaded):
-        res = overload(
-            replace(item, side_effect=replace(item.side_effect, bound_method=True))
-            for item in res.items
-        )
-    return res
 
 
 def bind_self(attr: Overloaded, selftype: TypeExpr) -> Overloaded:
@@ -1111,15 +1206,20 @@ def bind_self(attr: Overloaded, selftype: TypeExpr) -> Overloaded:
         return attr
     if isinstance(selftype, Ref) and isinstance(resolve_static_ref(selftype), Module):
         return attr
-    match attr:
-        case Overloaded(items):
-            return overload([bind_self_function(item, selftype) for item in items])
-        case FunctionType() as attr:
-            return overload([bind_self_function(attr, selftype)])
-        case Union(items):
-            return join_all(bind_self(item, selftype) for item in items)
-        case _:
-            return attr
+    return bind_self_function(attr, selftype)
+
+
+def is_callable_empty(f: FunctionType | Overloaded) -> bool:
+    match f:
+        case Overloaded() as f:
+            return all(is_callable_empty(item) for item in f.items)
+        case FunctionType(params=TypedDict(items)):
+            if not items:
+                return True
+            if len(items) == 1:
+                [row] = items
+                return isinstance(row.type, TypeVar) and row.type.is_args
+    return False
 
 
 def get_return(callable: TypeExpr) -> TypeExpr:
@@ -1129,11 +1229,17 @@ def get_return(callable: TypeExpr) -> TypeExpr:
         return BOTTOM
     match callable:
         case Overloaded(items):
-            return meet_all(get_return(item) for item in items)
+            for f in items:
+                if is_callable_empty(f):
+                    return f.return_type
+            return BOTTOM
         case Union(items):
-            return join_all(get_return(item) for item in items)
-        case FunctionType(return_type=return_type):
-            return return_type
+            res = [get_return(item) for item in items]
+            return join_all(res)
+        case FunctionType() as f:
+            if is_callable_empty(f):
+                return f.return_type
+            return BOTTOM
     assert False, f"{callable!r}"
 
 
@@ -1152,7 +1258,7 @@ def subscr(selftype: TypeExpr, index: TypeExpr) -> TypeExpr:
             )
             return Instantiation(Ref("builtins.type"), (inner,))
     attr_type = access(selftype, index)
-    if attr_type == TOP:
+    if attr_type == BOTTOM:
         # non-existent attribute
         return BOTTOM
     try:
@@ -1175,10 +1281,10 @@ def subscr_get_property(selftype: TypeExpr, index: TypeExpr) -> TypeExpr:
 
 
 def call(callable: TypeExpr, args: TypedDict) -> TypeExpr:
-    resolved = partial(callable, args)
-    result = get_return(resolved)
-    assert not free_vars_expr(result), f"{result!r}"
-    return result
+    if is_type_type(callable):
+        callable = get_init_func(callable)
+    f = partial(callable, args, only_callable_empty=True)
+    return get_return(f)
 
 
 def make_list_constructor() -> Overloaded:
@@ -1360,7 +1466,9 @@ def partial_binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     if binop_func == BOTTOM:
         # assume there is an implementation.
         return TOP
-    return partial(binop_func, typed_dict([make_row(0, None, right)]))
+    result = split_by_args(binop_func, positional(right))
+    assert isinstance(result, Overloaded), f"{result!r}"
+    return overload([f.return_type for f in result.items])
 
 
 def get_unop(left: TypeExpr, op: str) -> TypeExpr:

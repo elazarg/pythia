@@ -8,7 +8,7 @@ def new(f):
 
 @new
 def get_world(g: dict[int, set[int]], root_to_leaf_path: list[int]) -> set[int]:
-    world = set(g)
+    world = set(g.keys())
     for u in root_to_leaf_path:
         world.intersection_update(g[u])
     return world

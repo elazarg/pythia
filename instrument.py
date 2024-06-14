@@ -15,7 +15,7 @@ def main() -> None:
         pythonfile,
         print_invariants=False,
         outfile=instrumented,
-        simplify=True,
+        simplify=False,
     )
     try:
         subprocess.run(
