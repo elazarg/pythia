@@ -27,6 +27,13 @@ def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
             r = np.argmin(np.linalg.norm(X[sample_i] - centroids, axis=1))
             clusters[r].append(sample_i)
 
+        # # Calculate new centroids from the clusters
+        # new_centroids = np.array([np.mean(X[cluster], axis=0) for cluster in clusters])
+        # # If no centroids have changed => convergence
+        # if not (new_centroids - centroids).any():
+        #     break
+        # centroids = new_centroids
+
         # Save current centroids for convergence check
         prev_centroids = centroids
         # Calculate new centroids from the clusters

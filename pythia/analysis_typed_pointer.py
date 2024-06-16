@@ -456,6 +456,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     liveness: dict[Location, analysis_liveness.Liveness]
     annotations: domain.Map[Param, ts.TypeExpr]
     backward: bool = False
+    for_locations: frozenset[Location]
 
     @classmethod
     def name(cls) -> str:
@@ -466,14 +467,14 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         liveness: dict[Location, VarMapDomain[analysis_liveness.Liveness]],
         this_function: str,
         this_module: ts.Module,
-        for_location: Location,
+        for_locations: frozenset[Location],
     ) -> None:
         super().__init__()
         self.annotations = parse_annotations(this_function, this_module)
         self.type_lattice = TypeLattice(this_function, this_module)
         self.this_module = this_module
         self.liveness = liveness
-        self.for_location = for_location
+        self.for_locations = for_locations
 
     def is_less_than(self, left: TypedPointer, right: TypedPointer) -> bool:
         return left.is_less_than(right)
@@ -820,15 +821,15 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     ) -> TypedPointer:
         tp = deepcopy(prev_tp)
 
-        if location == self.for_location:
+        if location in self.for_locations:
             tp.dirty = make_dirty()
 
         if isinstance(ins, tac.For):
             ins = ins.as_call()
 
-        print(f"Transfer {ins} at {location}")
-        print_debug(ins, tp)
-        print(f"Prev: {tp}")
+        # print(f"Transfer {ins} at {location}")
+        # print_debug(ins, tp)
+        # print(f"Prev: {tp}")
 
         # FIX: this removes pointers and make it "bottom" instead of "top"
         for var in tac.gens(ins):
@@ -848,10 +849,10 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Return(var):
                 val = tp.pointers[LOCALS, var]
                 tp.pointers[LOCALS, tac.Var("return")] = val
-
-        print_debug(ins, tp)
-        print(f"Post: {tp}")
-        print()
+        #
+        # print_debug(ins, tp)
+        # print(f"Post: {tp}")
+        # print()
 
         # tp.normalize_types()
         tp.collect_garbage(self.liveness[location])

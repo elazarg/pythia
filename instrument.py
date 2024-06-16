@@ -2,7 +2,7 @@ import os
 import subprocess
 import sys
 
-from pythia.analysis import analyze_function
+from pythia.analysis import analyze_and_transform
 
 
 def main() -> None:
@@ -11,7 +11,7 @@ def main() -> None:
         print(f"Usage: {this} <pythonfile> [<args>...]", file=sys.stderr)
         sys.exit(1)
     instrumented = pythonfile[:-3] + "_instrumented.py"
-    analyze_function(
+    analyze_and_transform(
         pythonfile,
         print_invariants=False,
         outfile=instrumented,

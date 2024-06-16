@@ -238,6 +238,7 @@ class For:
     lhs: Signature
     iterator: Var
     jump_target: int
+    original_lineno: int
 
     def __str__(self) -> str:
         return f"{self.lhs} = next({self.iterator}) HANDLE: GOTO {self.jump_target}"
@@ -430,6 +431,13 @@ def subst_var_in_expr(expr: Expr, target: Var, new_var: Var) -> Expr:
             raise NotImplementedError(f"subst_var_in_expr({expr}, {target}, {new_var})")
 
 
+def const(value: object) -> Const:
+    assert isinstance(
+        value, (int, float, str, type(None), bool)
+    ), f"Const type {type(value)!r} in source code is not supported"
+    return Const(value)
+
+
 def make_tac(
     ins: instruction_cfg.Instruction,
     stack_depth: int,
@@ -441,7 +449,9 @@ def make_tac(
         # So we load tuple as if it was a list
         lst = []
         for v in ins.argval:
-            lst += make_tac_no_dels("LOAD_CONST", v, 1, stack_depth, ins.argrepr)
+            lst += make_tac_no_dels(
+                "LOAD_CONST", v, 1, stack_depth, ins.argrepr, ins.positions.lineno
+            )
             stack_depth += 1
         tac_list = lst + make_tac_no_dels(
             "BUILD_TUPLE",
@@ -449,10 +459,16 @@ def make_tac(
             -len(ins.argval) + 1,
             stack_depth,
             ins.argrepr,
+            ins.positions.lineno,
         )
     else:
         tac_list = make_tac_no_dels(
-            ins.opname, ins.argval, stack_effect, stack_depth, ins.argrepr
+            ins.opname,
+            ins.argval,
+            stack_effect,
+            stack_depth,
+            ins.argrepr,
+            ins.positions.lineno,
         )
     for tac in tac_list:
         trace_origin[id(tac)] = ins
@@ -474,8 +490,8 @@ def make_class(name: str) -> Attribute:
     return Attribute(Predefined.NONLOCALS, Var(name))
 
 
-def make_tac_cfg(f: typing.Any) -> gu.Cfg[Tac]:
-    allowed = {(3, 11), (3, 12)}
+def make_tac_cfg(f: typing.Any, simplify: bool = False) -> gu.Cfg[Tac]:
+    allowed = {(3, 12)}
     assert (
         sys.version_info[:2] in allowed
     ), f"Python version is {sys.version_info} but only {allowed} is supported"
@@ -502,6 +518,10 @@ def make_tac_cfg(f: typing.Any) -> gu.Cfg[Tac]:
 
     tac_cfg: gu.Cfg[Tac] = gu.node_data_map(ins_cfg, instruction_block_to_tac_block)
     tac_cfg.annotator = annotator
+
+    tac_cfg = gu.simplify_cfg(tac_cfg)
+    if not simplify:
+        tac_cfg = gu.refine_to_chain(tac_cfg)
     return tac_cfg
 
 
@@ -511,6 +531,7 @@ def make_tac_no_dels(
     stack_effect: int,
     stack_depth: int,
     argrepr: str,
+    start_lineno: int,
 ) -> list[Tac]:
     """Translate a bytecode operation into a list of TAC instructions."""
     out = stack_depth + stack_effect if stack_depth is not None else None
@@ -629,16 +650,23 @@ def make_tac_no_dels(
             return [Return(stackvar(stack_depth))]
         case ["RETURN", "CONST"]:
             return [
-                Assign(stackvar(stack_depth + 1), Const(val)),
+                Assign(stackvar(stack_depth + 1), const(val)),
                 Return(stackvar(stack_depth + 1)),
             ]
         case ["YIELD", "VALUE"]:
             return [Assign(stackvar(out), Yield(stackvar(stack_depth)))]
         case ["FOR", "ITER"]:
             assert isinstance(val, int)
-            return [For(stackvar(out), stackvar(stack_depth), val)]
+            return [
+                For(
+                    stackvar(out),
+                    stackvar(stack_depth),
+                    val,
+                    original_lineno=start_lineno,
+                )
+            ]
         case ["LOAD", "CONST"]:
-            return [Assign(stackvar(out), Const(val))]
+            return [Assign(stackvar(out), const(val))]
         case ["LOAD", "LOCALS"]:
             assert False, "added in python3.12"
         case ["LOAD", "FROM", "DICT", "OR", "GLOBALS"]:

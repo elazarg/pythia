@@ -2,8 +2,12 @@ from __future__ import annotations as _
 
 import ast
 import marshal
+import pathlib
 import struct
+from dataclasses import dataclass
 from typing import Any
+
+from pythia import ast_transform
 
 
 # Based on https://stackoverflow.com/a/67428655/2289509
@@ -36,40 +40,49 @@ def read_function_using_compile(file_path: str, function_name: str) -> object:
     raise ValueError(f"Could not find function {function_name} in {file_path}")
 
 
-def read_file(file_path: str, filter_for_loops=True) -> tuple[dict[str, object], Any]:
+@dataclass
+class ParsedFile:
+    functions: dict[str, object]
+    imports: dict[str, str]
+    annotated_for: dict[str, frozenset[int]]
+
+
+def read_file(file_path: str) -> ParsedFile:
     module = ast.parse("from __future__ import annotations\n", filename=file_path)
+    source = pathlib.Path(file_path).read_text(encoding="utf-8")
+    parser = ast_transform.Parser(file_path)
+    code = parser.parse(source)
+    annotated_for: dict[str, frozenset[int]] = {}
+    for funcdef in parser.iterate_purified_functions(code):
+        module.body.append(funcdef)
+        annotated_for[funcdef.name] = parser.annotated_for_labels(funcdef)
 
-    with open(file_path, "r", encoding="utf-8") as file:
-        source = file.read()
-    code = ast.parse(source, filename=file_path)
-
-    for node in code.body:
-        if isinstance(node, ast.FunctionDef):
-            if not filter_for_loops:
-                module.body.append(node)
-                continue
-            for n in ast.walk(node):
-                if isinstance(n, ast.For):
-                    # if n.type_comment:
-                    module.body.append(node)
-                    break
-    functions = compile(module, "", "exec", dont_inherit=True, flags=0, optimize=0)
-    env: dict[str, object] = {"new": lambda f: f}
+    module_with_functions = compile(
+        module, "", "exec", dont_inherit=True, flags=0, optimize=0
+    )
+    functions_env: dict[str, object] = {"new": lambda f: f}
     # exec should be safe here, since it cannot have any side effects
-    exec(functions, {}, env)
-    del env["annotations"]
-    del env["new"]
+    exec(module_with_functions, {}, functions_env)
+    del functions_env["annotations"]
+    del functions_env["new"]
+    if not functions_env:
+        raise ValueError("No functions found")
 
-    globals_dict: dict[str, str] = {}
+    imports: dict[str, str] = {}
     for node in code.body:
         if isinstance(node, ast.Import):
             for name in node.names:
-                globals_dict[name.asname or name.name] = name.name
+                imports[name.asname or name.name] = name.name
         if isinstance(node, ast.ImportFrom):
             for name in node.names:
-                globals_dict[name.asname or name.name] = f"{node.module}.{name.name}"
-    return env, globals_dict
+                imports[name.asname or name.name] = f"{node.module}.{name.name}"
+
+    return ParsedFile(
+        functions=functions_env,
+        imports=imports,
+        annotated_for=annotated_for,
+    )
 
 
 if __name__ == "__main__":
-    pass  # read_function_as_ast('code_examples.py', 'feature_selection')
+    print(read_file("test_data/lists.py"))

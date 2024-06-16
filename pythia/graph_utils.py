@@ -323,13 +323,6 @@ def single_source_dijkstra_path_length(
     return nx.single_source_dijkstra_path_length(cfg.graph, source, weight=weight)
 
 
-def find_first_for_loop[
-    T
-](cfg: Cfg[T], is_for: Callable[[T], bool]) -> tuple[Label, Label]:
-    first_label = min(
-        label for label, block in cfg.items() if block and any(is_for(b) for b in block)
-    )
-    block = cfg[first_label]
-    assert len(block) == 1
-    prev, *_, after = sorted(cfg.predecessors(first_label))
-    return (first_label, after)
+def find_loop_end[T](cfg: Cfg[T], loop_label: Label) -> Optional[Label]:
+    prev, *_, after = sorted(cfg.predecessors(loop_label))
+    return after
