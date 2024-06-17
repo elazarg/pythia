@@ -16,7 +16,18 @@ def analyze_and_transform(
         print_invariants=False,
         simplify=simplify,
     )
-    assert expected == actual
+    expected_transaction = [
+        (i, line.strip())
+        for i, line in enumerate(expected.splitlines())
+        if "transaction.move" in line
+    ]
+    actual_transaction = [
+        (i, line.strip())
+        for i, line in enumerate(actual.splitlines())
+        if "transaction.move" in line
+    ]
+    assert actual_transaction == expected_transaction
+    assert actual == expected
 
 
 @pytest.mark.parametrize("simplify", [True, False])
