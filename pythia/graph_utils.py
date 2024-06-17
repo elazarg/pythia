@@ -324,5 +324,8 @@ def single_source_dijkstra_path_length(
 
 
 def find_loop_end[T](cfg: Cfg[T], loop_label: Label) -> Optional[Label]:
-    prev, *_, after = sorted(cfg.predecessors(loop_label))
-    return after
+    try:
+        prev, *_, after = sorted(cfg.predecessors(loop_label))
+        return after
+    except ValueError:
+        return None

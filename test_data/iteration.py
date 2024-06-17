@@ -1,10 +1,10 @@
 import numpy as np
 import collections as collections  # FIX: import collections
+from typing import Iterable
 
 
 def new(f):
     return f
-
 
 
 def first_shape(x: np.ndarray) -> int:
@@ -37,15 +37,15 @@ def get_world(g: dict[int, set[int]], root_to_leaf_path: list[int]) -> set[int]:
     return world
 
 
-# TODO: positives
 def loopfor():
     for x in range(5):
         return x
 
 
-def test_dict(g: dict[int, bool]) -> list[int]:
+def test_dict(g: dict[int, bool]) -> set[int]:
     ks = g.keys()
     return set(ks)
+
 
 def iterate(x: int):
     for i in range(x):
@@ -55,7 +55,7 @@ def iterate(x: int):
 
 
 def double_iterate(xxs: list[list[int]], ys: list[int]):
-    for xs in range(xxs):
+    for xs in range(len(xxs)):
         for x in range(xs):
             ys[x] = x
 
@@ -75,7 +75,7 @@ def access(x: np.ndarray):
 
 
 def tup() -> tuple[int, float]:
-    a, b = (1, "x")
+    return (1, "x")
 
 
 def listing():
@@ -85,7 +85,6 @@ def listing():
 
 def make_int() -> int:
     return 1
-
 
 
 def pair() -> tuple[int, float]:

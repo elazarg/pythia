@@ -1884,6 +1884,12 @@ class TypeCollector:
                     if asname is None:
                         continue
                     yield make_row(index, asname, Ref(alias.name))
+            case ast.ImportFrom(module=module, names=aliases, level=level):
+                for alias in aliases:
+                    asname = alias.asname
+                    if asname is None:
+                        continue
+                    yield make_row(index, asname, Ref(f"{module}.{alias.name}"))
             case ast.ClassDef() as cdef:
                 t = self.visit_ClassDef(cdef)
                 yield make_row(index, cdef.name, t)

@@ -192,7 +192,7 @@ Expr: TypeAlias = (
 
 
 def stackvar(x: int) -> Var:
-    return Var(str(x - 1), True)
+    return Var(str(x), True)
 
 
 def is_stackvar(v: Var | Const) -> bool:
@@ -432,8 +432,10 @@ def subst_var_in_expr(expr: Expr, target: Var, new_var: Var) -> Expr:
 
 
 def const(value: object) -> Const:
+    if isinstance(value, tuple):
+        assert all(const(v) for v in value)
     assert isinstance(
-        value, (int, float, str, type(None), bool)
+        value, (int, float, str, type(None), bool, tuple)
     ), f"Const type {type(value)!r} in source code is not supported"
     return Const(value)
 
@@ -535,6 +537,7 @@ def make_tac_no_dels(
 ) -> list[Tac]:
     """Translate a bytecode operation into a list of TAC instructions."""
     out = stack_depth + stack_effect if stack_depth is not None else None
+    fresh = stackvar(stack_depth + 1)
     match opname.split("_"):
         case ["CACHE"]:
             return []
@@ -579,13 +582,11 @@ def make_tac_no_dels(
             else:
                 return [Assign(lhs, Binary(left, argrepr, right, inplace=False))]
         case ["LIST", "APPEND"]:
-            fresh = stackvar(stack_depth + 1)
             return [
                 Assign(fresh, Attribute(stackvar(stack_depth - val), Var("append"))),
                 Assign(None, Call(fresh, (stackvar(stack_depth),))),
             ]
         case ["SET", "ADD"]:
-            fresh = stackvar(stack_depth + 1)
             return [
                 Assign(fresh, Attribute(stackvar(stack_depth - val), Var("add"))),
                 Assign(None, Call(fresh, (stackvar(stack_depth),))),
@@ -623,21 +624,17 @@ def make_tac_no_dels(
         case ["DELETE", "DEREF"]:
             assert False, "added in python3.12"
         case ["ROT", "TWO"]:
-            fresh = stackvar(stack_depth + 1)
             return [
                 Assign(fresh, stackvar(stack_depth)),
                 Assign(stackvar(stack_depth), stackvar(stack_depth - 1)),
                 Assign(stackvar(stack_depth - 1), fresh),
-                Del((fresh,)),
             ]
         case ["ROT", "THREE"]:
-            fresh = stackvar(stack_depth + 1)
             return [
                 Assign(fresh, stackvar(stack_depth - 2)),
                 Assign(stackvar(stack_depth - 2), stackvar(stack_depth - 1)),
                 Assign(stackvar(stack_depth - 1), stackvar(stack_depth)),
                 Assign(stackvar(stack_depth), fresh),
-                Del((fresh,)),
             ]
         case ["DUP", "TOP"]:
             return [Assign(stackvar(out), stackvar(stack_depth))]
@@ -650,8 +647,8 @@ def make_tac_no_dels(
             return [Return(stackvar(stack_depth))]
         case ["RETURN", "CONST"]:
             return [
-                Assign(stackvar(stack_depth + 1), const(val)),
-                Return(stackvar(stack_depth + 1)),
+                Assign(fresh, const(val)),
+                Return(fresh),
             ]
         case ["YIELD", "VALUE"]:
             return [Assign(stackvar(out), Yield(stackvar(stack_depth)))]
@@ -762,8 +759,8 @@ def make_tac_no_dels(
             start = stackvar(stack_depth - 1)
             container = stackvar(stack_depth - 2)
             return [
-                Assign(stackvar(out), Call(Predefined.SLICE, (start, end))),
-                Assign(stackvar(out), Subscript(container, stackvar(out))),
+                Assign(fresh, Call(Predefined.SLICE, (start, end))),
+                Assign(stackvar(out), Subscript(container, fresh)),
             ]
         case ["STORE", "SLICE"]:
             end = stackvar(stack_depth)
@@ -771,8 +768,8 @@ def make_tac_no_dels(
             container = stackvar(stack_depth - 2)
             value = stackvar(stack_depth - 3)
             return [
-                Assign(stackvar(out), Call(Predefined.SLICE, (start, end))),
-                Assign(Subscript(container, stackvar(out)), value),
+                Assign(fresh, Call(Predefined.SLICE, (start, end))),
+                Assign(Subscript(container, fresh), value),
             ]
         case ["BUILD", op]:
             assert isinstance(val, int)

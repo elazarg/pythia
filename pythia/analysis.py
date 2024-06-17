@@ -121,7 +121,7 @@ def find_for_loops(cfg: Cfg) -> frozenset[tuple[gu.Label, int]]:
             (label, i)
             for label, block in cfg.items()
             for i, ins in enumerate(block)
-            if isinstance(ins, tac.For)
+            if isinstance(ins, tac.For) and gu.find_loop_end(cfg, label) is not None
         }
     )
 
