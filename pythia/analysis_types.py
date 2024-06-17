@@ -159,6 +159,9 @@ class TypeLattice(ValueLattice[TypeExpr]):
         try:
             # FIX: How to differentiate nonexistent attributes from attributes that are TOP?
             res = ts.subscr(mod, ts.literal(attr.name))
+            # Fix: only works for depth 1
+            if isinstance(mod, ts.Module):
+                mod = ts.Ref(mod.name)
             match mod, res:
                 case ts.Ref(name=modname), ts.Instantiation(
                     ts.Ref("builtins.type"), (ts.Class(),)

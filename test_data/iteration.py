@@ -1,5 +1,5 @@
 import numpy as np
-import collections as collections  # FIX: import collections
+import collections
 from typing import Iterable
 
 

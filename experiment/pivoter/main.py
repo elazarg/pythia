@@ -1,4 +1,4 @@
-import collections as collections  # FIX: import collections
+from collections import Counter  # FIX: import collections
 
 
 def new(f):
@@ -14,8 +14,8 @@ def get_world(g: dict[int, set[int]], root_to_leaf_path: list[int]) -> set[int]:
 
 
 def recursive_cn(g: dict[int, set[int]], root: int, max_only: bool = False):
-    def cn(root_to_leaf_path: list[int]) -> collections.Counter[int]:
-        counter = collections.Counter[int]()
+    def cn(root_to_leaf_path: list[int]) -> Counter[int]:
+        counter = Counter[int]()
         world = get_world(g, root_to_leaf_path)
         if not max_only or len(world) == 0:
             counter[len(root_to_leaf_path)] += 1
@@ -29,11 +29,9 @@ def recursive_cn(g: dict[int, set[int]], root: int, max_only: bool = False):
     return cn([])
 
 
-def run(
-    g: dict[int, set[int]], root: int, max_only: bool = False
-) -> collections.Counter[int]:
+def run(g: dict[int, set[int]], root: int, max_only: bool = False) -> Counter[int]:
     root_to_leaf_path = [root]
-    counter = collections.Counter[int]()
+    counter = Counter[int]()
     for r in range(10**100):  # type: int
         if not root_to_leaf_path:
             break

@@ -515,12 +515,16 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 global_objs = prev_tp.pointers[GLOBALS, field]
                 assert not global_objs
                 t = ts.subscr(self.this_module, ts.literal(field.name))
+                ref = None
                 if t == ts.BOTTOM:
-                    builtins_ref = ts.Ref(f"builtins.{field}")
-                    t = ts.resolve_static_ref(builtins_ref)
+                    ref = ts.Ref(f"builtins.{field}")
+                if isinstance(t, ts.Ref):
+                    ref = t
+                if ref is not None:
+                    t = ts.resolve_static_ref(ref)
                 match t:
                     case ts.Instantiation(ts.Ref("builtins.type"), (ts.Class(),)) as t:
-                        t = replace(t, type_args=((builtins_ref,)))
+                        t = replace(t, type_args=((ref,)))
                     case ts.Class():
                         t = ts.get_return(t)
                 # TODO: class through type

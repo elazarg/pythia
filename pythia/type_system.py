@@ -1880,15 +1880,11 @@ class TypeCollector:
                 yield make_row(index, name, self.expr_to_type(annotation))
             case ast.Import(names=aliases):
                 for alias in aliases:
-                    asname = alias.asname
-                    if asname is None:
-                        continue
+                    asname = alias.asname or alias.name
                     yield make_row(index, asname, Ref(alias.name))
             case ast.ImportFrom(module=module, names=aliases, level=level):
                 for alias in aliases:
-                    asname = alias.asname
-                    if asname is None:
-                        continue
+                    asname = alias.asname or alias.name
                     yield make_row(index, asname, Ref(f"{module}.{alias.name}"))
             case ast.ClassDef() as cdef:
                 t = self.visit_ClassDef(cdef)
@@ -1910,11 +1906,10 @@ class TypeCollector:
             if isinstance(node, (ast.ClassDef, ast.FunctionType))
         }
         self.symtable.aliases = {
-            name.asname: name.name
+            name.asname or name.name: name.name
             for node in module.body
             if isinstance(node, ast.Import)
             for name in node.names
-            if name.asname is not None
         }
         for node in module.body:
             if isinstance(node, ast.ImportFrom):

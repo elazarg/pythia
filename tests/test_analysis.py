@@ -17,8 +17,8 @@ def collect(filename: str) -> list[tuple[str, str]]:
     ]
 
 
-def test_access():
-    analysis.analyze_function("test_data/iteration.py", "access")
+def test_counter():
+    analysis.analyze_function("test_data/iteration.py", "counter")
 
 
 @pytest.mark.parametrize("filename,func", collect("test_data/lists.py"))
