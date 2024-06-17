@@ -131,7 +131,7 @@ def test_unification_args():
 
 
 def test_unification_protocol():
-    param = ts.Instantiation(ts.Ref("builtins.Iterable"), (T,))
+    param = ts.Instantiation(ts.Ref("typing.Iterable"), (T,))
     arg = ts.Instantiation(ts.Ref("builtins.set"), (INT,))
     assert ts.unify_argument(type_params=(T,), param=param, arg=arg) == {T: INT}
 
@@ -161,7 +161,7 @@ def test_function_call():
 def test_function_call_builtins():
     f = ts.resolve_static_ref(ts.Ref("builtins.max"))
 
-    arg = ts.Instantiation(ts.Ref("builtins.Iterable"), (INT,))
+    arg = ts.Instantiation(ts.Ref("typing.Iterable"), (INT,))
     assert ts.call(f, make_rows(arg)) == INT
 
     arg = ts.Instantiation(ts.Ref("builtins.set"), (INT,))
@@ -331,7 +331,7 @@ def test_list_constructor():
 
 
 def test_list_init():
-    args = make_rows(ts.Instantiation(ts.Ref("builtins.Iterable"), (FLOAT,)))
+    args = make_rows(ts.Instantiation(ts.Ref("typing.Iterable"), (FLOAT,)))
     lst = ts.call(typeof(LIST), args)
     assert lst == ts.Instantiation(LIST, (FLOAT,))
 

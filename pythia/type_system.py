@@ -380,7 +380,7 @@ def overload(functions: typing.Iterable[FunctionType | Overloaded]) -> Overloade
         elif isinstance(f, FunctionType):
             collect.append(f)
         else:
-            assert f == BOTTOM
+            assert f == BOTTOM, f"{f!r}"
             raise TypeError(f"Trying add a bottom function")
     # assert len(collect) > 0
     return Overloaded(tuple(collect))
@@ -892,7 +892,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> Overloaded | Module:
             if (
                 not types
                 and isinstance(t, Module)
-                and t.name not in ["builtins", "numpy", "collections"]
+                and t.name not in ["typing", "builtins", "numpy", "collections"]
             ):
                 return BOTTOM
             result = overload(types)
@@ -1916,6 +1916,12 @@ class TypeCollector:
             for name in node.names
             if name.asname is not None
         }
+        for node in module.body:
+            if isinstance(node, ast.ImportFrom):
+                for name in node.names:
+                    asname = name.asname or name.name
+                    self.symtable.aliases[asname] = f"{node.module}.{name.name}"
+
         class_dict = typed_dict(
             [
                 row

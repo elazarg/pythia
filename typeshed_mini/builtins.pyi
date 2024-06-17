@@ -1,3 +1,4 @@
+from typing import Iterable, Iterator
 
 class ellipsis:
     ...
@@ -108,7 +109,7 @@ class list[T]:
         self[index] = value
 
     @new
-    def __iter__(self: list[T]) -> SupportsNext[T]:
+    def __iter__(self: list[T]) -> Iterator[T]:
         result += self
 
     def __eq__(self, __o) -> bool: ...
@@ -164,7 +165,7 @@ class set[T]:
     def __bool__(self) -> bool: ...
 
     @new
-    def __iter__(self: set[T]) -> SupportsNext[T]:
+    def __iter__(self: set[T]) -> Iterator[T]:
         result += self
 
     def __eq__(self, __o) -> bool: ...
@@ -197,7 +198,7 @@ class dict[K, V]:
     def __bool__(self) -> bool: ...
 
     @new
-    def __iter__(self: dict[K, V]) -> SupportsNext[K]:
+    def __iter__(self: dict[K, V]) -> Iterator[K]:
         result += self
 
     def __getitem__(self: dict[K, V], key: K) -> V: ...
@@ -224,13 +225,13 @@ class dict[K, V]:
     def clear(self: dict[K, V]) -> None:
         del self[:]
 
-class SupportsNext[T](Protocol):
-    @update(SupportsNext[T])
-    def __next__(self: SupportsNext[T]) -> T: ...
+class Iterator[T](Protocol):
+    @update(Iterator[T])
+    def __next__(self: Iterator[T]) -> T: ...
 
 class Iterable[T](Protocol):
     @new
-    def __iter__(self: Iterable[T]) -> SupportsNext[T]: ...
+    def __iter__(self: Iterable[T]) -> Iterator[T]: ...
 
 class Indexable[T](Protocol):
     @new
@@ -246,7 +247,7 @@ class range:
     def __init__(self, start: int, stop: int) -> None: ...
     def __init__(self, start: int, stop: int, step: int) -> None: ...
     @new
-    def __iter__(self: range) -> SupportsNext[int]: ...
+    def __iter__(self: range) -> Iterator[int]: ...
 
 def abs(x: int) -> int: pass
 def len(x) -> int: pass
@@ -270,18 +271,12 @@ def sorted[T](x: set[T]) -> Iterable[T]:
 def zip[T, Q](x: Iterable[T], y: Iterable[Q]) -> Iterable[tuple[T, Q]]: pass
 
 @new
-def iter[T](xs: list[T]) -> SupportsNext[T]:
+def iter[T](xs: list[T]) -> Iterator[T]:
     result += xs
 
-@update(SupportsNext[T])
-def next[T](xs: SupportsNext[T]) -> T:
+@update(Iterator[T])
+def next[T](xs: Iterator[T]) -> T:
     result = xs[_]
 
 def enumerate[T](xs: Iterable[T]) -> Iterable[tuple[int, T]]:
     pass
-
-class Counter[T]:
-    @update(Counter[T])
-    def __setitem__(self: Counter[T], key: T, value) -> None: ...
-
-    def __getitem__(self: Counter[T], key: T) -> int: ...
