@@ -1,5 +1,4 @@
 import pathlib
-from difflib import ndiff
 
 import pytest
 

@@ -115,24 +115,32 @@ def print_analysis(
         print()
 
 
-def find_for_loops(cfg: Cfg) -> frozenset[tuple[gu.Label, int]]:
+def find_for_loops(
+    cfg: Cfg, annotated: frozenset[int]
+) -> frozenset[tuple[gu.Label, int]]:
     return frozenset(
-        {
-            (label, i)
-            for label, block in cfg.items()
-            for i, ins in enumerate(block)
-            if isinstance(ins, tac.For) and gu.find_loop_end(cfg, label) is not None
-        }
+        (label, i)
+        for label, block in cfg.items()
+        for i, ins in enumerate(block)
+        if (
+            isinstance(ins, tac.For)
+            and ins.original_lineno in annotated
+            and gu.find_loop_end(cfg, label) is not None
+        )
     )
 
 
-def run(cfg: Cfg, module_type: ts.Module, function_name: str) -> AnalysisResult:
+def run(
+    cfg: Cfg,
+    module_type: ts.Module,
+    function_name: str,
+    for_locations: frozenset[tuple[gu.Label, int]],
+) -> AnalysisResult:
     liveness_invariants = abstract_interpretation(
         cfg, LivenessVarLattice(), keep_intermediate=True
     )
 
-    for_locations = find_for_loops(cfg)
-
+    print("for_locations:", for_locations)
     typed_pointer_analysis = typed_pointer.TypedPointerLattice(
         liveness_invariants.intermediate, function_name, module_type, for_locations
     )
@@ -174,9 +182,11 @@ def analyze_function(
     analysis_result: dict[str, AnalysisResult] = {}
     for function_name, f in functions.items():
         cfg = tac.make_tac_cfg(f, simplify=simplify)
-
         analysis_result[function_name] = run(
-            cfg, module_type=module_type, function_name=function_name
+            cfg,
+            module_type=module_type,
+            function_name=function_name,
+            for_locations=find_for_loops(cfg, parsed_file.annotated_for[function_name]),
         )
 
         if print_invariants:
