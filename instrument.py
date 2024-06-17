@@ -1,4 +1,5 @@
 import os
+import pathlib
 import subprocess
 import sys
 
@@ -11,12 +12,13 @@ def main() -> None:
         print(f"Usage: {this} <pythonfile> [<args>...]", file=sys.stderr)
         sys.exit(1)
     instrumented = pythonfile[:-3] + "_instrumented.py"
-    analyze_and_transform(
-        pythonfile,
+    output = analyze_and_transform(
+        filename=pythonfile,
+        function_name=None,
         print_invariants=False,
-        outfile=instrumented,
         simplify=False,
     )
+    pathlib.Path(instrumented).write_text(output)
     try:
         subprocess.run(
             [sys.executable, instrumented] + args,

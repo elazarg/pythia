@@ -1,3 +1,5 @@
+import pathlib
+
 from pythia.analysis import analyze_and_transform
 
 
@@ -13,13 +15,17 @@ def main() -> None:
         "--simplify", action=argparse.BooleanOptionalAction, default=True
     )
     args = parser.parse_args()
-    analyze_and_transform(
+    output = analyze_and_transform(
         args.filename,
         *args.function_name,
         print_invariants=args.print_invariants,
-        outfile=args.output,
         simplify=args.simplify
     )
+    outfile = args.output
+    if outfile is None:
+        print(output)
+    else:
+        pathlib.Path(outfile).write_text(output, encoding="utf-8")
 
 
 if __name__ == "__main__":

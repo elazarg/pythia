@@ -1,31 +1,27 @@
 import pathlib
 import re
-
+import typing
+from itertools import product
 import pytest
 
 from pythia import analysis
 
 
-def collect(filename: str) -> list[tuple[str, str]]:
-    return [
-        (filename, f)
-        for f in re.findall(
+def collect(*filenames: str) -> typing.Iterator[tuple[str, str, bool]]:
+    for filename in filenames:
+        funcnames = re.findall(
             r"def ([a-zA-Z][a-zA-Z0-9_]*)",
             pathlib.Path(filename).read_text(),
         )
-        if f not in ["new"]
-    ]
+        for f in funcnames:
+            if f in ["new"]:
+                continue
+            yield filename, f, True
+            yield filename, f, False
 
 
-def test_counter():
-    analysis.analyze_function("test_data/iteration.py", "counter")
-
-
-@pytest.mark.parametrize("filename,func", collect("test_data/lists.py"))
-def test_lists(filename, func):
-    analysis.analyze_function(filename, func)
-
-
-@pytest.mark.parametrize("filename,func", collect("test_data/iteration.py"))
-def test_iteration(filename, func):
-    analysis.analyze_function(filename, func)
+@pytest.mark.parametrize(
+    "filename,func,simplify", collect("test_data/lists.py", "test_data/iteration.py")
+)
+def test_lists(filename, func, simplify) -> None:
+    analysis.analyze_function(filename, func, simplify=simplify)

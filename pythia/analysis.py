@@ -189,13 +189,12 @@ def analyze_and_transform(
     filename: str,
     function_name: typing.Optional[str],
     print_invariants: bool = False,
-    outfile: typing.Optional[str] = None,
     simplify: bool = True,
-) -> None:
+) -> str:
     analysis_result = analyze_function(
         filename, function_name, print_invariants=print_invariants, simplify=simplify
     )
-    output = ast_transform.transform(
+    return ast_transform.transform(
         filename,
         {
             function_name: {
@@ -205,9 +204,3 @@ def analyze_and_transform(
             for function_name, result in analysis_result.items()
         },
     )
-
-    if outfile is None:
-        print(output)
-    else:
-        with open(outfile, "w", encoding="utf-8") as f:
-            print(output, file=f)

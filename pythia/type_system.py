@@ -2,7 +2,6 @@ from __future__ import annotations as _
 
 import ast
 import contextlib
-import enum
 import os
 import typing
 from collections import defaultdict
@@ -10,21 +9,16 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 
-@dataclass(frozen=True)
-class TypeExpr:
-    pass
-
-
-@dataclass(frozen=True)
-class Ref(TypeExpr):
+@dataclass(frozen=True, slots=True)
+class Ref:
     name: str
 
     def __repr__(self) -> str:
         return self.name
 
 
-@dataclass(frozen=True)
-class TypeVar(TypeExpr):
+@dataclass(frozen=True, slots=True)
+class TypeVar:
     name: str
     is_args: bool = False
 
@@ -32,15 +26,15 @@ class TypeVar(TypeExpr):
         return f"*{self.name}" if self.is_args else self.name
 
 
-@dataclass(frozen=True)
-class Star(TypeExpr):
+@dataclass(frozen=True, slots=True)
+class Star:
     items: tuple[TypeExpr, ...]
 
     def __repr__(self) -> str:
         return f"*{self.items}"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Index:
     number: typing.Optional[int]
     name: typing.Optional[str]
@@ -74,8 +68,8 @@ class Index:
         return self.number < other.number
 
 
-@dataclass(frozen=True)
-class Union(TypeExpr):
+@dataclass(frozen=True, slots=True)
+class Union:
     items: frozenset[TypeExpr]
 
     def __repr__(self) -> str:
@@ -89,8 +83,8 @@ class Union(TypeExpr):
         return self
 
 
-@dataclass(frozen=True)
-class Row(TypeExpr):
+@dataclass(frozen=True, slots=True)
+class Row:
     # an index has either a name or an index or both
     index: Index
     type: TypeExpr
@@ -119,8 +113,8 @@ def make_row(
 NULL = ...
 
 
-@dataclass(frozen=True)
-class Literal(TypeExpr):
+@dataclass(frozen=True, slots=True)
+class Literal:
     value: int | str | bool | float | tuple | TypeVar | None | Ellipsis
     ref: Ref
 
@@ -154,8 +148,8 @@ def literal(value: int | str | bool | float | tuple | list | TypeVar | None) -> 
     return Literal(value, ref)
 
 
-@dataclass(frozen=True)
-class TypedDict(TypeExpr):
+@dataclass(frozen=True, slots=True)
+class TypedDict:
     items: frozenset[Row]
 
     def __repr__(self) -> str:
@@ -191,8 +185,8 @@ class TypedDict(TypeExpr):
         return self
 
 
-@dataclass(frozen=True)
-class Overloaded(TypeExpr):
+@dataclass(frozen=True, slots=True)
+class Overloaded:
     items: tuple[FunctionType, ...]
 
     def __repr__(self) -> str:
@@ -205,8 +199,8 @@ class Overloaded(TypeExpr):
         return any(item.new for item in self.items)
 
 
-@dataclass(frozen=True)
-class Class(TypeExpr):
+@dataclass(frozen=True, slots=True)
+class Class:
     name: str
     class_dict: TypedDict
     inherits: tuple[TypeExpr, ...]
@@ -217,8 +211,8 @@ class Class(TypeExpr):
         return f"instance {self.name}"
 
 
-@dataclass(frozen=True)
-class Module(TypeExpr):
+@dataclass(frozen=True, slots=True)
+class Module:
     name: str
     class_dict: TypedDict
 
@@ -226,8 +220,8 @@ class Module(TypeExpr):
         return f"module {self.name}"
 
 
-@dataclass(frozen=True)
-class SideEffect(TypeExpr):
+@dataclass(frozen=True, slots=True)
+class SideEffect:
     new: bool
     bound_method: bool = False
     update: typing.Optional[TypeExpr] = None
@@ -235,8 +229,8 @@ class SideEffect(TypeExpr):
     name: typing.Optional[str] = None  # ad hoc effects
 
 
-@dataclass(frozen=True)
-class FunctionType(TypeExpr):
+@dataclass(frozen=True, slots=True)
+class FunctionType:
     params: TypedDict
     return_type: TypeExpr
     side_effect: SideEffect
@@ -260,8 +254,8 @@ class FunctionType(TypeExpr):
         return self.side_effect.new
 
 
-@dataclass(frozen=True)
-class Instantiation(TypeExpr):
+@dataclass(frozen=True, slots=True)
+class Instantiation:
     generic: Class | FunctionType | Ref
     type_args: tuple[TypeExpr, ...]
 
@@ -269,13 +263,30 @@ class Instantiation(TypeExpr):
         return f'{self.generic}[{", ".join(repr(x) for x in self.type_args)}]'
 
 
-@dataclass(frozen=True)
-class Access(TypeExpr):
+@dataclass(frozen=True, slots=True)
+class Access:
     items: TypeExpr  # Typevar before resolution
     arg: TypeExpr
 
     def __repr__(self) -> str:
         return f"{self.items}.[{self.arg}]"
+
+
+type TypeExpr = typing.Union[
+    Ref,
+    TypeVar,
+    Star,
+    Literal,
+    TypedDict,
+    Overloaded,
+    Row,
+    Class,
+    Module,
+    FunctionType,
+    Union,
+    Instantiation,
+    Access,
+]
 
 
 def unpack_star(type_args: typing.Iterable[TypeExpr]) -> tuple[TypeExpr, ...]:
@@ -604,11 +615,6 @@ def meet_all(items: typing.Iterable[TypeExpr]) -> TypeExpr:
     for t in unpack_star(items):
         res = meet(res, t)
     return res
-
-
-class Action(enum.Enum):
-    INDEX = enum.auto()
-    SELECT = enum.auto()
 
 
 def is_subtype(left: TypeExpr, right: TypeExpr) -> bool:
