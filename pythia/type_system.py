@@ -124,7 +124,7 @@ class Literal:
         return f"Literal({self.value!r})"
 
 
-def literal(value: int | str | bool | float | tuple | list | TypeVar | None) -> Literal:
+def literal(value: int | str | bool | float | tuple | list | None) -> Literal:
     match value:
         case value if value is NULL:
             ref = Ref("builtins.ellipsis")

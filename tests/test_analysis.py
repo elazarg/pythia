@@ -1,7 +1,6 @@
 import pathlib
 import re
 import typing
-from itertools import product
 import pytest
 
 from pythia import analysis
@@ -23,5 +22,5 @@ def collect(*filenames: str) -> typing.Iterator[tuple[str, str, bool]]:
 @pytest.mark.parametrize(
     "filename,func,simplify", collect("test_data/lists.py", "test_data/iteration.py")
 )
-def test_lists(filename, func, simplify) -> None:
-    analysis.analyze_function(filename, func, simplify=simplify)
+def test_functions(filename, func, simplify) -> None:
+    analysis.analyze_function(filename, func, simplify=simplify, print_invariants=True)

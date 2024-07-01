@@ -1,6 +1,5 @@
 # Data flow analysis and stuff.
 import math
-import sys
 import typing
 from copy import deepcopy
 from dataclasses import dataclass
@@ -54,9 +53,9 @@ def abstract_interpretation[
                 invariant = analysis.transfer(invariant, ins, location)
             except Exception as e:
                 e.add_note(f"At {location}")
-                e.add_note(f"from {ins}")
-                e.add_note(f"original command: {_cfg.annotator(location, ins)}")
-                e.add_note(f"pre: {invariant}")
+                e.add_note(f"From {ins}")
+                e.add_note(f"Original command: {_cfg.annotator(location, ins)}")
+                e.add_note(f"Pre invariant: {invariant}")
                 raise e
         post_result[label] = invariant
 
@@ -115,32 +114,16 @@ def print_analysis(
         print()
 
 
-def find_for_loops(
-    cfg: Cfg, annotated: frozenset[int]
-) -> frozenset[tuple[gu.Label, int]]:
-    return frozenset(
-        (label, i)
-        for label, block in cfg.items()
-        for i, ins in enumerate(block)
-        if (
-            isinstance(ins, tac.For)
-            and ins.original_lineno in annotated
-            and gu.find_loop_end(cfg, label) is not None
-        )
-    )
-
-
 def run(
     cfg: Cfg,
     module_type: ts.Module,
     function_name: str,
-    for_locations: frozenset[tuple[gu.Label, int]],
+    for_locations: frozenset[Location],
 ) -> AnalysisResult:
     liveness_invariants = abstract_interpretation(
         cfg, LivenessVarLattice(), keep_intermediate=True
     )
 
-    print("for_locations:", for_locations)
     typed_pointer_analysis = typed_pointer.TypedPointerLattice(
         liveness_invariants.intermediate, function_name, module_type, for_locations
     )
@@ -182,11 +165,18 @@ def analyze_function(
     analysis_result: dict[str, AnalysisResult] = {}
     for function_name, f in functions.items():
         cfg = tac.make_tac_cfg(f, simplify=simplify)
+        for_annotations = parsed_file.annotated_for[function_name]
+        for_locations = gu.find_loops(
+            cfg,
+            is_loop=lambda ins: (
+                isinstance(ins, tac.For) and ins.original_lineno in for_annotations
+            ),
+        )
         analysis_result[function_name] = run(
             cfg,
             module_type=module_type,
             function_name=function_name,
-            for_locations=find_for_loops(cfg, parsed_file.annotated_for[function_name]),
+            for_locations=for_locations,
         )
 
         if print_invariants:
@@ -206,7 +196,7 @@ def analyze_and_transform(
     )
     return ast_transform.transform(
         filename,
-        {
+        dirty_map={
             function_name: {
                 result.cfg[label][i].original_lineno: dirty
                 for (label, i), dirty in result.dirty_map.items()

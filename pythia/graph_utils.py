@@ -329,3 +329,12 @@ def find_loop_end[T](cfg: Cfg[T], loop_label: Label) -> Optional[Label]:
         return after
     except ValueError:
         return None
+
+
+def find_loops[T](cfg: Cfg[T], is_loop: Callable[[T], bool]) -> frozenset[Location]:
+    return frozenset(
+        (label, i)
+        for label, block in cfg.items()
+        for i, ins in enumerate(block)
+        if is_loop(ins) and find_loop_end(cfg, label) is not None
+    )

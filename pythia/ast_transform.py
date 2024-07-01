@@ -6,6 +6,12 @@ import typing
 import black
 
 
+def annotated_for_labels(node: ast.FunctionDef) -> frozenset[int]:
+    return frozenset(
+        n.lineno for n in ast.walk(node) if isinstance(n, ast.For) and n.type_comment
+    )
+
+
 class Parser:
     filename: str
 
@@ -27,13 +33,6 @@ class Parser:
         assert isinstance(stmt, ast.Expr)
         return stmt.value
 
-    def annotated_for_labels(self, node: ast.FunctionDef) -> frozenset[int]:
-        return frozenset(
-            n.lineno
-            for n in ast.walk(node)
-            if isinstance(n, ast.For) and n.type_comment
-        )
-
     def iterate_purified_functions(
         self, node: ast.Module
     ) -> typing.Iterator[ast.FunctionDef]:
@@ -44,14 +43,6 @@ class Parser:
                         v = ast.literal_eval(v)
                         defaults[i] = self.parse_expression(repr(v))
                 yield node
-
-
-def no_sideeffect(node: ast.expr) -> bool:
-    try:
-        ast.literal_eval(node)
-    except ValueError:
-        return False
-    return True
 
 
 def make_for(for_loop: ast.For, filename: str, _dirty: set[str]) -> ast.With:
@@ -109,27 +100,65 @@ def make_for(for_loop: ast.For, filename: str, _dirty: set[str]) -> ast.With:
     return res
 
 
-def transform(filename: str, dirty_map: dict[str, dict[int, set[str]]]) -> str:
+class VariableFinder(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.dirty_map: dict[str, dict[int, set[str]]] = {}
+
+    def visit_FunctionDef(self, func: ast.FunctionDef) -> None:
+        dirty = {node.arg for node in ast.walk(func.args) if isinstance(node, ast.arg)}
+        dirty |= {
+            node.id
+            for node in ast.walk(func)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+        }
+        self.dirty_map[func.name] = {
+            node.lineno: dirty
+            for node in ast.walk(func)
+            if isinstance(node, ast.For) and node.type_comment
+        }
+
+
+class DirtyTransformer(ast.NodeTransformer):
+    def __init__(self, filename: str, dirty_per_line: dict[int, set[str]]) -> None:
+        self.filename = filename
+        self.dirty_per_line = dirty_per_line
+
+    def visit_For(self, for_loop: ast.For) -> ast.With | ast.For:
+        for_loop = typing.cast(ast.For, self.generic_visit(for_loop))
+        assert isinstance(for_loop, ast.For)
+        if not for_loop.type_comment:
+            return for_loop
+        return make_for(for_loop, self.filename, self.dirty_per_line[for_loop.lineno])
+
+
+class Compiler(ast.NodeTransformer):
+    def __init__(
+        self, filename: str, dirty_map: dict[str, dict[int, set[str]]], parser: Parser
+    ) -> None:
+        self.filename = filename
+        self.dirty_map = dirty_map
+        self.parser = parser
+
+    def visit_Module(self, node: ast.Module) -> ast.Module:
+        tree = typing.cast(ast.Module, self.generic_visit(node))
+        import_stmt = self.parser.parse_statement("from experiment import persist")
+        res = ast.Module(body=[import_stmt, *tree.body], type_ignores=tree.type_ignores)
+        return res
+
+    def visit_FunctionDef(self, function: ast.FunctionDef) -> ast.FunctionDef:
+        if function.name not in self.dirty_map:
+            return function
+        res = DirtyTransformer(self.filename, self.dirty_map[function.name]).visit(
+            function
+        )
+        assert isinstance(res, ast.FunctionDef)
+        return res
+
+
+def transform(
+    filename: str, dirty_map: typing.Optional[dict[str, dict[int, set[str]]]]
+) -> str:
     parser = Parser(filename)
-
-    class VariableFinder(ast.NodeVisitor):
-        def __init__(self) -> None:
-            self.dirty: dict[str, dict[int, set[str]]] = {}
-
-        def visit_FunctionDef(self, func: ast.FunctionDef) -> None:
-            dirty = {
-                node.arg for node in ast.walk(func.args) if isinstance(node, ast.arg)
-            }
-            dirty |= {
-                node.id
-                for node in ast.walk(func)
-                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
-            }
-            self.dirty[func.name] = {
-                node.lineno: dirty
-                for node in ast.walk(func)
-                if isinstance(node, ast.For) and node.type_comment
-            }
 
     with open(filename, encoding="utf-8") as f:
         source = f.read()
@@ -138,36 +167,9 @@ def transform(filename: str, dirty_map: dict[str, dict[int, set[str]]]) -> str:
     if dirty_map is None:
         finder = VariableFinder()
         finder.visit(tree)
-        dirty_map = finder.dirty
+        dirty_map = finder.dirty_map
 
-    class DirtyTransformer(ast.NodeTransformer):
-        def __init__(self, dirty: dict[int, set[str]]) -> None:
-            self.dirty = dirty
-
-        def visit_For(self, for_loop: ast.For) -> ast.With | ast.For:
-            for_loop = typing.cast(ast.For, self.generic_visit(for_loop))
-            assert isinstance(for_loop, ast.For)
-            if not for_loop.type_comment:
-                return for_loop
-            return make_for(for_loop, filename, self.dirty[for_loop.lineno])
-
-    class Compiler(ast.NodeTransformer):
-        def visit_Module(self, node: ast.Module) -> ast.Module:
-            tree = typing.cast(ast.Module, self.generic_visit(node))
-            import_stmt = parser.parse_statement("from experiment import persist")
-            res = ast.Module(
-                body=[import_stmt, *tree.body], type_ignores=tree.type_ignores
-            )
-            return res
-
-        def visit_FunctionDef(self, function: ast.FunctionDef) -> ast.FunctionDef:
-            if function.name not in dirty_map:
-                return function
-            res = DirtyTransformer(dirty_map[function.name]).visit(function)
-            assert isinstance(res, ast.FunctionDef)
-            return res
-
-    tree = Compiler().visit(tree)
+    tree = Compiler(filename, dirty_map, parser).visit(tree)
     tree = ast.fix_missing_locations(tree)
     res = ast.unparse(tree)
     return black.format_str(res, mode=black.FileMode())

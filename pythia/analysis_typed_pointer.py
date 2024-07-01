@@ -6,7 +6,6 @@ from dataclasses import dataclass, replace
 from typing import Final
 
 from pythia.analysis_liveness import LivenessVarLattice
-from pythia.analysis_types import TypeLattice
 from pythia import tac
 from pythia.graph_utils import Location
 from pythia import analysis_domain as domain
@@ -256,6 +255,43 @@ class Pointer:
         )
 
 
+def unop_to_str(op: tac.UnOp) -> str:
+    match op:
+        case tac.UnOp.NEG:
+            return "-"
+        case tac.UnOp.NOT:
+            return "not"
+        case tac.UnOp.INVERT:
+            return "~"
+        case tac.UnOp.POS:
+            return "+"
+        case tac.UnOp.ITER:
+            return "iter"
+        case tac.UnOp.NEXT:
+            return "next"
+        case tac.UnOp.YIELD_ITER:
+            return "yield iter"
+        case _:
+            raise NotImplementedError(f"UnOp.{op.name}")
+
+
+def predefined(name: tac.Predefined) -> ts.TypeExpr:
+    match name:
+        case tac.Predefined.LIST:
+            return ts.make_list_constructor()
+        case tac.Predefined.SET:
+            return ts.make_set_constructor()
+        case tac.Predefined.TUPLE:
+            return ts.make_tuple_constructor()
+        case tac.Predefined.SLICE:
+            return ts.make_slice_constructor()
+        case tac.Predefined.GLOBALS:
+            assert False, "Globals not implemented"
+        case tac.Predefined.NONLOCALS:
+            assert False, "Nonlocals not implemented"
+    assert False, name
+
+
 @dataclass
 class TypeMap:
     map: domain.Map[Object, ts.TypeExpr]
@@ -452,7 +488,6 @@ def flatten(xs: typing.Iterable[domain.Set[Object]]) -> domain.Set[Object]:
 
 
 class TypedPointerLattice(InstructionLattice[TypedPointer]):
-    type_lattice: TypeLattice
     liveness: dict[Location, analysis_liveness.Liveness]
     annotations: domain.Map[Param, ts.TypeExpr]
     backward: bool = False
@@ -471,8 +506,8 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     ) -> None:
         super().__init__()
         self.annotations = parse_annotations(this_function, this_module)
-        self.type_lattice = TypeLattice(this_function, this_module)
         self.this_module = this_module
+        self.builtins = ts.resolve_static_ref(ts.Ref("builtins"))
         self.liveness = liveness
         self.for_locations = for_locations
 
@@ -494,6 +529,38 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     def join(self, left: TypedPointer, right: TypedPointer) -> TypedPointer:
         return left.join(right)
 
+    def resolve(self, ref: ts.TypeExpr) -> ts.TypeExpr:
+        if isinstance(ref, ts.Ref):
+            if "." in ref.name:
+                module, name = ref.name.split(".", 1)
+                if module == self.this_module.name:
+                    return ts.subscr(self.this_module, ts.literal(name))
+        return ref
+
+    def attribute(self, t: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
+        mod = self.resolve(t)
+        assert mod != ts.TOP, f"Cannot resolve {attr} in {t}"
+        try:
+            # FIX: How to differentiate nonexistent attributes from attributes that are TOP?
+            res = ts.subscr(mod, ts.literal(attr.name))
+            # Fix: only works for depth 1
+            if isinstance(mod, ts.Module):
+                mod = ts.Ref(mod.name)
+            match mod, res:
+                case ts.Ref(name=modname), ts.Instantiation(
+                    ts.Ref("builtins.type"), (ts.Class(),)
+                ):
+                    arg = ts.Ref(f"{modname}.{attr.name}")
+                    return replace(res, type_args=(arg,))
+            if res == ts.BOTTOM:
+                if mod == self.this_module:
+                    return ts.subscr(self.builtins, ts.literal(attr.name))
+            return res
+        except TypeError:
+            if mod == self.this_module:
+                return ts.subscr(self.builtins, ts.literal(attr.name))
+            raise
+
     def expr(
         self,
         prev_tp: TypedPointer,
@@ -505,7 +572,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         dirty: Dirty
         match expr:
             case tac.Const(value):
-                t = self.type_lattice.const(value)
+                t = ts.literal(value)
                 return (immutable(t), t, make_dirty())
             case tac.Var() as var:
                 objs = prev_tp.pointers[LOCALS, var]
@@ -531,7 +598,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 return (immutable(t), t, make_dirty())
             case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
                 var_objs = prev_tp.pointers[LOCALS, var]
-                t = self.type_lattice.attribute(prev_tp.types[var_objs], field)
+                t = self.attribute(prev_tp.types[var_objs], field)
                 any_new = all_new = False
                 assert not isinstance(t, ts.FunctionType)
                 if isinstance(t, ts.Overloaded):
@@ -563,8 +630,8 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 index_objs = prev_tp.pointers[LOCALS, index]
                 index_type = prev_tp.types[index_objs]
                 var_type = prev_tp.types[var_objs]
-                selftype = self.type_lattice.resolve(var_type)
-                index = self.type_lattice.resolve(index_type)
+                selftype = self.resolve(var_type)
+                index = self.resolve(index_type)
                 t = ts.subscr(selftype, index)
                 any_new = all_new = False
                 if isinstance(t, ts.Overloaded) and any(
@@ -600,7 +667,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 elif isinstance(var, tac.Predefined):
                     # TODO: point from exact literal when possible
                     func_objects = domain.Set[Object]()
-                    func_type = self.type_lattice.predefined(var)
+                    func_type = predefined(var)
                 else:
                     assert False, f"Expected Var or Predefined, got {var}"
                 if isinstance(
@@ -705,7 +772,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 value_objects = prev_tp.pointers[LOCALS, var]
                 assert value_objects, f"Expected objects for {var}"
                 arg_type = prev_tp.types[value_objects]
-                applied = ts.get_unop(arg_type, self.type_lattice.unop_to_str(op))
+                applied = ts.get_unop(arg_type, unop_to_str(op))
                 assert isinstance(applied, ts.Overloaded)
                 side_effect = ts.get_side_effect(applied)
                 dirty = make_dirty()

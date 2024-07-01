@@ -23,15 +23,13 @@ class Module:
 
 class Predefined(enum.Enum):
     GLOBALS = 0
-    LOCALS = 1
-    NONLOCALS = 2
-    LIST = 3
-    SET = 4
-    TUPLE = 5
-    SLICE = 6
-    CONST_KEY_MAP = 7
-    NOT = 8
-    STRING = 9
+    NONLOCALS = 1
+    LIST = 2
+    SET = 3
+    TUPLE = 4
+    SLICE = 5
+    NOT = 6
+    STRING = 7
 
     def __str__(self) -> str:
         return self.name

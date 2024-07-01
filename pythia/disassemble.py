@@ -55,7 +55,7 @@ def read_file(file_path: str) -> ParsedFile:
     annotated_for: dict[str, frozenset[int]] = {}
     for funcdef in parser.iterate_purified_functions(code):
         module.body.append(funcdef)
-        annotated_for[funcdef.name] = parser.annotated_for_labels(funcdef)
+        annotated_for[funcdef.name] = ast_transform.annotated_for_labels(funcdef)
 
     module_with_functions = compile(
         module, "", "exec", dont_inherit=True, flags=0, optimize=0

@@ -84,9 +84,5 @@ class LivenessVarLattice(InstructionLattice[Liveness]):
     def transfer(self, values: Liveness, ins: tac.Tac, location: Location) -> Liveness:
         if isinstance(values, Bottom):
             return BOTTOM
-        # for v in tac.gens(ins):
-        #     if v.is_stackvar:
-        #         assert v in values
-
         res = (values - Set[tac.Var](tac.gens(ins))) | Set[tac.Var](tac.free_vars(ins))
         return res
