@@ -60,7 +60,7 @@ def iteration_strategy(
     return BackwardIterationStrategy(cfg) if backward else ForwardIterationStrategy(cfg)
 
 
-class Lattice[T](typing.Protocol):  # pragma: no cover
+class Lattice[T](typing.Protocol):
 
     @classmethod
     def name(cls) -> str:
@@ -353,7 +353,7 @@ type MapDomain[K, T] = Map[K, T] | Bottom
 type VarMapDomain[K, T] = MapDomain[tac.Var, T]
 
 
-class InstructionLattice[T](Lattice[T], typing.Protocol):  # pragma: no cover
+class InstructionLattice[T](Lattice[T], typing.Protocol):
     backward: bool
 
     def transfer(self, values: T, ins: tac.Tac, location: Location) -> T:
@@ -363,7 +363,7 @@ class InstructionLattice[T](Lattice[T], typing.Protocol):  # pragma: no cover
         return self.top()
 
 
-class ValueLattice[T](Lattice[T], typing.Protocol):  # pragma: no cover
+class ValueLattice[T](Lattice[T], typing.Protocol):
     def const(self, value: int | str | bool | float | tuple | list | None) -> T:
         return self.top()
 
@@ -386,7 +386,7 @@ class ValueLattice[T](Lattice[T], typing.Protocol):  # pragma: no cover
     def unary(self, value: T, op: tac.UnOp) -> T:
         return self.top()
 
-    def predefined(self, name: tac.Predefined) -> T:
+    def predefined(self, name: tac.PredefinedFunction) -> T:
         return self.top()
 
     def imported(self, modname: str) -> T:

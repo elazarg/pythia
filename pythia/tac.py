@@ -21,21 +21,31 @@ class Module:
         return f"Module({self.name})"
 
 
-class Predefined(enum.Enum):
+class PredefinedScope(enum.Enum):
     GLOBALS = 0
     NONLOCALS = 1
-    LIST = 2
-    SET = 3
-    TUPLE = 4
-    SLICE = 5
-    NOT = 6
-    STRING = 7
 
     def __str__(self) -> str:
         return self.name
 
     @classmethod
-    def lookup(cls, op: str) -> Predefined:
+    def lookup(cls, op: str) -> PredefinedFunction:
+        return cls.__members__[op]
+
+
+class PredefinedFunction(enum.Enum):
+    LIST = 0
+    SET = 1
+    TUPLE = 2
+    SLICE = 3
+    NOT = 4
+    STRING = 5
+
+    def __str__(self) -> str:
+        return self.name
+
+    @classmethod
+    def lookup(cls, op: str) -> PredefinedFunction:
         return cls.__members__[op]
 
 
@@ -75,12 +85,11 @@ class Var:
 
 
 Value: TypeAlias = Var | Const
-Name: TypeAlias = Var | Predefined
 
 
 @dataclass(frozen=False)
 class Attribute:
-    var: Name
+    var: Var | PredefinedScope
     field: Var
 
     def __str__(self) -> str:
@@ -123,7 +132,7 @@ class Unary:
 
 @dataclass(frozen=False)
 class Call:
-    function: Var | Predefined
+    function: Var | PredefinedFunction
     args: tuple[Var, ...]
     kwargs: Optional[Var] = None
 
@@ -176,7 +185,8 @@ class MakeClass:
 
 Expr: TypeAlias = (
     Value
-    | Predefined
+    | PredefinedFunction
+    | PredefinedScope
     | Attribute
     | Subscript
     | Binary
@@ -305,7 +315,9 @@ def free_vars_expr(expr: Expr) -> set[Var]:
             return set()
         case MakeFunction():
             return set()  # TODO: fix this
-        case Predefined():
+        case PredefinedFunction():
+            return set()
+        case PredefinedScope():
             return set()
         case _:
             raise NotImplementedError(f"free_vars_expr({repr(expr)})")
@@ -345,7 +357,9 @@ def free_vars(tac: Tac) -> set[Var]:
             return set(tac.variables)
         case Unsupported():
             return set()
-        case Predefined():
+        case PredefinedFunction():
+            return set()
+        case PredefinedScope():
             return set()
         case _:
             raise NotImplementedError(f"{tac}")
@@ -477,17 +491,17 @@ def make_tac(
 
 def make_global(field: str) -> Attribute:
     assert isinstance(field, str)
-    return Attribute(Predefined.GLOBALS, Var(field))
+    return Attribute(PredefinedScope.GLOBALS, Var(field))
 
 
 def make_nonlocal(field: str) -> Attribute:
     assert isinstance(field, str)
-    return Attribute(Predefined.NONLOCALS, Var(field))
+    return Attribute(PredefinedScope.NONLOCALS, Var(field))
 
 
 def make_class(name: str) -> Attribute:
     assert isinstance(name, str)
-    return Attribute(Predefined.NONLOCALS, Var(name))
+    return Attribute(PredefinedScope.NONLOCALS, Var(name))
 
 
 def make_tac_cfg(f: typing.Any, simplify: bool = False) -> gu.Cfg[Tac]:
@@ -751,13 +765,13 @@ def make_tac_no_dels(
                     stackvar(stack_depth - 1),
                     stackvar(stack_depth - 2),
                 )
-            return [Assign(stackvar(out), Call(Predefined.SLICE, args))]
+            return [Assign(stackvar(out), Call(PredefinedFunction.SLICE, args))]
         case ["BINARY", "SLICE"]:
             end = stackvar(stack_depth)
             start = stackvar(stack_depth - 1)
             container = stackvar(stack_depth - 2)
             return [
-                Assign(fresh, Call(Predefined.SLICE, (start, end))),
+                Assign(fresh, Call(PredefinedFunction.SLICE, (start, end))),
                 Assign(stackvar(out), Subscript(container, fresh)),
             ]
         case ["STORE", "SLICE"]:
@@ -766,7 +780,7 @@ def make_tac_no_dels(
             container = stackvar(stack_depth - 2)
             value = stackvar(stack_depth - 3)
             return [
-                Assign(fresh, Call(Predefined.SLICE, (start, end))),
+                Assign(fresh, Call(PredefinedFunction.SLICE, (start, end))),
                 Assign(Subscript(container, fresh), value),
             ]
         case ["BUILD", op]:
@@ -775,7 +789,7 @@ def make_tac_no_dels(
                 Assign(
                     stackvar(out),
                     Call(
-                        Predefined.lookup(op),
+                        PredefinedFunction.lookup(op),
                         tuple(
                             stackvar(i + 1)
                             for i in range(stack_depth - val, stack_depth)
@@ -787,7 +801,7 @@ def make_tac_no_dels(
             a = stackvar(stack_depth - 0)
             b = stackvar(stack_depth - val + 1)
             return [
-                Assign((a, b), Call(Predefined.TUPLE, (b, a))),
+                Assign((a, b), Call(PredefinedFunction.TUPLE, (b, a))),
                 # Assign((a, b), a),
             ]
         case ["CALL"]:
@@ -817,9 +831,6 @@ def make_tac_no_dels(
             ]
             return res
         case ["NOP" | "RESUME"]:
-            return []
-        case ["PRECALL"]:
-            # removed in python3.12
             return []
         case ["EXTENDED", "ARG"]:
             """

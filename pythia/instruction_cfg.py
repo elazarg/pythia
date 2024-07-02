@@ -61,19 +61,15 @@ def next_list(
 def calculate_stack_effect(ins: Instruction) -> int:
     """not exact.
     see https://github.com/python/cpython/blob/master/Python/compile.c#L860"""
-    if ins.opname in ["SETUP_EXCEPT", "SETUP_FINALLY", "POP_EXCEPT", "END_FINALLY"]:
-        assert False, "for all we know. we assume no exceptions"
-    # if is_raise(ins):
-    #     # if we wish to analyze exception path, we should break to except: and push 3, or something.
-    #     return -1
-    # if ins.opname == "BREAK_LOOP" and ins.argrepr.startswith("FOR"):
-    #     return -1
+    assert ins.opname not in [
+        "SETUP_EXCEPT",
+        "SETUP_FINALLY",
+        "POP_EXCEPT",
+        "END_FINALLY",
+    ], "for all we know. we assume no exceptions"
     if ins.opname == "END_FOR":
         return 0
-    if hasattr(dis, "hasarg"):
-        arg = ins.arg if ins.opcode in dis.hasarg else None
-    else:
-        arg = ins.arg if ins.opcode >= dis.HAVE_ARGUMENT else None
+    arg = ins.arg if ins.opcode in dis.hasarg else None
     res = dis.stack_effect(ins.opcode, arg)
     return res
 
@@ -103,8 +99,6 @@ def calculate_stack_depth(cfg: Cfg) -> dict[gu.Label, int]:
 
 
 def pos_str(p: dis.Positions) -> str:
-    if p.lineno is None:
-        return ""
     return f"{p.lineno}:{p.col_offset}-{p.end_lineno}:{p.end_col_offset}"
 
 

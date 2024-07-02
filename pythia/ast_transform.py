@@ -173,7 +173,3 @@ def transform(
     tree = ast.fix_missing_locations(tree)
     res = ast.unparse(tree)
     return black.format_str(res, mode=black.FileMode())
-
-
-if __name__ == "__main__":
-    print(transform("examples/feature_selection.py"))

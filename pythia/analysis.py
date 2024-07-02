@@ -51,7 +51,7 @@ def abstract_interpretation[
                 intermediate_result[location] = deepcopy(invariant)
             try:
                 invariant = analysis.transfer(invariant, ins, location)
-            except Exception as e:
+            except Exception as e:  # pragma: no cover
                 e.add_note(f"At {location}")
                 e.add_note(f"From {ins}")
                 e.add_note(f"Original command: {_cfg.annotator(location, ins)}")

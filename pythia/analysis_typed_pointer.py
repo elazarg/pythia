@@ -275,20 +275,16 @@ def unop_to_str(op: tac.UnOp) -> str:
             raise NotImplementedError(f"UnOp.{op.name}")
 
 
-def predefined(name: tac.Predefined) -> ts.TypeExpr:
+def predefined(name: tac.PredefinedFunction) -> ts.TypeExpr:
     match name:
-        case tac.Predefined.LIST:
+        case tac.PredefinedFunction.LIST:
             return ts.make_list_constructor()
-        case tac.Predefined.SET:
+        case tac.PredefinedFunction.SET:
             return ts.make_set_constructor()
-        case tac.Predefined.TUPLE:
+        case tac.PredefinedFunction.TUPLE:
             return ts.make_tuple_constructor()
-        case tac.Predefined.SLICE:
+        case tac.PredefinedFunction.SLICE:
             return ts.make_slice_constructor()
-        case tac.Predefined.GLOBALS:
-            assert False, "Globals not implemented"
-        case tac.Predefined.NONLOCALS:
-            assert False, "Nonlocals not implemented"
     assert False, name
 
 
@@ -372,21 +368,6 @@ class TypedPointer:
     pointers: Pointer
     types: TypeMap
     dirty: Dirty
-
-    def __repr__(self):
-        return f"TP:\n {self.pointers}\n {self.types}\n{self.dirty}"
-
-    def print(self) -> None:
-        print("Pointers:")
-        for obj, fields in sorted(self.pointers.items(), key=lambda x: str(x)):
-            print(f"  {obj}:")
-            for f, targets in sorted(fields.items(), key=lambda x: str(x)):
-                print(f"    {f}: {targets}")
-        print("Types:")
-        for k, v in sorted(self.types.map.items(), key=lambda x: str(x)):
-            print(f"  {k}: {v}")
-        print("Dirty:")
-        print(f"  {self.dirty}")
 
     def is_less_than(self: TypedPointer, other: TypedPointer) -> bool:
         return (
@@ -483,10 +464,6 @@ def parse_annotations(
     return domain.Map(default=(lambda: ts.BOTTOM), d=annotations)
 
 
-def flatten(xs: typing.Iterable[domain.Set[Object]]) -> domain.Set[Object]:
-    return domain.Set[Object].union_all(xs)
-
-
 class TypedPointerLattice(InstructionLattice[TypedPointer]):
     liveness: dict[Location, analysis_liveness.Liveness]
     annotations: domain.Map[Param, ts.TypeExpr]
@@ -578,7 +555,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 objs = prev_tp.pointers[LOCALS, var]
                 types = prev_tp.types[objs]
                 return (objs, types, make_dirty())
-            case tac.Attribute(var=tac.Predefined.GLOBALS, field=tac.Var() as field):
+            case tac.Attribute(
+                var=tac.PredefinedScope.GLOBALS, field=tac.Var() as field
+            ):
                 global_objs = prev_tp.pointers[GLOBALS, field]
                 assert not global_objs
                 t = ts.subscr(self.this_module, ts.literal(field.name))
@@ -664,12 +643,12 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if isinstance(var, tac.Var):
                     func_objects = prev_tp.pointers[LOCALS, var]
                     func_type = prev_tp.types[func_objects]
-                elif isinstance(var, tac.Predefined):
+                elif isinstance(var, tac.PredefinedFunction):
                     # TODO: point from exact literal when possible
                     func_objects = domain.Set[Object]()
                     func_type = predefined(var)
                 else:
-                    assert False, f"Expected Var or Predefined, got {var}"
+                    assert False, f"Expected Var or PredefinedFunction, got {var}"
                 if isinstance(
                     func_type, ts.Instantiation
                 ) and func_type.generic == ts.Ref("builtins.type"):
@@ -742,7 +721,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     objects = objects | domain.Set[Object].singleton(location)
                     if side_effect.points_to_args:
                         if (
-                            var == tac.Predefined.TUPLE
+                            var == tac.PredefinedFunction.TUPLE
                             and not new_tp.pointers[location, tac.Var("*")]
                         ):
                             for i, arg in enumerate(arg_objects):
