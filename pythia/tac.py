@@ -457,7 +457,6 @@ def make_tac(
     stack_depth: int,
     trace_origin: dict[int, instruction_cfg.Instruction],
 ) -> list[Tac]:
-    stack_effect = instruction_cfg.calculate_stack_effect(ins)
     if ins.opname == "LOAD_CONST" and isinstance(ins.argval, tuple):
         # We want to handle list and tuple literal in the same way,
         # So we load tuple as if it was a list
@@ -476,10 +475,11 @@ def make_tac(
             ins.positions.lineno,
         )
     else:
+        max_stack_effect = instruction_cfg.calculate_stack_effect(ins, jump=None)
         tac_list = make_tac_no_dels(
             ins.opname,
             ins.argval,
-            stack_effect,
+            max_stack_effect,
             stack_depth,
             ins.argrepr,
             ins.positions.lineno,

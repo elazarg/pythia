@@ -1,5 +1,6 @@
 import dis
 import math
+import typing
 from dis import Instruction
 from typing import Any
 
@@ -41,24 +42,22 @@ def is_jump(ins: Instruction) -> bool:
 
 
 # returns a list of (label, stack_effect) pairs
-def next_list(
-    ins: Instruction, fallthrough: gu.Label, stack_effect: int
-) -> list[tuple[gu.Label, int]]:
+def next_list(ins: Instruction, fallthrough: gu.Label) -> list[tuple[gu.Label, int]]:
     if is_raise(ins):
         return []
-    if is_for_iter(ins):
-        assert fallthrough is not None
-        return [(fallthrough, stack_effect), (ins.argval, -1)]
+    jump_effect = calculate_stack_effect(ins, jump=True)
+    fallthrough_effect = calculate_stack_effect(ins, jump=False)
+
     res: list[tuple[gu.Label, int]] = []
     if not is_sequencer(ins):
         assert fallthrough is not None
-        res.append((fallthrough, stack_effect))
+        res.append((fallthrough, fallthrough_effect))
     if is_jump_source(ins):
-        res.append((ins.argval, stack_effect))
+        res.append((ins.argval, jump_effect))
     return res
 
 
-def calculate_stack_effect(ins: Instruction) -> int:
+def calculate_stack_effect(ins: Instruction, jump: typing.Optional[bool]) -> int:
     """not exact.
     see https://github.com/python/cpython/blob/master/Python/compile.c#L860"""
     assert ins.opname not in [
@@ -67,10 +66,8 @@ def calculate_stack_effect(ins: Instruction) -> int:
         "POP_EXCEPT",
         "END_FINALLY",
     ], "for all we know. we assume no exceptions"
-    if ins.opname == "END_FOR":
-        return 0
     arg = ins.arg if ins.opcode in dis.hasarg else None
-    res = dis.stack_effect(ins.opcode, arg)
+    res = dis.stack_effect(ins.opcode, arg, jump=jump)
     return res
 
 
@@ -118,7 +115,6 @@ def make_instruction_block_cfg(f: Any) -> tuple[dict[gu.Label, int], Cfg]:
         for (j, stack_effect) in next_list(
             ins,
             fallthrough=next_instruction[i],
-            stack_effect=calculate_stack_effect(ins),
         )
         if dbs.get(j) is not None
     ]
