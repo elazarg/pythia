@@ -1,5 +1,4 @@
 # Data flow analysis and stuff.
-import math
 import typing
 from copy import deepcopy
 from dataclasses import dataclass
@@ -8,12 +7,11 @@ from pythia.strategy import iteration_strategy
 from pythia.domains import InstructionLattice
 from pythia import graph_utils as gu
 from pythia import type_system as ts
-from pythia.dom_typed_pointer import TypedPointerLattice, find_dirty_roots
 from pythia import tac
 from pythia import disassemble, ast_transform
 from pythia.domains import InvariantMap
+from pythia.dom_typed_pointer import TypedPointerLattice, find_dirty_roots
 from pythia.dom_liveness import LivenessVarLattice
-from pythia.graph_utils import Location
 
 type Cfg = gu.Cfg[tac.Tac]
 
@@ -24,7 +22,7 @@ LIVENESS_INV_NAME = LivenessVarLattice.name()
 @dataclass
 class InvariantTriple[Inv]:
     pre: InvariantMap[Inv]
-    intermediate: dict[Location, Inv]
+    intermediate: dict[gu.Location, Inv]
     post: InvariantMap[Inv]
 
 
@@ -35,7 +33,7 @@ def abstract_interpretation[
 ) -> InvariantTriple[Inv]:
     pre_result: InvariantMap[Inv] = {}
     post_result: InvariantMap[Inv] = {}
-    intermediate_result: dict[Location, Inv] = {}
+    intermediate_result: dict[gu.Location, Inv] = {}
 
     cfg = iteration_strategy(_cfg, analysis.backward)
     wl = [entry] = {cfg.entry_label}
@@ -92,7 +90,7 @@ def print_analysis(
         for (label, i), m in analysis_result.dirty_map.items()
     }
     for label, block in sorted(cfg.items()):
-        if math.isinf(label):
+        if gu.is_exit(label):
             continue
         if print_invariants:
             print("Pre:")
@@ -119,7 +117,7 @@ def run(
     cfg: Cfg,
     module_type: ts.Module,
     function_name: str,
-    for_locations: frozenset[Location],
+    for_locations: frozenset[gu.Location],
 ) -> AnalysisResult:
     liveness_invariants = abstract_interpretation(
         cfg, LivenessVarLattice(), keep_intermediate=True

@@ -16,6 +16,10 @@ type Label = int | float
 type Location = tuple[Label, int]
 
 
+def is_exit(label: Label) -> bool:
+    return math.isinf(label)
+
+
 @dataclass
 class Block[T]:
     _instructions: list[T]
