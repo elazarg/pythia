@@ -4,19 +4,20 @@ import typing
 from copy import deepcopy
 from dataclasses import dataclass
 
-from pythia.analysis_domain import iteration_strategy, InstructionLattice
-import pythia.graph_utils as gu
-import pythia.type_system as ts
-from pythia import disassemble, ast_transform
+from pythia.strategy import iteration_strategy
+from pythia.domains import InstructionLattice
+from pythia import graph_utils as gu
+from pythia import type_system as ts
+from pythia.dom_typed_pointer import TypedPointerLattice, find_dirty_roots
 from pythia import tac
-from pythia.analysis_domain import InvariantMap
-from pythia.analysis_liveness import LivenessVarLattice
-from pythia import analysis_typed_pointer as typed_pointer
+from pythia import disassemble, ast_transform
+from pythia.domains import InvariantMap
+from pythia.dom_liveness import LivenessVarLattice
 from pythia.graph_utils import Location
 
 type Cfg = gu.Cfg[tac.Tac]
 
-TYPE_INV_NAME = typed_pointer.TypedPointerLattice.name()
+TYPE_INV_NAME = TypedPointerLattice.name()
 LIVENESS_INV_NAME = LivenessVarLattice.name()
 
 
@@ -124,7 +125,7 @@ def run(
         cfg, LivenessVarLattice(), keep_intermediate=True
     )
 
-    typed_pointer_analysis = typed_pointer.TypedPointerLattice(
+    typed_pointer_analysis = TypedPointerLattice(
         liveness_invariants.intermediate, function_name, module_type, for_locations
     )
 
@@ -136,7 +137,7 @@ def run(
     for loop_start, i in for_locations:
         loop_end = gu.find_loop_end(cfg, loop_start)
         dirty_map[(loop_start, i)] = set(
-            typed_pointer.find_dirty_roots(
+            find_dirty_roots(
                 typed_pointer_invariants.post[loop_end],
                 liveness_invariants.post[loop_end],
             )

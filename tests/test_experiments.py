@@ -1,5 +1,5 @@
 import pathlib
-from typing import List, Tuple, Any
+from typing import Any
 
 import pytest
 

@@ -24,15 +24,14 @@ Here:
 from __future__ import annotations as _
 
 from pythia import tac
-from pythia.analysis_domain import (
+from pythia.domains import (
     Top,
     Bottom,
     TOP,
     BOTTOM,
-    Set,
-    SetDomain,
     InstructionLattice,
 )
+from pythia.dom_concrete import Set, SetDomain
 from pythia.graph_utils import Location
 
 type Liveness = SetDomain[tac.Var]

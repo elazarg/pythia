@@ -5,12 +5,13 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from typing import Final
 
-from pythia.analysis_liveness import LivenessVarLattice
+import pythia.dom_concrete
+from pythia.dom_liveness import LivenessVarLattice, Liveness
 from pythia import tac
 from pythia.graph_utils import Location
-from pythia import analysis_domain as domain
-from pythia import analysis_liveness
-from pythia.analysis_domain import InstructionLattice, VarMapDomain
+from pythia import domains as domain
+from pythia.domains import InstructionLattice
+from pythia.dom_concrete import MapDomain
 import pythia.type_system as ts
 
 
@@ -37,10 +38,10 @@ class Immutable:
         return f"@type {self.hash}"
 
 
-def immutable(t: ts.TypeExpr, cache={}) -> domain.Set[Object]:
+def immutable(t: ts.TypeExpr, cache={}) -> pythia.dom_concrete.Set[Object]:
     if t not in cache:
         cache[t] = Immutable(len(cache))
-    return domain.Set[Object].singleton(cache[t])
+    return pythia.dom_concrete.Set[Object].singleton(cache[t])
 
 
 @dataclass(frozen=True)
@@ -65,33 +66,40 @@ class LocationObject:
 
 type Object = typing.Union[LocationObject, Param, Immutable, Scope]
 
-type Fields = domain.Map[tac.Var, domain.Set[Object]]
-type Graph = domain.Map[Object, Fields]
+type Fields = pythia.dom_concrete.Map[tac.Var, pythia.dom_concrete.Set[Object]]
+type Graph = pythia.dom_concrete.Map[Object, Fields]
 
-type Dirty = domain.Map[Object, domain.Set[tac.Var]]
+type Dirty = pythia.dom_concrete.Map[Object, pythia.dom_concrete.Set[tac.Var]]
 
 
 def make_fields(
-    d: typing.Optional[typing.Mapping[tac.Var, domain.Set[Object]]] = None
+    d: typing.Optional[typing.Mapping[tac.Var, pythia.dom_concrete.Set[Object]]] = None
 ) -> Fields:
     d = d or {}
-    return domain.Map(default=domain.Set, d=d)
+    return pythia.dom_concrete.Map(default=pythia.dom_concrete.Set, d=d)
 
 
 def make_graph(d: typing.Optional[typing.Mapping[Object, Fields]] = None) -> Graph:
     d = d or {}
-    return domain.Map(default=make_fields, d=d)
+    return pythia.dom_concrete.Map(default=make_fields, d=d)
 
 
 def make_dirty(
     d: typing.Optional[typing.Mapping[Object, typing.Iterable[tac.Var]]] = None
 ) -> Dirty:
     d = d or {}
-    return domain.Map(default=domain.Set, d={k: domain.Set(v) for k, v in d.items()})
+    return pythia.dom_concrete.Map(
+        default=pythia.dom_concrete.Set,
+        d={k: pythia.dom_concrete.Set(v) for k, v in d.items()},
+    )
 
 
-def make_dirty_from_keys(keys: domain.Set[Object], field: domain.Set[tac.Var]) -> Dirty:
-    return domain.Map(default=domain.Set, d={k: field for k in keys.as_set()})
+def make_dirty_from_keys(
+    keys: pythia.dom_concrete.Set[Object], field: pythia.dom_concrete.Set[tac.Var]
+) -> Dirty:
+    return pythia.dom_concrete.Map(
+        default=pythia.dom_concrete.Set, d={k: field for k in keys.as_set()}
+    )
 
 
 def make_bottom():
@@ -100,9 +108,9 @@ def make_bottom():
 
 def make_type_map(
     d: typing.Optional[typing.Mapping[Object, ts.TypeExpr]] = None
-) -> domain.Map[Object, ts.TypeExpr]:
+) -> pythia.dom_concrete.Map[Object, ts.TypeExpr]:
     d = d or {}
-    return domain.Map(default=make_bottom, d=d)
+    return pythia.dom_concrete.Map(default=make_bottom, d=d)
 
 
 @dataclass
@@ -157,11 +165,13 @@ class Pointer:
     @typing.overload
     def __getitem__(self, key: Object) -> Fields: ...
     @typing.overload
-    def __getitem__(self, key: tuple[Object, tac.Var]) -> domain.Set[Object]: ...
+    def __getitem__(
+        self, key: tuple[Object, tac.Var]
+    ) -> pythia.dom_concrete.Set[Object]: ...
     @typing.overload
     def __getitem__(
-        self, key: tuple[domain.Set[Object], tac.Var]
-    ) -> domain.Set[Object]: ...
+        self, key: tuple[pythia.dom_concrete.Set[Object], tac.Var]
+    ) -> pythia.dom_concrete.Set[Object]: ...
 
     def __getitem__(self, key):
         match key:
@@ -172,8 +182,8 @@ class Pointer:
                 tac.Var() as var,
             ):
                 return self.graph[obj][var]
-            case (domain.Set() as objects, tac.Var() as var):
-                return domain.Set[Object].union_all(
+            case (pythia.dom_concrete.Set() as objects, tac.Var() as var):
+                return pythia.dom_concrete.Set[Object].union_all(
                     self.graph[obj][var] for obj in self.graph.keys() if obj in objects
                 )
             case _:
@@ -183,11 +193,13 @@ class Pointer:
     def __setitem__(self, key: Object, value: Fields) -> None: ...
     @typing.overload
     def __setitem__(
-        self, key: tuple[Object, tac.Var], value: domain.Set[Object]
+        self, key: tuple[Object, tac.Var], value: pythia.dom_concrete.Set[Object]
     ) -> None: ...
     @typing.overload
     def __setitem__(
-        self, key: tuple[domain.Set[Object], tac.Var], value: domain.Set[Object]
+        self,
+        key: tuple[pythia.dom_concrete.Set[Object], tac.Var],
+        value: pythia.dom_concrete.Set[Object],
     ) -> None: ...
 
     def __setitem__(self, key, value):
@@ -195,24 +207,29 @@ class Pointer:
             case (
                 Param() | Immutable() | Scope() | LocationObject() as obj,
                 tac.Var() as var,
-            ), domain.Set() as values:
+            ), pythia.dom_concrete.Set() as values:
                 if obj not in self.graph:
                     self.graph[obj] = make_fields({var: values})
                 else:
                     self.graph[obj][var] = values
             case (
                 Param() | Immutable() | Scope() | LocationObject() as obj,
-                domain.Map() as fields,
+                pythia.dom_concrete.Map() as fields,
             ):
                 self.graph[obj] = fields
-            case (domain.Set() as objects, tac.Var() as var), domain.Set() as values:
+            case (
+                pythia.dom_concrete.Set() as objects,
+                tac.Var() as var,
+            ), pythia.dom_concrete.Set() as values:
                 for obj in self.graph.keys():
                     if obj in objects:
                         self.graph[obj][var] = values
             case _:
                 raise ValueError(f"Invalid key {key} or value {value}")
 
-    def update(self, obj: Object, var: tac.Var, values: domain.Set[Object]) -> None:
+    def update(
+        self, obj: Object, var: tac.Var, values: pythia.dom_concrete.Set[Object]
+    ) -> None:
         if obj not in self.graph:
             self.graph[obj] = make_fields({var: values})
         else:
@@ -238,13 +255,13 @@ class Pointer:
         )
 
     @staticmethod
-    def initial(annotations: domain.Map[Param, ts.TypeExpr]) -> Pointer:
+    def initial(annotations: pythia.dom_concrete.Map[Param, ts.TypeExpr]) -> Pointer:
         return Pointer(
             make_graph(
                 {
                     LOCALS: make_fields(
                         {
-                            obj.param: domain.Set[Object].singleton(obj)
+                            obj.param: pythia.dom_concrete.Set[Object].singleton(obj)
                             for obj in annotations
                             if obj.param is not None
                         }
@@ -290,14 +307,14 @@ def predefined(name: tac.PredefinedFunction) -> ts.TypeExpr:
 
 @dataclass
 class TypeMap:
-    map: domain.Map[Object, ts.TypeExpr]
+    map: pythia.dom_concrete.Map[Object, ts.TypeExpr]
 
     def __repr__(self):
         return f"TypeMap({self.map})"
 
-    def __init__(self, map: domain.Map[Object, ts.TypeExpr]):
+    def __init__(self, map: pythia.dom_concrete.Map[Object, ts.TypeExpr]):
         if not map:
-            self.map = domain.Map[Object, ts.TypeExpr](map.default)
+            self.map = pythia.dom_concrete.Map[Object, ts.TypeExpr](map.default)
         else:
             self.map = deepcopy(map)
 
@@ -319,18 +336,20 @@ class TypeMap:
     def is_bottom(self) -> bool:
         return False
 
-    def __getitem__(self, key: Object | domain.Set[Object]) -> ts.TypeExpr:
-        key = domain.Set[Object].squeeze(key)
+    def __getitem__(self, key: Object | pythia.dom_concrete.Set[Object]) -> ts.TypeExpr:
+        key = pythia.dom_concrete.Set[Object].squeeze(key)
         match key:
-            case domain.Set() as objects:
+            case pythia.dom_concrete.Set() as objects:
                 return ts.join_all(v for k, v in self.map.items() if k in objects)
             case obj:
                 return self.map[obj]
 
-    def __setitem__(self, key: Object | domain.Set[Object], value: ts.TypeExpr) -> None:
-        key = domain.Set[Object].squeeze(key)
+    def __setitem__(
+        self, key: Object | pythia.dom_concrete.Set[Object], value: ts.TypeExpr
+    ) -> None:
+        key = pythia.dom_concrete.Set[Object].squeeze(key)
         match key:
-            case domain.Set() as objects:
+            case pythia.dom_concrete.Set() as objects:
                 # Weak update; not a singleton
                 for k in self.map.keys():
                     if k in objects:
@@ -350,7 +369,7 @@ class TypeMap:
     def join(self, other: TypeMap) -> TypeMap:
         left = self.map
         right = other.map
-        res: domain.Map[Object, ts.TypeExpr] = TypeMap.bottom().map
+        res: pythia.dom_concrete.Map[Object, ts.TypeExpr] = TypeMap.bottom().map
         for k in left.keys() | right.keys():
             res[k] = ts.join(left[k], right[k])
         return TypeMap(res)
@@ -359,7 +378,7 @@ class TypeMap:
         return ",".join(f"{obj}: {type_expr}" for obj, type_expr in self.map.items())
 
     @staticmethod
-    def initial(annotations: domain.Map[Param, ts.TypeExpr]) -> TypeMap:
+    def initial(annotations: pythia.dom_concrete.Map[Param, ts.TypeExpr]) -> TypeMap:
         return TypeMap(annotations)
 
 
@@ -405,12 +424,14 @@ class TypedPointer:
         return str(self.pointers) + "\n" + str(self.types)
 
     @staticmethod
-    def initial(annotations: domain.Map[Param, ts.TypeExpr]) -> TypedPointer:
+    def initial(
+        annotations: pythia.dom_concrete.Map[Param, ts.TypeExpr]
+    ) -> TypedPointer:
         return typed_pointer(
             Pointer.initial(annotations), TypeMap.initial(annotations), make_dirty()
         )
 
-    def collect_garbage(self, alive: analysis_liveness.Liveness) -> None:
+    def collect_garbage(self, alive: Liveness) -> None:
         if LivenessVarLattice.is_bottom(domain.Bottom):
             return
 
@@ -446,7 +467,7 @@ def typed_pointer(pointers: Pointer, types: TypeMap, dirty: Dirty) -> TypedPoint
 
 def parse_annotations(
     this_function: str, this_module: ts.Module
-) -> domain.Map[Param, ts.TypeExpr]:
+) -> pythia.dom_concrete.Map[Param, ts.TypeExpr]:
     this_signature = ts.subscr(this_module, ts.literal(this_function))
     assert isinstance(
         this_signature, ts.Overloaded
@@ -461,12 +482,12 @@ def parse_annotations(
         if row.index.name is not None
     }
     # annotations[Param(tac.Var('return'))] = this_signature.return_type
-    return domain.Map(default=(lambda: ts.BOTTOM), d=annotations)
+    return pythia.dom_concrete.Map(default=(lambda: ts.BOTTOM), d=annotations)
 
 
 class TypedPointerLattice(InstructionLattice[TypedPointer]):
-    liveness: dict[Location, analysis_liveness.Liveness]
-    annotations: domain.Map[Param, ts.TypeExpr]
+    liveness: dict[Location, Liveness]
+    annotations: pythia.dom_concrete.Map[Param, ts.TypeExpr]
     backward: bool = False
     for_locations: frozenset[Location]
 
@@ -476,7 +497,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
 
     def __init__(
         self,
-        liveness: dict[Location, VarMapDomain[analysis_liveness.Liveness]],
+        liveness: dict[Location, MapDomain[tac.Var, Liveness]],
         this_function: str,
         this_module: ts.Module,
         for_locations: frozenset[Location],
@@ -544,8 +565,8 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         expr: tac.Expr,
         location: LocationObject,
         new_tp: TypedPointer,
-    ) -> tuple[domain.Set[Object], ts.TypeExpr, Dirty]:
-        objects: domain.Set[Object]
+    ) -> tuple[pythia.dom_concrete.Set[Object], ts.TypeExpr, Dirty]:
+        objects: pythia.dom_concrete.Set[Object]
         dirty: Dirty
         match expr:
             case tac.Const(value):
@@ -596,7 +617,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 else:
                     objects = prev_tp.pointers[var_objs, field]
                     if any_new:
-                        objects = objects | domain.Set[Object].singleton(location)
+                        objects = objects | pythia.dom_concrete.Set[Object].singleton(
+                            location
+                        )
                     if not all_new:
                         if ts.is_immutable(t):
                             objects = objects | immutable(t)
@@ -631,9 +654,13 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     if any_new:
                         if all_new:
                             # TODO: assert not direct_objs ??
-                            objects = domain.Set[Object].singleton(location)
+                            objects = pythia.dom_concrete.Set[Object].singleton(
+                                location
+                            )
                         else:
-                            objects = objects | domain.Set[Object].singleton(location)
+                            objects = objects | pythia.dom_concrete.Set[
+                                Object
+                            ].singleton(location)
                     if not all_new:
                         if ts.is_immutable(t):
                             objects = objects | immutable(t)
@@ -645,7 +672,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     func_type = prev_tp.types[func_objects]
                 elif isinstance(var, tac.PredefinedFunction):
                     # TODO: point from exact literal when possible
-                    func_objects = domain.Set[Object]()
+                    func_objects = pythia.dom_concrete.Set[Object]()
                     func_type = predefined(var)
                 else:
                     assert False, f"Expected Var or PredefinedFunction, got {var}"
@@ -671,17 +698,17 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 side_effect = ts.get_side_effect(applied)
                 dirty = make_dirty()
                 if side_effect.update is not None:
-                    func_obj = domain.Set[Object].squeeze(func_objects)
-                    if isinstance(func_obj, domain.Set):
+                    func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
+                    if isinstance(func_obj, pythia.dom_concrete.Set):
                         raise RuntimeError(
                             f"Update with multiple function objects: {func_objects}"
                         )
                     self_objects = prev_tp.pointers[func_obj, tac.Var("self")]
                     dirty = make_dirty_from_keys(
-                        self_objects, domain.Set[tac.Var].top()
+                        self_objects, pythia.dom_concrete.Set[tac.Var].top()
                     )
-                    self_obj = domain.Set[Object].squeeze(self_objects)
-                    if isinstance(self_obj, domain.Set):
+                    self_obj = pythia.dom_concrete.Set[Object].squeeze(self_objects)
+                    if isinstance(self_obj, pythia.dom_concrete.Set):
                         raise RuntimeError(
                             f"Update with multiple self objects: {self_objects}"
                         )
@@ -712,13 +739,17 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 t = ts.get_return(applied)
                 assert t != ts.BOTTOM, f"Expected non-bottom return type for {locals()}"
 
-                pointed_objects = domain.Set[Object]()
+                pointed_objects = pythia.dom_concrete.Set[Object]()
                 if side_effect.points_to_args:
-                    pointed_objects = domain.Set[Object].union_all(arg_objects)
+                    pointed_objects = pythia.dom_concrete.Set[Object].union_all(
+                        arg_objects
+                    )
 
-                objects = domain.Set[Object]()
+                objects = pythia.dom_concrete.Set[Object]()
                 if applied.any_new():
-                    objects = objects | domain.Set[Object].singleton(location)
+                    objects = objects | pythia.dom_concrete.Set[Object].singleton(
+                        location
+                    )
                     if side_effect.points_to_args:
                         if (
                             var == tac.PredefinedFunction.TUPLE
@@ -757,7 +788,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 dirty = make_dirty()
                 if side_effect.update is not None:
                     dirty = make_dirty_from_keys(
-                        value_objects, domain.Set[tac.Var].top()
+                        value_objects, pythia.dom_concrete.Set[tac.Var].top()
                     )
                 assert isinstance(
                     applied, ts.Overloaded
@@ -768,9 +799,11 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if ts.is_immutable(t):
                     objects = immutable(t)
                 else:
-                    objects = domain.Set[Object]()
+                    objects = pythia.dom_concrete.Set[Object]()
                     if applied.any_new():
-                        objects = objects | domain.Set[Object].singleton(location)
+                        objects = objects | pythia.dom_concrete.Set[Object].singleton(
+                            location
+                        )
                     if not applied.all_new():
                         if ts.is_immutable(t):
                             objects = objects | immutable(t)
@@ -795,9 +828,11 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if ts.is_immutable(t):
                     objects = immutable(t)
                 else:
-                    objects = domain.Set[Object]()
+                    objects = pythia.dom_concrete.Set[Object]()
                     if applied.any_new():
-                        objects = objects | domain.Set[Object].singleton(location)
+                        objects = objects | pythia.dom_concrete.Set[Object].singleton(
+                            location
+                        )
                     if not applied.all_new():
                         if ts.is_immutable(t):
                             objects = objects | immutable(t)
@@ -812,7 +847,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         self,
         tp: TypedPointer,
         signature: tac.Signature,
-        pointed: domain.Set[Object],
+        pointed: pythia.dom_concrete.Set[Object],
         t: ts.TypeExpr,
     ) -> None:
         match signature:
@@ -845,22 +880,25 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 tp.types[pointed] = t
                 tp.dirty.update(
                     make_dirty_from_keys(
-                        domain.Set[Object].singleton(LOCALS),
-                        domain.Set[tac.Var].singleton(var),
+                        pythia.dom_concrete.Set[Object].singleton(LOCALS),
+                        pythia.dom_concrete.Set[tac.Var].singleton(var),
                     )
                 )
             case tac.Attribute(var=var, field=field):
                 targets = tp.pointers[LOCALS, var]
                 tp.pointers[targets, field] = pointed
                 tp.dirty.update(
-                    make_dirty_from_keys(targets, domain.Set[tac.Var].singleton(field))
+                    make_dirty_from_keys(
+                        targets, pythia.dom_concrete.Set[tac.Var].singleton(field)
+                    )
                 )
             case tac.Subscript(var=var):
                 targets = tp.pointers[LOCALS, var]
                 tp.pointers[targets, tac.Var("*")] = pointed
                 tp.dirty.update(
                     make_dirty_from_keys(
-                        targets, domain.Set[tac.Var].singleton(tac.Var("*"))
+                        targets,
+                        pythia.dom_concrete.Set[tac.Var].singleton(tac.Var("*")),
                     )
                 )
             case _:
@@ -956,9 +994,7 @@ def find_reachable(
                 worklist.add(obj)
 
 
-def find_dirty_roots(
-    tp: TypedPointer, liveness: analysis_liveness.Liveness
-) -> typing.Iterator[str]:
+def find_dirty_roots(tp: TypedPointer, liveness: Liveness) -> typing.Iterator[str]:
     assert not isinstance(liveness, domain.Bottom)
     for var in tp.dirty[LOCALS].as_set():
         if var.is_stackvar:
