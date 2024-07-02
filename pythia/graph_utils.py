@@ -84,16 +84,19 @@ class BackwardBlock[T]:
         return self.block
 
 
+type Annotator[T] = Callable[[Location, T], str]
+
+
 class Cfg[T]:
     graph: nx.DiGraph
-    _annotator: Callable[[Location, T], str]
+    _annotator: Annotator[T] = staticmethod(lambda tup, x: "")
 
     @property
-    def annotator(self) -> Callable[[Location, T], str]:
+    def annotator(self) -> Annotator[T]:
         return self._annotator
 
     @annotator.setter
-    def annotator(self, annotator: Callable[[Location, T], str]) -> None:
+    def annotator(self, annotator: Annotator[T]) -> None:
         self._annotator = staticmethod(annotator)
 
     def __init__(
@@ -142,7 +145,6 @@ class Cfg[T]:
             assert len(sources) == 1, sources
             [source] = sources
         assert {sink, source} == {self.exit_label, self.entry_label}, {sink, source}
-        self.annotator = lambda tup, x: ""
 
     @property
     def entry_label(self) -> Label:
@@ -300,9 +302,7 @@ def node_data_map[
     return typing.cast(Cfg[Q], cfg)
 
 
-def print_block[
-    T
-](label: Label, block: Block[T], *annotators: Callable[[Location, T], object]) -> None:
+def print_block[T](label: Label, block: Block[T], *annotators: Annotator[T]) -> None:
     print(label, ":")
     for index, ins in enumerate(block):
         location = (label, index)
