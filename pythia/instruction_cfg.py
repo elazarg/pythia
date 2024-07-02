@@ -109,7 +109,7 @@ def make_instruction_block_cfg(f: Any) -> tuple[dict[gu.Label, int], Cfg]:
     next_instruction: list[gu.Label] = [
         instructions[i + 1].offset for i in range(len(instructions) - 1)
     ]
-    next_instruction.append(math.inf)
+    next_instruction.append(gu.EXIT_LABEL)
 
     dbs: dict[gu.Label, Instruction] = {ins.offset: ins for ins in instructions}
     edges = [

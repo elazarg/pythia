@@ -13,11 +13,14 @@ from networkx.classes.reportviews import NodeView
 BLOCK_NAME = "block"
 
 type Label = int | float
-type Location = tuple[Label, int]
+EXIT_LABEL = math.inf
 
 
 def is_exit(label: Label) -> bool:
     return math.isinf(label)
+
+
+type Location = tuple[Label, int]
 
 
 @dataclass
@@ -147,7 +150,7 @@ class Cfg[T]:
 
     @property
     def exit_label(self) -> Label:
-        return math.inf
+        return EXIT_LABEL
 
     @property
     def entry(self) -> Block:
@@ -272,7 +275,7 @@ def refine_to_chain(cfg: Cfg) -> Cfg:
     for n in g.nodes():
         block = g.nodes[n][BLOCK_NAME]
         size = len(block)
-        assert size or n == math.inf, n
+        assert size or is_exit(n), n
         path = nx.path_graph(size, create_using=nx.DiGraph())
         nx.relabel_nodes(path, mapping={x: n + x for x in path.nodes()}, copy=False)
         path.add_edges_from((n + max(0, size - 1), s) for s in g.successors(n))
@@ -313,7 +316,7 @@ def print_block[
 
 def pretty_print_cfg[T](cfg: Cfg[T]) -> None:
     for label, block in sorted(cfg.items()):
-        if math.isinf(label):
+        if is_exit(label):
             continue
         print(list(cfg.graph.predecessors(label)))
         print_block(label, block, cfg.annotator)

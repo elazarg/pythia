@@ -193,13 +193,11 @@ def analyze_and_transform(
     analysis_result = analyze_function(
         filename, function_name, print_invariants=print_invariants, simplify=simplify
     )
-    return ast_transform.transform(
-        filename,
-        dirty_map={
-            function_name: {
-                result.cfg[label][i].original_lineno: dirty
-                for (label, i), dirty in result.dirty_map.items()
-            }
-            for function_name, result in analysis_result.items()
-        },
-    )
+    dirty_map = {
+        function_name: {
+            result.cfg[label][i].original_lineno: dirty
+            for (label, i), dirty in result.dirty_map.items()
+        }
+        for function_name, result in analysis_result.items()
+    }
+    return ast_transform.transform(filename, dirty_map)
