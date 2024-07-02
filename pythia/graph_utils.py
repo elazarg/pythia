@@ -87,17 +87,20 @@ class BackwardBlock[T]:
 type Annotator[T] = Callable[[Location, T], str]
 
 
+class Lambda[T]:
+    def __init__(self, *, default: Annotator[T]) -> None:
+        self.f = default
+
+    def __get__(self, obj, objtype=None):
+        return obj.f
+
+    def __set__(self, obj, value):
+        obj.f = staticmethod(value)
+
+
 class Cfg[T]:
     graph: nx.DiGraph
-    _annotator: Annotator[T] = staticmethod(lambda tup, x: "")
-
-    @property
-    def annotator(self) -> Annotator[T]:
-        return self._annotator
-
-    @annotator.setter
-    def annotator(self, annotator: Annotator[T]) -> None:
-        self._annotator = staticmethod(annotator)
+    annotator: Annotator[T] = Lambda(default=lambda tup, x: "")
 
     def __init__(
         self,
