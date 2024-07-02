@@ -10,6 +10,8 @@ from typing import Callable, Iterator, Optional
 import networkx as nx
 from networkx.classes.reportviews import NodeView
 
+from pythia.utils import Function
+
 BLOCK_NAME = "block"
 
 type Label = int | float
@@ -87,20 +89,9 @@ class BackwardBlock[T]:
 type Annotator[T] = Callable[[Location, T], str]
 
 
-class Lambda[T]:
-    def __init__(self, *, default: Annotator[T]) -> None:
-        self.f = default
-
-    def __get__(self, obj, objtype=None):
-        return obj.f
-
-    def __set__(self, obj, value):
-        obj.f = staticmethod(value)
-
-
 class Cfg[T]:
     graph: nx.DiGraph
-    annotator: Annotator[T] = Lambda(default=lambda tup, x: "")
+    annotator: Annotator[T] = Function[Annotator[T]](default=lambda tup, x: "")
 
     def __init__(
         self,
