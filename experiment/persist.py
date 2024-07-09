@@ -1,3 +1,4 @@
+import os
 import typing
 from typing import Any
 
@@ -8,7 +9,12 @@ import socket
 import struct
 
 
+FUEL_ENV = "INSTRUMENT_FUEL"
+
+
 class Loader:
+    fuel: int = int(os.environ.get(FUEL_ENV) or 10**6)
+
     restored_state: tuple[Any, ...]
     iterator: typing.Optional[typing.Iterable]
     version: int
@@ -26,6 +32,7 @@ class Loader:
         self.csv_filename = pathlib.Path(
             f"experiment/{module_filename.parent.name}/cache/times.csv"
         )
+        self.fuel = self.fuel
         self.filename.parent.mkdir(parents=True, exist_ok=True)
         self.iterator = None
         self.version = 0
@@ -52,6 +59,10 @@ class Loader:
         return self.iterator
 
     def commit(self, *args) -> None:
+        self.fuel -= 1
+        if self.fuel <= 0:
+            raise KeyboardInterrupt("Out of fuel")
+
         self.version += 1
 
         temp_filename = self.filename.with_suffix(".tmp")

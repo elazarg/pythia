@@ -1,4 +1,4 @@
-from collections import Counter  # FIX: import collections
+from collections import Counter
 
 
 def new(f):
