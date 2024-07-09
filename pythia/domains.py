@@ -117,16 +117,7 @@ class ValueLattice[T](Lattice[T], typing.Protocol):
     def call(self, function: T, args: list[T]) -> T:
         return self.top()
 
-    def binary(self, left: T, right: T, op: str) -> T:
-        return self.top()
-
-    def unary(self, value: T, op: tac.UnOp) -> T:
-        return self.top()
-
     def predefined(self, name: tac.PredefinedFunction) -> T:
-        return self.top()
-
-    def imported(self, modname: str) -> T:
         return self.top()
 
     def annotation(self, name: tac.Var, t: str) -> T:

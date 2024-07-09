@@ -641,21 +641,6 @@ def match_index(param: Index, arg: Index) -> bool:
     )
 
 
-def unify_protocol(
-    type_params: tuple[TypeVar, ...], param: Instantiation, arg: Instantiation
-) -> typing.Optional[dict[TypeVar, TypeExpr]]:
-    param_class = param.generic
-    assert isinstance(param_class, Class)
-    param_dict = param_class.class_dict
-
-    arg_class = arg.generic
-    assert isinstance(arg_class, Class)
-    arg_dict = arg_class.class_dict
-
-    assert param_class.protocol
-    return unify_argument(type_params, param_dict, arg_dict)
-
-
 def unify_argument(
     type_params: tuple[TypeVar, ...], param: TypeExpr, arg: TypeExpr
 ) -> typing.Optional[dict[TypeVar, TypeExpr]]:
@@ -976,23 +961,6 @@ def subtract_indices(unbound_params: TypedDict, bound_params: TypedDict) -> Type
     return unbound_params
 
 
-def split_params_by_arg_indices(
-    params: TypedDict, args: TypedDict
-) -> tuple[list[tuple[Row, Row]], TypedDict]:
-    bound_params: list[tuple[Row, Row]] = []
-    unbound_params: list[Row] = []
-    arg_items = set(args.row_items())
-    for param in params.row_items():
-        for arg in arg_items:
-            if match_index(param.index, arg.index):
-                bound_params.append((param, arg))
-                arg_items.remove(arg)
-                break
-        else:
-            unbound_params.append(param)
-    return bound_params, typed_dict(unbound_params)
-
-
 def union_all(iterable: typing.Iterable[set]) -> set:
     result = set()
     for item in iterable:
@@ -1036,10 +1004,6 @@ def free_vars_expr(t: TypeExpr) -> set[TypeVar]:
 
 def free_vars_typed_dict(t: TypedDict) -> set[TypeVar]:
     return union_all(free_vars_expr(item.type) for item in t.row_items())
-
-
-def free_vars_side_effect(t: SideEffect) -> set[TypeVar]:
-    return free_vars_expr(t.update)
 
 
 def subtract_type_underapprox(argtype: TypeExpr, paramtype: TypeExpr) -> TypeExpr:
@@ -1603,10 +1567,6 @@ def pretty_print_type(t: Module | TypeExpr, indent: int = 0, max_len: int = 0) -
 
 def make_typevar(t: ast.TypeVar | ast.TypeVarTuple) -> TypeVar:
     return TypeVar(t.name, is_args=isinstance(t, ast.TypeVarTuple))
-
-
-def generic_types(*vars: ast.TypeVar | ast.TypeVarTuple) -> tuple[TypeVar, ...]:
-    return tuple(make_typevar(var) for var in vars)
 
 
 class SymbolTable:

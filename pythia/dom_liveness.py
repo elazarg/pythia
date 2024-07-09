@@ -56,10 +56,6 @@ class LivenessVarLattice(InstructionLattice[Liveness]):
         return self.join(left, right) == right
 
     @classmethod
-    def is_top(cls, elem: Liveness) -> bool:
-        return isinstance(elem, Top)
-
-    @classmethod
     def is_bottom(cls, elem: Liveness) -> bool:
         return isinstance(elem, Bottom)
 

@@ -172,12 +172,6 @@ class Cfg[T]:
     def reverse(self: Cfg[T], copy: bool) -> Cfg[T]:
         return Cfg(self.graph.reverse(copy=copy), add_sink=False)
 
-    def draw(self) -> None:
-        import matplotlib.pyplot as plt  # type: ignore
-
-        nx.draw_networkx(self.graph, with_labels=True)
-        plt.show()
-
     def predecessors(self, label: Label) -> Iterator[Label]:
         return self.graph.predecessors(label)
 
