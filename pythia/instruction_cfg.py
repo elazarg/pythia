@@ -1,5 +1,4 @@
 import dis
-import math
 import typing
 from dis import Instruction
 from typing import Any
@@ -69,10 +68,6 @@ def calculate_stack_effect(ins: Instruction, jump: typing.Optional[bool]) -> int
     arg = ins.arg if ins.opcode in dis.hasarg else None
     res = dis.stack_effect(ins.opcode, arg, jump=jump)
     return res
-
-
-def is_for_iter(ins: Instruction) -> bool:
-    return ins.opname == "FOR_ITER"
 
 
 def calculate_stack_depth(cfg: Cfg) -> dict[gu.Label, int]:

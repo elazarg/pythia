@@ -443,12 +443,16 @@ def subst_var_in_expr(expr: Expr, target: Var, new_var: Var) -> Expr:
             raise NotImplementedError(f"subst_var_in_expr({expr}, {target}, {new_var})")
 
 
-def const(value: object) -> Const:
+def is_const(value: object) -> bool:
+    if not isinstance(value, (int, float, str, type(None), bool, tuple)):
+        return False
     if isinstance(value, tuple):
-        assert all(const(v) for v in value)
-    assert isinstance(
-        value, (int, float, str, type(None), bool, tuple)
-    ), f"Const type {type(value)!r} in source code is not supported"
+        return all(is_const(v) for v in value)
+    return True
+
+
+def const(value: object) -> Const:
+    assert is_const(value), f"Const type {type(value)!r} is not supported"
     return Const(value)
 
 
@@ -541,14 +545,16 @@ def make_tac_cfg(f: typing.Any, simplify: bool = False) -> gu.Cfg[Tac]:
 
 def make_tac_no_dels(
     opname: str,
-    val: str | int | None,
+    val: object,
     stack_effect: int,
     stack_depth: int,
     argrepr: str,
     start_lineno: int,
 ) -> list[Tac]:
+    assert is_const(val), f"{opname}, {val}, {argrepr}"
     """Translate a bytecode operation into a list of TAC instructions."""
-    out = stack_depth + stack_effect if stack_depth is not None else None
+    out = stack_depth + stack_effect
+    lhs = stackvar(out)
     fresh = stackvar(stack_depth + 1)
     match opname.split("_"):
         case ["CACHE"]:
@@ -575,34 +581,27 @@ def make_tac_no_dels(
                     raise NotImplementedError(f"UNARY_{sop}")
             return [Assign(stackvar(stack_depth), Unary(op, stackvar(stack_depth)))]
         case ["BINARY", "SUBSCR"]:
-            #
-            # return [call(stackvar(out), 'BUILTINS.getattr', (stackvar(stack_depth - 1), "'__getitem__'")),
-            #        call(stackvar(out), stackvar(out), (stackvar(stack_depth),))]
-            # IVY-Specific: :(
             return [
                 Assign(
-                    stackvar(out),
+                    lhs,
                     Subscript(stackvar(stack_depth - 1), stackvar(stack_depth)),
                 )
             ]
         case ["BINARY", "OP"] | ["COMPARE", "OP"] | ["IS", "OP"] | ["CONTAINS", "OP"]:
-            lhs = stackvar(out)
             left = stackvar(stack_depth - 1)
             right = stackvar(stack_depth)
             if argrepr != "!=" and argrepr[-1] == "=" and argrepr[0] != "=":
                 return [Assign(lhs, Binary(left, argrepr[:-1], right, inplace=True))]
             else:
                 return [Assign(lhs, Binary(left, argrepr, right, inplace=False))]
-        case ["LIST", "APPEND"]:
+        case ["LIST", "APPEND" as op] | ["SET", "ADD" as op]:
+            opvar = Var(op.lower())
             return [
-                Assign(fresh, Attribute(stackvar(stack_depth - val), Var("append"))),
+                Assign(fresh, Attribute(stackvar(stack_depth - val), opvar)),
                 Assign(None, Call(fresh, (stackvar(stack_depth),))),
             ]
-        case ["SET", "ADD"]:
-            return [
-                Assign(fresh, Attribute(stackvar(stack_depth - val), Var("add"))),
-                Assign(None, Call(fresh, (stackvar(stack_depth),))),
-            ]
+        case ["MAP", "ADD"]:
+            raise NotImplementedError(f"{opname}, {val}, {argrepr}")
         case (
             ["POP", "JUMP", "FORWARD", "IF", *v]
             | ["POP", "JUMP", "BACKWARD", "IF", *v]
@@ -635,25 +634,12 @@ def make_tac_no_dels(
             return [Del(variables)]
         case ["DELETE", "DEREF"]:
             assert False, "added in python3.12"
-        case ["ROT", "TWO"]:
+        case ["SWAP"]:
+            assert isinstance(val, int)
+            a = stackvar(stack_depth - 0)
+            b = stackvar(stack_depth - val + 1)
             return [
-                Assign(fresh, stackvar(stack_depth)),
-                Assign(stackvar(stack_depth), stackvar(stack_depth - 1)),
-                Assign(stackvar(stack_depth - 1), fresh),
-            ]
-        case ["ROT", "THREE"]:
-            return [
-                Assign(fresh, stackvar(stack_depth - 2)),
-                Assign(stackvar(stack_depth - 2), stackvar(stack_depth - 1)),
-                Assign(stackvar(stack_depth - 1), stackvar(stack_depth)),
-                Assign(stackvar(stack_depth), fresh),
-            ]
-        case ["DUP", "TOP"]:
-            return [Assign(stackvar(out), stackvar(stack_depth))]
-        case ["DUP", "TOP", "TWO"]:
-            return [
-                Assign(stackvar(out), stackvar(stack_depth - 2)),
-                Assign(stackvar(out + 1), stackvar(stack_depth - 1)),
+                Assign((a, b), Call(PredefinedFunction.TUPLE, (b, a))),
             ]
         case ["RETURN", "VALUE"]:
             return [Return(stackvar(stack_depth))]
@@ -663,33 +649,30 @@ def make_tac_no_dels(
                 Return(fresh),
             ]
         case ["YIELD", "VALUE"]:
-            return [Assign(stackvar(out), Yield(stackvar(stack_depth)))]
+            return [Assign(lhs, Yield(stackvar(stack_depth)))]
         case ["FOR", "ITER"]:
             assert isinstance(val, int)
             return [
                 For(
-                    stackvar(out),
+                    lhs,
                     stackvar(stack_depth),
                     val,
                     original_lineno=start_lineno,
                 )
             ]
         case ["LOAD", "CONST"]:
-            return [Assign(stackvar(out), const(val))]
+            return [Assign(lhs, const(val))]
         case ["LOAD", "LOCALS"]:
             assert False, "added in python3.12"
         case ["LOAD", "FROM", "DICT", "OR", "GLOBALS"]:
             assert False, "added in python3.12"
         case ["COPY"]:
             # Push the i-th item to the top of the stack. The item is not removed from its original location.
-            lhs = stackvar(out)
             assert isinstance(val, int)
-            # print(f"COPY {val}; out={out}")
             return [Assign(lhs, stackvar(out - val))]
         case ["LOAD", "ASSERTION", "ERROR"]:
             return []  # Assign(lhs, Const(AssertionError()))]
         case ["LOAD", *ops]:
-            lhs = stackvar(out)
             assert isinstance(val, str), f"{opname}, {val}, {argrepr}"
             match ops:
                 case ["ATTR"]:
@@ -745,16 +728,14 @@ def make_tac_no_dels(
             assert isinstance(val, int)
             seq = tuple(stackvar(stack_depth + i) for i in reversed(range(val)))
             return [Assign(seq, stackvar(stack_depth))]
+        case ["UNPACK", "EX"]:
+            raise NotImplementedError(f"{opname}, {val}, {argrepr}")
         case ["IMPORT", "NAME"]:
             assert isinstance(val, str)
-            return [Assign(stackvar(out), Import(Var(val)))]
+            return [Assign(lhs, Import(Var(val)))]
         case ["IMPORT", "FROM"]:
             assert isinstance(val, str)
-            return [
-                Assign(
-                    stackvar(out), Import(Attribute(stackvar(stack_depth), Var(val)))
-                )
-            ]
+            return [Assign(lhs, Import(Attribute(stackvar(stack_depth), Var(val))))]
         case ["BUILD", "SLICE"]:
             args: tuple[Var, ...]
             if val == 2:
@@ -765,14 +746,14 @@ def make_tac_no_dels(
                     stackvar(stack_depth - 1),
                     stackvar(stack_depth - 2),
                 )
-            return [Assign(stackvar(out), Call(PredefinedFunction.SLICE, args))]
+            return [Assign(lhs, Call(PredefinedFunction.SLICE, args))]
         case ["BINARY", "SLICE"]:
             end = stackvar(stack_depth)
             start = stackvar(stack_depth - 1)
             container = stackvar(stack_depth - 2)
             return [
                 Assign(fresh, Call(PredefinedFunction.SLICE, (start, end))),
-                Assign(stackvar(out), Subscript(container, fresh)),
+                Assign(lhs, Subscript(container, fresh)),
             ]
         case ["STORE", "SLICE"]:
             end = stackvar(stack_depth)
@@ -787,7 +768,7 @@ def make_tac_no_dels(
             assert isinstance(val, int)
             return [
                 Assign(
-                    stackvar(out),
+                    lhs,
                     Call(
                         PredefinedFunction.lookup(op),
                         tuple(
@@ -797,23 +778,17 @@ def make_tac_no_dels(
                     ),
                 )
             ]
-        case ["SWAP"]:
-            a = stackvar(stack_depth - 0)
-            b = stackvar(stack_depth - val + 1)
-            return [
-                Assign((a, b), Call(PredefinedFunction.TUPLE, (b, a))),
-                # Assign((a, b), a),
-            ]
         case ["CALL"]:
             assert isinstance(val, int)
             nargs = val & 0xFF
             if sys.version_info[:2] == (3, 12):
                 stack_depth -= nargs
             mid = [stackvar(i + 1) for i in range(stack_depth, stack_depth + nargs)]
-            return [Assign(stackvar(out), Call(stackvar(stack_depth), tuple(mid)))]
+            return [Assign(lhs, Call(stackvar(stack_depth), tuple(mid)))]
         case ["CALL", "INTRINSIC", v]:
             assert False, "added in python3.12"
-        case ["CALL", "FUNCTION", "KW"]:
+        case ["CALL", "FUNCTION", "EX"]:
+            assert False
             assert isinstance(val, int)
             nargs = val
             mid = [
@@ -821,7 +796,7 @@ def make_tac_no_dels(
             ]
             res = [
                 Assign(
-                    stackvar(out),
+                    lhs,
                     Call(
                         stackvar(stack_depth - nargs - 1),
                         tuple(mid),
@@ -842,7 +817,7 @@ def make_tac_no_dels(
             return []
         case ["KW", "NAMES"]:
             """
-            Prefixes PRECALL. Stores a reference to co_consts[consti] into an internal variable for use by CALL.
+            Prefixes CALL. Stores a reference to co_consts[consti] into an internal variable for use by CALL.
             co_consts[consti] must be a tuple of strings.
             """
             return []
@@ -874,7 +849,7 @@ def make_tac_no_dels(
                 i += 1
             if val & 0x08:
                 function.free_var_cells = stackvar(stack_depth - i)
-            return [Assign(stackvar(out), function)]
+            return [Assign(lhs, function)]
     return [Unsupported(opname)]
 
 
