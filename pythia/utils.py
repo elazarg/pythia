@@ -1,6 +1,10 @@
 from __future__ import annotations as _
 
 
+def discard(**_) -> None:
+    pass
+
+
 class Function[F]:
     """A descriptor class to store a function as an attribute.
     It wraps the function in a staticmethod object, so the self argument is not passed to the function when it is called.

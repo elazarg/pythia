@@ -8,6 +8,8 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from utils import discard as _discard
+
 
 @dataclass(frozen=True, slots=True)
 class Ref:
@@ -1792,30 +1794,32 @@ class TypeCollector:
                     type_params=type_params,
                 )
                 typetype = Instantiation(Ref("builtins.type"), (res,))
-                metaclass = Class(
-                    f"__{cdef.name}_metaclass__",
-                    typed_dict(
-                        [
-                            make_row(
-                                0,
-                                "__call__",
-                                FunctionType(
-                                    typed_dict(
-                                        [
-                                            make_row(0, "cls", TypeVar("Infer")),
-                                        ]
+                _discard(
+                    metaclass=Class(
+                        f"__{cdef.name}_metaclass__",
+                        typed_dict(
+                            [
+                                make_row(
+                                    0,
+                                    "__call__",
+                                    FunctionType(
+                                        typed_dict(
+                                            [
+                                                make_row(0, "cls", TypeVar("Infer")),
+                                            ]
+                                        ),
+                                        Ref("type"),
+                                        side_effect=SideEffect(new=True),
+                                        is_property=False,
+                                        type_params=(),
                                     ),
-                                    Ref("type"),
-                                    side_effect=SideEffect(new=True),
-                                    is_property=False,
-                                    type_params=(),
                                 ),
-                            ),
-                        ]
-                    ),
-                    inherits=(Ref("builtins.type"),),
-                    protocol=False,
-                    type_params=type_params,
+                            ]
+                        ),
+                        inherits=(Ref("builtins.type"),),
+                        protocol=False,
+                        type_params=type_params,
+                    )
                 )
                 return typetype
 

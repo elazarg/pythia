@@ -7,11 +7,8 @@ import struct
 from dataclasses import dataclass
 from typing import Any
 
+from utils import discard as _discard
 from pythia import ast_transform
-
-
-def _discard(**_) -> None:
-    pass
 
 
 # Based on https://stackoverflow.com/a/67428655/2289509
