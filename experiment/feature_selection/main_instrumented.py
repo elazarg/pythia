@@ -1,4 +1,5 @@
 from experiment import persist
+import sys
 import numpy as np
 import argparse
 
@@ -13,7 +14,7 @@ def get_float(array: np.ndarray, idx: int) -> float:
 
 
 def log(idx: int, k: int) -> None:
-    print(f"{idx} / {k}", end="\r", flush=True)
+    print(f"{idx} / {k}", end="\r", flush=True, file=sys.stderr)
 
 
 def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:

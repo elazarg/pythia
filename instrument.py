@@ -1,15 +1,15 @@
 import argparse
-import os
 import pathlib
 import subprocess
 import sys
+from typing import Sequence
 
 from experiment import persist
 from pythia import ast_transform
 from pythia.analysis import analyze_and_transform
 
 
-def main() -> None:
+def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
     parser = argparse.ArgumentParser(usage="%(prog)s [options] pythonfile [args]")
     parser.add_argument(
         "--naive",
@@ -24,7 +24,7 @@ def main() -> None:
         help="Number of iterations to run before inducing a crash",
     )
     parser.add_argument("pythonfile", type=str, help="Python file to run")
-    args, remaining_args = parser.parse_known_args()
+    args, remaining_args = parser.parse_known_args(args)
 
     if not args.pythonfile.endswith(".py"):
         parser.error("Python file must end with .py")
@@ -38,24 +38,32 @@ def main() -> None:
     if args.fuel is not None and args.fuel <= 0:
         parser.error(f"Fuel must be a positive integer; got {args.fuel}")
 
-    if args.naive:
-        instrumented = args.pythonfile[:-3] + "_naive.py"
-        output = ast_transform.transform(args.pythonfile, dirty_map=None)
+    return args, remaining_args
+
+
+def generate_instrumented_file(naive: bool, pythonfile: str, function: str) -> str:
+    if naive:
+        instrumented = pythonfile[:-3] + "_naive.py"
+        output = ast_transform.transform(pythonfile, dirty_map=None)
     else:
-        instrumented = args.pythonfile[:-3] + "_instrumented.py"
+        instrumented = pythonfile[:-3] + "_instrumented.py"
         output = analyze_and_transform(
-            filename=args.pythonfile,
-            function_name=args.function,
+            filename=pythonfile,
+            function_name=function,
             print_invariants=False,
             simplify=False,
         )
     pathlib.Path(instrumented).write_text(output)
+    return instrumented
+
+
+def main() -> None:
+    args, remaining_args = parse_args(sys.argv[1:])
+    instrumented = generate_instrumented_file(
+        args.naive, args.pythonfile, args.function
+    )
     try:
-        passed_args = [instrumented] + remaining_args
-        persist.sneak_in_fuel_argument(args.fuel, passed_args)
-        subprocess.run(
-            [sys.executable] + passed_args, env=os.environ | {"PYTHONPATH": os.getcwd()}
-        )
+        persist.run_instrumented_file(instrumented, args.fuel, remaining_args)
     except subprocess.CalledProcessError as ex:
         print(f"Error running {instrumented}: {ex}", file=sys.stderr)
         sys.exit(1)

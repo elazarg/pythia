@@ -22,12 +22,8 @@ def compare_transformed_files(actual: str, expected_outfile: str) -> None:
     assert actual == expected
 
 
-def naive_transform(
-    filename: str,
-    expected_outfile: str,
-) -> None:
+def naive_transform(filename: str, expected_outfile: str) -> None:
     actual = ast_transform.transform(filename, dirty_map=None)
-    print(actual)
     compare_transformed_files(actual, expected_outfile)
 
 
@@ -40,11 +36,10 @@ def test_naive_transformation(experiment_name: str) -> None:
 
 
 def analyze_and_transform(
-    filename: str,
-    function_name: str,
-    expected_outfile: str,
-    simplify: bool,
+    experiment_name: str, function_name: str, simplify: bool
 ) -> None:
+    filename = f"experiment/{experiment_name}/main.py"
+    expected_outfile = f"experiment/{experiment_name}/main_instrumented.py"
     actual = analysis.analyze_and_transform(
         filename=filename,
         function_name=function_name,
@@ -56,10 +51,8 @@ def analyze_and_transform(
 
 @pytest.mark.parametrize("simplify", [True, False])
 def test_analyze_feature_selection(simplify: bool) -> None:
-    experiment_name = "feature_selection"
     analyze_and_transform(
-        filename=f"experiment/{experiment_name}/main.py",
-        expected_outfile=f"experiment/{experiment_name}/main_instrumented.py",
+        experiment_name="feature_selection",
         function_name="do_work",
         simplify=simplify,
     )
@@ -67,10 +60,8 @@ def test_analyze_feature_selection(simplify: bool) -> None:
 
 @pytest.mark.parametrize("simplify", [True, False])
 def test_k_means(simplify: bool) -> None:
-    experiment_name = "k_means"
     analyze_and_transform(
-        filename=f"experiment/{experiment_name}/main.py",
-        expected_outfile=f"experiment/{experiment_name}/main_instrumented.py",
+        experiment_name="k_means",
         function_name="k_means",
         simplify=simplify,
     )
@@ -78,10 +69,8 @@ def test_k_means(simplify: bool) -> None:
 
 @pytest.mark.parametrize("simplify", [True, False])
 def test_pivoter(simplify: bool) -> None:
-    experiment_name = "pivoter"
     analyze_and_transform(
-        filename=f"experiment/{experiment_name}/main.py",
-        expected_outfile=f"experiment/{experiment_name}/main_instrumented.py",
+        experiment_name="pivoter",
         function_name="run",
         simplify=simplify,
     )

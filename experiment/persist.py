@@ -1,3 +1,5 @@
+import os
+import subprocess
 import sys
 import typing
 from typing import Any
@@ -29,6 +31,27 @@ def consume_fuel_argument(args: list[str]) -> int:
 FUEL = consume_fuel_argument(sys.argv)
 
 
+def run_instrumented_file(
+    instrumented: str,
+    fuel: int,
+    remaining_args: list[str],
+    capture_stdout: bool = False,
+) -> str:
+    passed_args = [instrumented] + remaining_args
+    sneak_in_fuel_argument(fuel, passed_args)
+    stdout = None
+    if capture_stdout:
+        stdout = subprocess.PIPE
+    result = subprocess.run(
+        [sys.executable] + passed_args,
+        env=os.environ | {"PYTHONPATH": os.getcwd()},
+        stdout=stdout,
+    )
+    if capture_stdout:
+        return result.stdout.decode("utf-8")
+    return ""
+
+
 class Loader:
     fuel: int
 
@@ -57,17 +80,20 @@ class Loader:
 
     def __enter__(self) -> "Loader":
         if self._now_recovering():
-            print("Recovering from snapshot")
+            print("Recovering from snapshot", file=sys.stderr)
             with self.filename.open("rb") as snapshot:
                 self.version, self.restored_state, self.iterator = pickle.load(snapshot)
-            print(f"Loaded {self.version=}: {self.restored_state}, {self.iterator}")
+            print(
+                f"Loaded {self.version=}: {self.restored_state}, {self.iterator}",
+                file=sys.stderr,
+            )
         with self.csv_filename.open("w"):
             pass
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if exc_type is None:
-            print("Finished successfully")
+            print("Finished successfully", file=sys.stderr)
             self.filename.unlink()
 
     def iterate(self, iterable) -> typing.Iterable:
@@ -117,7 +143,7 @@ def compute_hash(module_filename: pathlib.Path, *env) -> str:
 class PseudoLoader(Loader):
     def commit(self, *args) -> None:
         size = pickle.dumps((self.version, args, self.iterator)).__sizeof__()
-        print(self.version, size, end="\n", flush=True)
+        print(self.version, size, end="\n", flush=True, file=sys.stderr)
         self.version += 1
 
     def __enter__(self) -> Loader:
@@ -125,7 +151,7 @@ class PseudoLoader(Loader):
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if exc_type is None:
-            print("Finished successfully")
+            print("Finished successfully", file=sys.stderr)
 
 
 def connect(tag: str) -> socket.socket:
