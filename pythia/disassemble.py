@@ -10,13 +10,17 @@ from typing import Any
 from pythia import ast_transform
 
 
+def _discard(**_) -> None:
+    pass
+
+
 # Based on https://stackoverflow.com/a/67428655/2289509
 def read_pyc_file(path: str) -> Any:
     """Read the contents of a pyc-file."""
     with open(path, "rb") as file:
-        _magic = file.read(4)
-        _size = struct.unpack("I", file.read(4))[0]
-        _other = file.read(8)  # skip timestamp+size / hash string
+        _discard(_magic=file.read(4))
+        _discard(_size=struct.unpack("I", file.read(4))[0])
+        _discard(_other=file.read(8))  # skip timestamp+size / hash string
         code = marshal.load(file)
         return code
 

@@ -107,7 +107,7 @@ def print_analysis(
                 print(str(post_invariant))
             print()
         if (dirty := dirty_map.get(label)) is not None:
-            print(f"Dirty Locals:", ", ".join(dirty))
+            print("Dirty Locals:", ", ".join(dirty))
             print()
         print("Successors:", list(cfg.successors(label)))
         print()

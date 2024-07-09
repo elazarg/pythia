@@ -392,7 +392,7 @@ def overload(functions: typing.Iterable[FunctionType | Overloaded]) -> Overloade
             collect.append(f)
         else:
             assert f == BOTTOM, f"{f!r}"
-            raise TypeError(f"Trying add a bottom function")
+            raise TypeError("Trying add a bottom function")
     # assert len(collect) > 0
     return Overloaded(tuple(collect))
 
@@ -595,7 +595,8 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
         case (FunctionType() as f, Overloaded(items)):
             return overload([f, *items])
         case (FunctionType() as f1, FunctionType() as f2):
-            # if (f1.is_property, f1.side_effect, f1.type_params, f1.return_type) == (f2.is_property, f2.side_effect, f2.type_params, f1.return_type):
+            # if (f1.is_property, f1.side_effect, f1.type_params, f1.return_type)
+            #       == (f2.is_property, f2.side_effect, f2.type_params, f1.return_type):
             #     new_params = join(f1.params, f2.params)
             #     if not isinstance(new_params, Union):
             #         if isinstance(new_params, Row):
@@ -650,8 +651,7 @@ def unify_protocol(
     arg_dict = arg_class.class_dict
 
     assert param_class.protocol
-    res = unify_argument(type_params, param_dict, arg_dict)
-    return None
+    return unify_argument(type_params, param_dict, arg_dict)
 
 
 def unify_argument(
@@ -1054,7 +1054,7 @@ def subtract_type_underapprox(argtype: TypeExpr, paramtype: TypeExpr) -> TypeExp
 
 def is_type_type(t: TypeExpr) -> bool:
     match t:
-        case Instantiation(Ref("builtins.type"), (selftype,)):
+        case Instantiation(Ref("builtins.type"), (_,)):
             return True
         case _:
             return False
@@ -1548,8 +1548,9 @@ def pretty_print_type(t: Module | TypeExpr, indent: int = 0, max_len: int = 0) -
             # pretty_params = ', '.join(f'{row.index.name}: {row.type}'
             #                           for row in sorted(params.row_items(), key=lambda x: x.index))
             pretty_type_params = ", ".join(str(x) for x in type_params)
+            params_str = f"({params})" if not is_property else ""
             print(
-                f'[{pretty_type_params}]({params}) -> {"new " if side_effect.new else ""}{return_type}'
+                f'[{pretty_type_params}]{params_str} -> {"new " if side_effect.new else ""}{return_type}'
             )
         case Class(
             name,
@@ -1698,7 +1699,7 @@ def is_immutable(value: TypeExpr) -> bool:
             if value == TOP:
                 return False
             return all(is_immutable(x) for x in items.values())
-        case Instantiation(Ref("builtins.type"), (arg,)):
+        case Instantiation(Ref("builtins.type"), (_,)):
             return True  # Not really, but we assume this
         case Instantiation(generic, items):
             return is_immutable(generic) and all(is_immutable(x) for x in items)
@@ -1888,7 +1889,7 @@ class TypeCollector:
                 for alias in aliases:
                     asname = alias.asname or alias.name
                     yield make_row(index, asname, Ref(alias.name))
-            case ast.ImportFrom(module=module, names=aliases, level=level):
+            case ast.ImportFrom(module=module, names=aliases):
                 for alias in aliases:
                     asname = alias.asname or alias.name
                     yield make_row(index, asname, Ref(f"{module}.{alias.name}"))

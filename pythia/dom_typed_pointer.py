@@ -164,10 +164,12 @@ class Pointer:
 
     @typing.overload
     def __getitem__(self, key: Object) -> Fields: ...
+
     @typing.overload
     def __getitem__(
         self, key: tuple[Object, tac.Var]
     ) -> pythia.dom_concrete.Set[Object]: ...
+
     @typing.overload
     def __getitem__(
         self, key: tuple[pythia.dom_concrete.Set[Object], tac.Var]
@@ -191,10 +193,12 @@ class Pointer:
 
     @typing.overload
     def __setitem__(self, key: Object, value: Fields) -> None: ...
+
     @typing.overload
     def __setitem__(
         self, key: tuple[Object, tac.Var], value: pythia.dom_concrete.Set[Object]
     ) -> None: ...
+
     @typing.overload
     def __setitem__(
         self,
