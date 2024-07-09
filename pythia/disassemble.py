@@ -7,7 +7,7 @@ import struct
 from dataclasses import dataclass
 from typing import Any
 
-from utils import discard as _discard
+from pythia.utils import discard as _discard
 from pythia import ast_transform
 
 

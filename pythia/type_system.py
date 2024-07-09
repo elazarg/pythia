@@ -8,7 +8,7 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from utils import discard as _discard
+from pythia.utils import discard as _discard
 
 
 @dataclass(frozen=True, slots=True)
