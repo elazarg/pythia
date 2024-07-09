@@ -1,4 +1,4 @@
-import persist
+from experiment import persist
 
 
 def instrument_experiment(experiment_name: str, args: list[str]) -> None:
