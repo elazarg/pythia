@@ -1,4 +1,4 @@
-import os
+import sys
 import typing
 from typing import Any
 
@@ -9,11 +9,28 @@ import socket
 import struct
 
 
-FUEL_ENV = "INSTRUMENT_FUEL"
+def sneak_in_fuel_argument(fuel: int, args: list[str]) -> None:
+    assert isinstance(fuel, int)
+    assert len(args) > 0
+    args.insert(1, f"--!FUEL {fuel}")
+
+
+def consume_fuel_argument(args: list[str]) -> int:
+    """This function must be called at module level"""
+    if len(args) >= 2:
+        fuel_arg = args[1]
+        if fuel_arg.startswith("--!FUEL "):
+            fuel = int(fuel_arg.split(" ")[1])
+            del args[1]
+            return fuel
+    return 10**6
+
+
+FUEL = consume_fuel_argument(sys.argv)
 
 
 class Loader:
-    fuel: int = int(os.environ.get(FUEL_ENV) or 10**6)
+    fuel: int
 
     restored_state: tuple[Any, ...]
     iterator: typing.Optional[typing.Iterable]
@@ -32,7 +49,7 @@ class Loader:
         self.csv_filename = pathlib.Path(
             f"experiment/{module_filename.parent.name}/cache/times.csv"
         )
-        self.fuel = self.fuel
+        self.fuel = FUEL
         self.filename.parent.mkdir(parents=True, exist_ok=True)
         self.iterator = None
         self.version = 0
