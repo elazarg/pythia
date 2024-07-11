@@ -63,7 +63,7 @@ def main() -> None:
         args.naive, args.pythonfile, args.function
     )
     try:
-        persist.run_instrumented_file(instrumented, args.fuel, remaining_args)
+        persist.run_instrumented_file(instrumented, remaining_args, args.fuel)
     except subprocess.CalledProcessError as ex:
         print(f"Error running {instrumented}: {ex}", file=sys.stderr)
         sys.exit(1)

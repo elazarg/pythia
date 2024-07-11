@@ -5,8 +5,8 @@ def instrument_experiment(experiment_name: str, args: list[str]) -> None:
     def run(fuel: int) -> str:
         return persist.run_instrumented_file(
             instrumented=f"experiment/{experiment_name}/main_instrumented.py",
+            args=args,
             fuel=fuel,
-            remaining_args=args,
             capture_stdout=True,
         )
 

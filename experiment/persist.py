@@ -11,40 +11,25 @@ import socket
 import struct
 
 
-def sneak_in_fuel_argument(fuel: int, args: list[str]) -> None:
-    assert isinstance(fuel, int)
-    assert len(args) > 0
-    args.insert(1, f"--!FUEL {fuel}")
+FUEL = "FUEL"
 
 
-def consume_fuel_argument(args: list[str]) -> int:
-    """This function must be called at module level"""
-    if len(args) >= 2:
-        fuel_arg = args[1]
-        if fuel_arg.startswith("--!FUEL "):
-            fuel = int(fuel_arg.split(" ")[1])
-            del args[1]
-            return fuel
-    return 10**6
-
-
-FUEL = consume_fuel_argument(sys.argv)
+def read_fuel():
+    return int(os.environ.get(FUEL, 10**6))
 
 
 def run_instrumented_file(
     instrumented: str,
+    args: list[str],
     fuel: int,
-    remaining_args: list[str],
     capture_stdout: bool = False,
 ) -> str:
-    passed_args = [instrumented] + remaining_args
-    sneak_in_fuel_argument(fuel, passed_args)
     stdout = None
     if capture_stdout:
         stdout = subprocess.PIPE
     result = subprocess.run(
-        [sys.executable] + passed_args,
-        env=os.environ | {"PYTHONPATH": os.getcwd()},
+        [sys.executable, instrumented] + args,
+        env=os.environ | {"PYTHONPATH": os.getcwd(), FUEL: str(fuel)},
         stdout=stdout,
     )
     if capture_stdout:
@@ -72,7 +57,7 @@ class Loader:
         self.csv_filename = pathlib.Path(
             f"experiment/{module_filename.parent.name}/cache/times.csv"
         )
-        self.fuel = FUEL
+        self.fuel = read_fuel()
         self.filename.parent.mkdir(parents=True, exist_ok=True)
         self.iterator = None
         self.version = 0
