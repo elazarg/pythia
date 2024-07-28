@@ -3,8 +3,8 @@
 # ./configure --target-list=x86_64-softmmu --enable-virtfs --disable-glusterfs --disable-seccomp --disable-{bzip2,snappy,lzo} --disable-usb-redir --disable-libusb --disable-libnfs  --disable-libiscsi --disable-rbd --disable-spice --disable-cap-ng --disable-linux-aio --disable-brlapi --disable-vnc-{jpeg,sasl} --disable-rdma --disable-curl --disable-curses --disable-sdl --disable-gtk  --disable-tpm --disable-vte --disable-vnc  --disable-xen --disable-opengl
 # make -j$(nproc)
 
-func split_requirements() {
-  grep -E '^[a-zA-Z0-9_.+-]+[=><!~]' $1/requirements.txt | sed -E 's/([a-zA-Z0-9_.+-]+)[=><!~]+([0-9a-zA-Z_.+-]+)/-[\1, \2]/'
+function split_requirements() {
+  grep -E '^[a-zA-Z0-9_.+-]+[=><!~]' $1/requirements.txt | sed -E 's/([a-zA-Z0-9_.+-]+)[=><!~]+([0-9a-zA-Z_.+-]+)/  -[\1, \2]/'
 }
 
 # experiment is the first argument
