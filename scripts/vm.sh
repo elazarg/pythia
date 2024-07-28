@@ -26,7 +26,7 @@ fi
 
 instance="./pool/${EXPERIMENT}.img"
 if [ ! -f "${instance}" ]; then
-  cp ./$img ${instance}
+  cp ./${img} ${instance}
 fi
 
 user_data=pool/user-data.qcow2
