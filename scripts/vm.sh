@@ -61,9 +61,8 @@ write_files:
     append: true
 
 runcmd:
-  - [pip3, install, -r, ${TARGET_DIR}/requirements.txt]
-  - [su, ubuntu, -c, "pip3 install --break-system-packages -r ${TARGET_DIR}/${EXPERIMENT}/requirements.txt"]
-  - [python3, ${TARGET_DIR}/${EXPERIMENT}.py]
+  - ["pip3 install -r ${TARGET_DIR}/requirements.txt"]
+  - ["pip3 install --break-system-packages -r ${TARGET_DIR}/${EXPERIMENT}/requirements.txt"]
 EOF
 
 user_data="${INSTANCE_DIR}/user-data.qcow2"
