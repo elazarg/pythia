@@ -21,9 +21,11 @@ package_update: true
 package_upgrade: true
 package_reboot_if_required: true
 allow_public_ssh_keys: true
+mounts:
+ - [ "experiment", "/home/ubuntu/experiment", "9p", ]
 
 runcmd:
-  - [mkdir, "/home/ubuntu/experiment"]
-  - [sudo, "mount", "-t", "9p", "-o", "trans=virtio", "experiment", "/home/ubuntu/experiment", "-oversion=9p2000.L,posixacl,msize=104857600"]
-  - [su, ubuntu, -c, "python3 -m venv /home/ubuntu/venv"]
-  - [su, ubuntu, -c, "/home/ubuntu/venv/bin/pip install -r /home/ubuntu/experiment/requirements.txt"]
+  - [pip, install, -r, /home/ubuntu/experiment/requirements.txt"]
+
+#  - [mkdir, "/home/ubuntu/experiment"]
+#  - [sudo, "mount", "-t", "9p", "-o", "trans=virtio", "experiment", "/home/ubuntu/experiment", "-oversion=9p2000.L,posixacl,msize=104857600"]
