@@ -9,7 +9,7 @@ if [ -z "$EXPERIMENT" ]; then
   echo "Usage: $0 <experiment>"
   exit 1
 fi
-PATH_TO_SHARE="./experiment/${EXPERIMENT}"
+PATH_TO_SHARE="./experiment"
 if [ ! -d "$PATH_TO_SHARE" ]; then
   echo "Directory $PATH_TO_SHARE does not exist."
   exit 1
@@ -25,14 +25,10 @@ if [ ! -f "./$img" ]; then
 fi
 
 instance="./pool/${EXPERIMENT}.img"
-if [ ! -f "${instance}" ]; then
-  cp ./${img} ${instance}
-fi
+cp ./${img} ${instance}
 
 user_data=pool/user-data.qcow2
-if [ ! -f "$user_data" ]; then
-  cloud-localds ${user_data} pool/user-data.yaml --disk-format=qcow2
-fi
+cloud-localds ${user_data} pool/user-data.yaml --disk-format=qcow2
 
 # run:
 # sudo apt update

@@ -26,6 +26,3 @@ mounts:
 
 runcmd:
   - [pip, install, -r, /home/ubuntu/experiment/requirements.txt"]
-
-#  - [mkdir, "/home/ubuntu/experiment"]
-#  - [sudo, "mount", "-t", "9p", "-o", "trans=virtio", "experiment", "/home/ubuntu/experiment", "-oversion=9p2000.L,posixacl,msize=104857600"]
