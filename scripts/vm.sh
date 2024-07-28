@@ -4,7 +4,7 @@
 # make -j$(nproc)
 
 function split_requirements() {
-  grep -E '^[a-zA-Z0-9_.+-]+[=><!~]' $1/requirements.txt | sed -E 's/([a-zA-Z0-9_.+-]+)[=><!~]+([0-9a-zA-Z_.+-]+)/  -[\1, \2]/'
+  grep -E '^[a-zA-Z0-9_.+-]+[=><!~]' $1/requirements.txt | sed -E 's/([a-zA-Z0-9_.+-]+)[=><!~]+([0-9a-zA-Z_.+-]+)/  - [\1, \2]/'
 }
 
 # experiment is the first argument
