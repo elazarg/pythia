@@ -3,6 +3,10 @@
 # ./configure --target-list=x86_64-softmmu --enable-virtfs --disable-glusterfs --disable-seccomp --disable-{bzip2,snappy,lzo} --disable-usb-redir --disable-libusb --disable-libnfs  --disable-libiscsi --disable-rbd --disable-spice --disable-cap-ng --disable-linux-aio --disable-brlapi --disable-vnc-{jpeg,sasl} --disable-rdma --disable-curl --disable-curses --disable-sdl --disable-gtk  --disable-tpm --disable-vte --disable-vnc  --disable-xen --disable-opengl
 # make -j$(nproc)
 
+func split_requirements() {
+  grep -E '^[a-zA-Z0-9_.+-]+[=><!~]' $1/requirements.txt | sed -E 's/([a-zA-Z0-9_.+-]+)[=><!~]+([0-9a-zA-Z_.+-]+)/-[\1, \2]/'
+}
+
 # experiment is the first argument
 EXPERIMENT=$1
 if [ -z "$EXPERIMENT" ]; then
@@ -24,21 +28,42 @@ if [ ! -f "./$img" ]; then
   ${QEMU_DIR}qemu-img resize ${img} +2G
 fi
 
-instance="./pool/${EXPERIMENT}.img"
+INSTANCE_DIR="./pool/${EXPERIMENT}"
+rm -rf ${INSTANCE_DIR}
+mkdir -p ${INSTANCE_DIR}
+
+instance="${INSTANCE_DIR}/vm.img"
 cp ./${img} ${instance}
 
-user_data=pool/user-data.qcow2
-cloud-localds ${user_data} pool/user-data.yaml --disk-format=qcow2
+MOUNT_TAG="experiment"
+yaml_file="${INSTANCE_DIR}/user-data.yaml"
+cat > ${yaml_file} <<EOF
+#cloud-config
 
-# run:
-# sudo apt update
-# sudo apt -y upgrade
-# sudo apt -y install python3-pip python3.12-venv
-# git clone https://github.com/elazarg/pythia
-# cd pythia
-# python3.12 -m venv venv
-# source venv/bin/activate
-# pip install -r experiment/requirements.txt -r experiment/{experiment}/requirements.txt
+# For the password.
+# user: "ubuntu"
+password: asdfqwer
+chpasswd: { expire: False }
+ssh_pwauth: True
+
+packages:
+  - python3-pip
+$(split_requirements ${PATH_TO_SHARE})
+
+package_update: true
+package_upgrade: true
+package_reboot_if_required: true
+allow_public_ssh_keys: true
+mounts:
+ - [${MOUNT_TAG}, /home/ubuntu/experiment, 9p]
+
+runcmd:
+  - [pip, install, -r, /home/ubuntu/experiment/requirements.txt"]
+
+EOF
+
+user_data="${INSTANCE_DIR}/user-data.qcow2"
+cloud-localds ${user_data} ${yaml_file} --disk-format=qcow2
 
 args=(
   -cpu host

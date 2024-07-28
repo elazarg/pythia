@@ -2,27 +2,19 @@
 
 # For the password.
 # user: "ubuntu"
-# https://stackoverflow.com/questions/29137679/login-credentials-of-ubuntu-cloud-server-image/53373376#53373376
-# https://serverfault.com/questions/920117/how-do-i-set-a-password-on-an-ubuntu-cloud-image/940686#940686
-# https://askubuntu.com/questions/507345/how-to-set-a-password-for-ubuntu-cloud-images-ie-not-use-ssh/1094189#1094189
 password: asdfqwer
 chpasswd: { expire: False }
 ssh_pwauth: True
-#ssh_keys:
-#  rsa_public:
-#    - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDGH30o05x9IAN5Hw28DATHVkt7u6iWogvki1VhN5/gSYwwGAs8dqT6/wWo6exD+dIY+Om/ttrqZY0n00SoluO/YUZujjk7t
-#    - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGJDEoZGebh43l4BCC8jutkRB5hwaAZ+luMBGZWeGa9C elazarg@gmail.com
 
 packages:
   - python3-pip
-  - python3-venv
 
 package_update: true
 package_upgrade: true
 package_reboot_if_required: true
 allow_public_ssh_keys: true
 mounts:
- - [ "experiment", "/home/ubuntu/experiment", "9p", ]
+ - [experiment, /home/ubuntu/experiment, 9p]
 
 runcmd:
   - [pip, install, -r, /home/ubuntu/experiment/requirements.txt"]
