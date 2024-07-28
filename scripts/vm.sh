@@ -3,10 +3,6 @@
 # ./configure --target-list=x86_64-softmmu --enable-virtfs --disable-glusterfs --disable-seccomp --disable-{bzip2,snappy,lzo} --disable-usb-redir --disable-libusb --disable-libnfs  --disable-libiscsi --disable-rbd --disable-spice --disable-cap-ng --disable-linux-aio --disable-brlapi --disable-vnc-{jpeg,sasl} --disable-rdma --disable-curl --disable-curses --disable-sdl --disable-gtk  --disable-tpm --disable-vte --disable-vnc  --disable-xen --disable-opengl
 # make -j$(nproc)
 
-function split_requirements() {
-  grep -E '^[a-zA-Z0-9_.+-]+[=><!~]' $1/requirements.txt | sed -E 's/([a-zA-Z0-9_.+-]+)[=><!~]+([0-9a-zA-Z_.+-]+)/  - [\1, \2]/'
-}
-
 # experiment is the first argument
 EXPERIMENT=$1
 if [ -z "$EXPERIMENT" ]; then
@@ -36,6 +32,8 @@ instance="${INSTANCE_DIR}/vm.img"
 cp ./${img} ${instance}
 
 MOUNT_TAG="experiment"
+TARGET_DIR="/home/ubuntu/experiment"
+
 yaml_file="${INSTANCE_DIR}/user-data.yaml"
 cat > ${yaml_file} <<EOF
 #cloud-config
@@ -47,21 +45,25 @@ chpasswd: { expire: False }
 ssh_pwauth: True
 
 packages:
-$(split_requirements ${PATH_TO_SHARE})
-$(split_requirements experiment/${EXPERIMENT})
+  - python3-pip
 
 package_update: true
 package_upgrade: true
 package_reboot_if_required: true
 allow_public_ssh_keys: true
 mounts:
- - [${MOUNT_TAG}, /home/ubuntu/experiment, 9p]
+ - [${MOUNT_TAG}, ${TARGET_DIR}, 9p]
 
 write_files:
   - path: /home/ubuntu/.bashrc
     content: |+
       export PYTHONPATH=/home/ubuntu/
     append: true
+
+runcmd:
+  - [pip3, install, -r, ${TARGET_DIR}/requirements.txt]
+  - [su, ubuntu, -c, "pip3 install --break-system-packages -r ${TARGET_DIR}/${EXPERIMENT}/requirements.txt"]
+  - [python3, ${TARGET_DIR}/${EXPERIMENT}.py]
 EOF
 
 user_data="${INSTANCE_DIR}/user-data.qcow2"
