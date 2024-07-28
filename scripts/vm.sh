@@ -56,8 +56,9 @@ mounts:
 
 write_files:
   - path: /home/ubuntu/.bashrc
-    permissions: '0644'
-    owner: ubuntu
+    permissions: '0640'
+    owner: ubuntu:ubuntu
+    defer: true
     content: |+
       export PYTHONPATH=/home/ubuntu/
     append: true
