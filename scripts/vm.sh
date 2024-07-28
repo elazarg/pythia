@@ -24,9 +24,9 @@ if [ ! -f "./$img" ]; then
   ${QEMU_DIR}qemu-img resize ${img} +2G
 fi
 
-instance="pool/${experiment}.img"
+instance="./pool/${experiment}.img"
 if [ ! -f "${instance}" ]; then
-  cp ./$img $instance
+  cp ./$img ${instance}
 fi
 
 user_data=pool/user-data.qcow2

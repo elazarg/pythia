@@ -23,7 +23,7 @@ package_reboot_if_required: true
 allow_public_ssh_keys: true
 
 runcmd:
-  - [mkdir, "~/home/ubuntu/experiment"]
-  - [su, "mount", "-t", "9p", "-o", "trans=virtio", "experiment", "~/home/ubuntu/experiment", "-oversion=9p2000.L,posixacl,msize=104857600"]
+  - [mkdir, "/home/ubuntu/experiment"]
+  - [su, "mount", "-t", "9p", "-o", "trans=virtio", "experiment", "/home/ubuntu/experiment", "-oversion=9p2000.L,posixacl,msize=104857600"]
   - [su, ubuntu, -c, "python3 -m venv /home/ubuntu/pythia/venv"]
   - [su, ubuntu, -c, "/home/ubuntu/pythia/venv/bin/pip install -r ./experiment/requirements.txt"]
