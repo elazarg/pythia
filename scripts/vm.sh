@@ -57,9 +57,6 @@ allow_public_ssh_keys: true
 mounts:
  - [${MOUNT_TAG}, /home/ubuntu/experiment, 9p]
 
-runcmd:
-  - [pip, install, -r, /home/ubuntu/experiment/requirements.txt"]
-
 EOF
 
 user_data="${INSTANCE_DIR}/user-data.qcow2"
@@ -77,7 +74,7 @@ args=(
 #  -nic user
   -device virtio-net-pci,netdev=n1
   -netdev user,id=n1,hostfwd=tcp::10022-:22
-  -virtfs local,path=${PATH_TO_SHARE},mount_tag=experiment,security_model=none
+  -virtfs local,path=${PATH_TO_SHARE},mount_tag=${MOUNT_TAG},security_model=none
 #  -nographic
 #  -display none
 #  -daemonize
