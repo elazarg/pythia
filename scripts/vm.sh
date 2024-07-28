@@ -29,6 +29,7 @@ fi
 # source venv/bin/activate
 # pip install -r experiment/requirements.txt -r experiment/{experiment}/requirements.txt
 
+PATH_TO_SHARE=~/pythia/experiment
 args=(
   -cpu host
   -smp 1
@@ -41,6 +42,7 @@ args=(
 #  -nic user
   -device virtio-net-pci,netdev=n1
   -netdev user,id=n1,hostfwd=tcp::10022-:22
+  -virtfs local,path=${PATH_TO_SHARE},mount_tag=experiment,security_model=none
 #  -nographic
 #  -display none
 #  -daemonize
