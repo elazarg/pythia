@@ -59,7 +59,8 @@ mounts:
 
 write_files:
   - path: /home/ubuntu/.bashrc
-    content: export PYTHONPATH=/home/ubuntu/
+    content: |+
+      export PYTHONPATH=/home/ubuntu/
     append: true
 EOF
 
