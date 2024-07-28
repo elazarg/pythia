@@ -47,8 +47,8 @@ chpasswd: { expire: False }
 ssh_pwauth: True
 
 packages:
-  - python3-pip
 $(split_requirements ${PATH_TO_SHARE})
+$(split_requirements experiment/${EXPERIMENT})
 
 package_update: true
 package_upgrade: true
@@ -57,6 +57,10 @@ allow_public_ssh_keys: true
 mounts:
  - [${MOUNT_TAG}, /home/ubuntu/experiment, 9p]
 
+write_files:
+  - path: /home/ubuntu/.bashrc
+    content: export PYTHONPATH=/home/ubuntu/
+    append: true
 EOF
 
 user_data="${INSTANCE_DIR}/user-data.qcow2"
