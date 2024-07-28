@@ -1,22 +1,37 @@
 #!/usr/bin/env bash
 # install qemu-9.0.0 with:
-# ./configure --target-list=x86_64-softmmu --disable-glusterfs --disable-seccomp --disable-{bzip2,snappy,lzo} --disable-usb-redir --disable-libusb --disable-libnfs  --disable-libiscsi --disable-rbd --disable-spice --disable-attr --disable-cap-ng --disable-linux-aio --disable-brlapi --disable-vnc-{jpeg,sasl} --disable-rdma --disable-curl --disable-curses --disable-sdl --disable-gtk  --disable-tpm --disable-vte --disable-vnc  --disable-xen --disable-opengl
+# ./configure --target-list=x86_64-softmmu --enable-virtfs --disable-glusterfs --disable-seccomp --disable-{bzip2,snappy,lzo} --disable-usb-redir --disable-libusb --disable-libnfs  --disable-libiscsi --disable-rbd --disable-spice --disable-cap-ng --disable-linux-aio --disable-brlapi --disable-vnc-{jpeg,sasl} --disable-rdma --disable-curl --disable-curses --disable-sdl --disable-gtk  --disable-tpm --disable-vte --disable-vnc  --disable-xen --disable-opengl
 # make -j$(nproc)
 
-POOL=pool
+# experiment is the first argument
+EXPERIMENT=$1
+if [ -z "$EXPERIMENT" ]; then
+  echo "Usage: $0 <experiment>"
+  exit 1
+fi
+PATH_TO_SHARE="./experiment/${EXPERIMENT}"
+if [ ! -d "$PATH_TO_SHARE" ]; then
+  echo "Directory $PATH_TO_SHARE does not exist."
+  exit 1
+fi
+shift 1
+
 # This is already in qcow2 format.
 # https://cloud-images.ubuntu.com/minimal/releases/noble/release/ubuntu-24.04-minimal-cloudimg-amd64.img
 img=ubuntu-24.04-minimal-cloudimg-amd64.img
-if [ ! -f "$POOL/$img" ]; then
-  cd $POOL
+if [ ! -f "./$img" ]; then
   wget "https://cloud-images.ubuntu.com/minimal/releases/noble/release/${img}"
   ${QEMU_DIR}qemu-img resize ${img} +2G
-  cd ..
 fi
 
-user_data=$POOL/user-data.qcow2
+instance="pool/${experiment}.img"
+if [ ! -f "${instance}" ]; then
+  cp ./$img $instance
+fi
+
+user_data=pool/user-data.qcow2
 if [ ! -f "$user_data" ]; then
-  cloud-localds ${user_data} $POOL/user-data.yaml --disk-format=qcow2
+  cloud-localds ${user_data} pool/user-data.yaml --disk-format=qcow2
 fi
 
 # run:
@@ -29,11 +44,10 @@ fi
 # source venv/bin/activate
 # pip install -r experiment/requirements.txt -r experiment/{experiment}/requirements.txt
 
-PATH_TO_SHARE=~/pythia/experiment
 args=(
   -cpu host
   -smp 1
-  -drive "file=${POOL}/${img},format=qcow2"
+  -drive "file=${instance},format=qcow2"
   -drive "file=${user_data},format=qcow2"
   -enable-kvm
   -m 2G
@@ -47,6 +61,7 @@ args=(
 #  -display none
 #  -daemonize
 )
+
 ${QEMU_DIR}qemu-system-x86_64 "${args[@]}" "$@"
 # args=(
 #   --name nvram-vm
