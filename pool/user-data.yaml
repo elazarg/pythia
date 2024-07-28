@@ -16,7 +16,6 @@ ssh_pwauth: True
 packages:
   - python3-pip
   - python3-venv
-  - git
 
 package_update: true
 package_upgrade: true
@@ -24,10 +23,7 @@ package_reboot_if_required: true
 allow_public_ssh_keys: true
 
 runcmd:
-  - [su, ubuntu, -c, "git clone https://github.com/elazarg/pythia /home/ubuntu/pythia"]
+  - [mkdir, "./experiment"]
+  - [su, "mount", "-t", "9p", "-o", "trans=virtio", "experiment", "./experiment", "-oversion=9p2000.L,posixacl,msize=104857600"]
   - [su, ubuntu, -c, "python3 -m venv /home/ubuntu/pythia/venv"]
-  - [su, ubuntu, -c, "/home/ubuntu/pythia/venv/bin/pip install -r /home/ubuntu/pythia/experiment/requirements.txt"]
-  - [su, ubuntu, -c, "/home/ubuntu/pythia/venv/bin/pip install -r /home/ubuntu/pythia/experiment/feature_selection/requirements.txt"]
-  - [su, ubuntu, -c, "/home/ubuntu/pythia/venv/bin/pip install -r /home/ubuntu/pythia/experiment/k_means/requirements.txt"]
-  - [su, ubuntu, -c, "/home/ubuntu/pythia/venv/bin/pip install -r /home/ubuntu/pythia/experiment/pivoter/requirements.txt"]
-  - [echo, "export PYTHONPATH=/home/ubuntu/pythia", ">>", "/home/ubuntu/.bashrc"]
+  - [su, ubuntu, -c, "/home/ubuntu/pythia/venv/bin/pip install -r ./experiment/requirements.txt"]
