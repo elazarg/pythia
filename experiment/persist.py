@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import tempfile
 import typing
 from typing import Any
 
@@ -50,15 +51,13 @@ class Loader:
 
         # make sure the cache is invalidated when the module changes
         h = compute_hash(module_filename, env)
+        cachedir = pathlib.Path(tempfile.gettempdir()) / f"pythia-{h}"
+        print(f"Using cache directory {cachedir}", file=sys.stderr)
+        cachedir.mkdir(parents=False, exist_ok=True)
+        self.filename = cachedir / "store.pickle"
+        self.csv_filename = cachedir / "times.csv"
 
-        self.filename = pathlib.Path(
-            f"experiment/{module_filename.parent.name}/cache/{h}.pickle"
-        )
-        self.csv_filename = pathlib.Path(
-            f"experiment/{module_filename.parent.name}/cache/times.csv"
-        )
         self.fuel = read_fuel()
-        self.filename.parent.mkdir(parents=True, exist_ok=True)
         self.iterator = None
         self.version = 0
         self.restored_state = ()

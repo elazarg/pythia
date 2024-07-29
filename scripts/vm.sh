@@ -65,7 +65,7 @@ write_files:
 
 runcmd:
   - sudo chown -R ubuntu:ubuntu /home/ubuntu
-  - pip3 install --user -r ${TARGET_DIR}/requirements.txt
+  - pip3 install --user --break-system-packages -r ${TARGET_DIR}/requirements.txt
   - pip3 install --user --break-system-packages -r ${TARGET_DIR}/${EXPERIMENT}/requirements.txt
 EOF
 

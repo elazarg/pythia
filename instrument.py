@@ -16,7 +16,9 @@ def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
         action="store_true",
         help="Use naive instrumentation: all local variables",
     )
-    parser.add_argument("--function", type=str, help="Function to instrument")
+    parser.add_argument(
+        "--function", type=str, default="run", help="Function to instrument"
+    )
     parser.add_argument(
         "--fuel",
         type=int,

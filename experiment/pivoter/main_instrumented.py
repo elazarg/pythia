@@ -84,9 +84,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--filename", default="data/test.edges", help="path to edges file"
-    )
+    parser.add_argument("filename", help="path to edges file")
     parser.add_argument("--root", type=int, default=0, help="root node")
     parser.add_argument(
         "--recursive", action="store_true", help="use recursive version"

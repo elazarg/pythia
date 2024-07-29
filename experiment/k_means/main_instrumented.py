@@ -3,7 +3,7 @@ import numpy as np
 import sklearn.datasets
 
 
-def k_means(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
+def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     """A simple clustering method that forms k clusters by iteratively reassigning
     samples to the closest centroids and after that moves the centroids to the center
     of the new formed clusters. Do K-Means clustering and return cluster indices
@@ -43,7 +43,7 @@ def compute_random(n_samples: int, k: int, plot: bool) -> None:
     X, y = sklearn.datasets.make_blobs(
         n_samples=n_samples, n_features=2, centers=k, cluster_std=1.8, shuffle=True
     )
-    y_pred = k_means(X, k=k, max_iterations=1000)
+    y_pred = run(X, k=k, max_iterations=1000)
     if plot:
         import matplotlib.pyplot as plt
 

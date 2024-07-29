@@ -18,7 +18,7 @@ def log(idx: int, k: int) -> None:
     print(f"{idx} / {k}", end="\r", flush=True, file=sys.stderr)
 
 
-def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
+def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     # define new solution
     # features: n x m
     # target: n x 1
@@ -83,7 +83,7 @@ def do_work(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
 def main(dataset: str, k: int) -> None:
     features = np.load(f"experiment/feature_selection/{dataset}_features.npy")
     target = np.load(f"experiment/feature_selection/{dataset}_target.npy")
-    S = do_work(features, target, k)
+    S = run(features, target, k)
     print(S)
 
 
