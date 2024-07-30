@@ -173,3 +173,87 @@ def transform(
     tree = ast.fix_missing_locations(tree)
     res = ast.unparse(tree)
     return black.format_str(res, mode=black.FileMode())
+
+
+def make_for_tcp(for_loop: ast.For, tag: str, filename: str) -> ast.With:
+    parse_expression = Parser(filename).parse_expression
+    iter = ast.Call(
+        func=parse_expression(f"client.iterate"),
+        args=[for_loop.iter],
+        keywords=[],
+    )
+
+    for_loop = ast.For(
+        target=for_loop.target,
+        iter=iter,
+        body=[
+            *for_loop.body,
+            ast.Expr(parse_expression(f"client.commit()")),
+        ],
+        orelse=for_loop.orelse,
+        type_comment=for_loop.type_comment,
+        lineno=for_loop.lineno,
+        col_offset=for_loop.col_offset,
+    )
+
+    res = ast.With(
+        items=[
+            ast.withitem(
+                context_expr=parse_expression(f'persist.SimpleTcpClient("{tag}")'),
+                optional_vars=ast.Name(id="client", ctx=ast.Store()),
+            )
+        ],
+        body=[
+            for_loop,
+        ],
+    )
+    return res
+
+
+class TcpTransformer(ast.NodeTransformer):
+    def __init__(self, tag: str, filename: str) -> None:
+        self.tag = tag
+        self.filename = filename
+
+    def visit_For(self, for_loop: ast.For) -> ast.With | ast.For:
+        for_loop = typing.cast(ast.For, self.generic_visit(for_loop))
+        assert isinstance(for_loop, ast.For)
+        if not for_loop.type_comment:
+            return for_loop
+        return make_for_tcp(for_loop, self.tag, self.filename)
+
+
+class TcpCompiler(ast.NodeTransformer):
+    def __init__(
+        self, tag: str, filename: str, function_name: str, parser: Parser
+    ) -> None:
+        self.tag = tag
+        self.function_name = function_name
+        self.filename = filename
+        self.parser = parser
+
+    def visit_Module(self, node: ast.Module) -> ast.Module:
+        tree = typing.cast(ast.Module, self.generic_visit(node))
+        import_stmt = self.parser.parse_statement("from checkpoint import persist")
+        res = ast.Module(body=[import_stmt, *tree.body], type_ignores=tree.type_ignores)
+        return res
+
+    def visit_FunctionDef(self, function: ast.FunctionDef) -> ast.FunctionDef:
+        if function.name != self.function_name:
+            return function
+        res = TcpTransformer(self.tag, self.filename).visit(function)
+        assert isinstance(res, ast.FunctionDef)
+        return res
+
+
+def tcp_client(tag: str, filename: str, function_name: str) -> str:
+    parser = Parser(filename)
+
+    with open(filename, encoding="utf-8") as f:
+        source = f.read()
+    tree = parser.parse(source)
+
+    tree = TcpCompiler(tag, filename, function_name, parser).visit(tree)
+    tree = ast.fix_missing_locations(tree)
+    res = ast.unparse(tree)
+    return black.format_str(res, mode=black.FileMode())

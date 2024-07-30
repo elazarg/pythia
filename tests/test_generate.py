@@ -35,6 +35,23 @@ def test_naive_transformation(experiment_name: str) -> None:
     )
 
 
+def tcp_transform(
+    tag: str, filename: str, function_name: str, expected_outfile: str
+) -> None:
+    actual = ast_transform.tcp_client(tag, filename, function_name)
+    compare_transformed_files(actual, expected_outfile)
+
+
+@pytest.mark.parametrize("experiment_name", ["k_means", "feature_selection", "pivoter"])
+def test_tcp_transformation(experiment_name: str) -> None:
+    tcp_transform(
+        tag=experiment_name,
+        function_name="run",
+        filename=f"experiment/{experiment_name}/main.py",
+        expected_outfile=f"experiment/{experiment_name}/main_tcp.py",
+    )
+
+
 def analyze_and_transform(
     experiment_name: str, function_name: str, simplify: bool
 ) -> None:

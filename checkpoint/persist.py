@@ -145,7 +145,7 @@ def connect(tag: str) -> socket.socket:
     return s
 
 
-class SimpleTcpClient:
+class WrapperTcpClient:
     loader: Loader
     socket: socket.socket
     i: Any
@@ -175,4 +175,26 @@ class SimpleTcpClient:
 
     def iterate[T](self, iterable: typing.Iterable[T]) -> typing.Iterable[T]:
         for self.i in self.loader.iterate(iterable):
+            yield self.i
+
+
+class SimpleTcpClient:
+    restored_state = ()
+
+    def __init__(self, tag: str) -> None:
+        self.socket = connect(tag)
+        self.i = None
+
+    def commit(self) -> None:
+        self.socket.send(struct.pack("Q", self.i))
+        self.socket.recv(256)  # wait for snapshot
+
+    def __enter__(self) -> "SimpleTcpClient":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.socket.close()
+
+    def iterate(self, iterable):
+        for self.i in iterable:
             yield self.i

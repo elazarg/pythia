@@ -12,9 +12,10 @@ from pythia.analysis import analyze_and_transform
 def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
     parser = argparse.ArgumentParser(usage="%(prog)s [options] pythonfile [args]")
     parser.add_argument(
-        "--naive",
-        action="store_true",
-        help="Use naive instrumentation: all local variables",
+        "--kind",
+        choices=["analyze", "naive", "tcp"],
+        default="analyze",
+        help="kind of instrumentation to use",
     )
     parser.add_argument(
         "--function", type=str, default="run", help="Function to instrument"
@@ -43,35 +44,41 @@ def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
     return args, remaining_args
 
 
-def generate_instrumented_file(naive: bool, pythonfile: str, function: str) -> str:
-    if naive:
-        instrumented = pythonfile[:-3] + "_naive.py"
-        output = ast_transform.transform(pythonfile, dirty_map=None)
-    else:
-        instrumented = pythonfile[:-3] + "_instrumented.py"
-        output = analyze_and_transform(
-            filename=pythonfile,
-            function_name=function,
-            print_invariants=False,
-            simplify=False,
-        )
+def generate_instrumented_file(kind: str, pythonfile: str, function: str) -> str:
+    match kind:
+        case "tcp":
+            instrumented = pythonfile[:-3] + "_tcp.py"
+            tag = pathlib.Path(pythonfile).parent.name
+            output = ast_transform.tcp_client(tag, pythonfile, function)
+        case "naive":
+            instrumented = pythonfile[:-3] + "_naive.py"
+            output = ast_transform.transform(pythonfile, dirty_map=None)
+        case "analyze":
+            instrumented = pythonfile[:-3] + "_instrumented.py"
+            output = analyze_and_transform(
+                filename=pythonfile,
+                function_name=function,
+                print_invariants=False,
+                simplify=False,
+            )
+        case _:
+            raise ValueError(f"Unknown kind {kind}")
     pathlib.Path(instrumented).write_text(output)
     return instrumented
 
 
 def main() -> None:
     args, remaining_args = parse_args(sys.argv[1:])
-    instrumented = generate_instrumented_file(
-        args.naive, args.pythonfile, args.function
-    )
-    try:
-        persist.run_instrumented_file(instrumented, remaining_args, args.fuel)
-    except subprocess.CalledProcessError as ex:
-        print(f"Error running {instrumented}: {ex}", file=sys.stderr)
-        sys.exit(1)
-    except KeyboardInterrupt:
-        print(f"Interrupted", file=sys.stderr)
-        sys.exit(1)
+    instrumented = generate_instrumented_file(args.kind, args.pythonfile, args.function)
+    if args.kind != "tcp":
+        try:
+            persist.run_instrumented_file(instrumented, remaining_args, args.fuel)
+        except subprocess.CalledProcessError as ex:
+            print(f"Error running {instrumented}: {ex}", file=sys.stderr)
+            sys.exit(1)
+        except KeyboardInterrupt:
+            print(f"Interrupted", file=sys.stderr)
+            sys.exit(1)
 
 
 if __name__ == "__main__":
