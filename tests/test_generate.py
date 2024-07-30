@@ -53,7 +53,7 @@ def analyze_and_transform(
 def test_analyze_feature_selection(simplify: bool) -> None:
     analyze_and_transform(
         experiment_name="feature_selection",
-        function_name="do_work",
+        function_name="run",
         simplify=simplify,
     )
 
@@ -62,7 +62,7 @@ def test_analyze_feature_selection(simplify: bool) -> None:
 def test_k_means(simplify: bool) -> None:
     analyze_and_transform(
         experiment_name="k_means",
-        function_name="k_means",
+        function_name="run",
         simplify=simplify,
     )
 
