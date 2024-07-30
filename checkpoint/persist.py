@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import typing
+from datetime import time
 from typing import Any
 
 import pickle
@@ -182,7 +183,19 @@ class SimpleTcpClient:
     restored_state = ()
 
     def __init__(self, tag: str) -> None:
-        self.socket = connect(tag)
+        while True:
+            try:
+                self.socket = connect(tag)
+            except ConnectionRefusedError:
+                print("Could not connect to server.", file=sys.stderr)
+                print(
+                    "Make sure save_snapshot.py is running on host.",
+                    file=sys.stderr,
+                )
+                print("Press Enter to retry", file=sys.stderr)
+                input()
+            else:
+                break
         self.i = None
 
     def commit(self) -> None:
