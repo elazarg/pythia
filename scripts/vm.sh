@@ -9,9 +9,9 @@ if [ -z "$EXPERIMENT" ]; then
   echo "Usage: $0 <experiment>"
   exit 1
 fi
-PATH_TO_SHARE="./experiment/${EXPERIMENT}"
-if [ ! -d "$PATH_TO_SHARE" ]; then
-  echo "Directory $PATH_TO_SHARE does not exist."
+EXPERIMENT_PATH="./experiment/${EXPERIMENT}"
+if [ ! -d "$EXPERIMENT_PATH" ]; then
+  echo "Directory $EXPERIMENT_PATH does not exist."
   exit 1
 fi
 shift 1
@@ -31,9 +31,10 @@ mkdir -p ${INSTANCE_DIR}
 instance="${INSTANCE_DIR}/vm.img"
 cp ./${img} ${instance}
 
-MOUNT_TAG="experiment"
+CHECKPOINT_LIB="checkpoint"
+
+EXPERIMENT_TAG="experiment"
 GUEST_HOME="/home/ubuntu"
-TARGET_DIR="${GUEST_HOME}"
 VENV_BIN="${GUEST_HOME}/venv/bin"
 
 yaml_file="${INSTANCE_DIR}/user-data.yaml"
@@ -55,7 +56,7 @@ package_upgrade: true
 package_reboot_if_required: true
 allow_public_ssh_keys: true
 mounts:
- - [${MOUNT_TAG}, ${TARGET_DIR}, 9p]
+ - [${EXPERIMENT_TAG}, /mnt/${EXPERIMENT_TAG}, 9p]
 
 write_files:
   - path: ${GUEST_HOME}/.bashrc
@@ -64,14 +65,15 @@ write_files:
     defer: true
     append: true
     content: |+
-      export PYTHONPATH=${GUEST_HOME}
+      export PYTHONPATH=/mnt
       source ${VENV_BIN}/activate
 
 runcmd:
   - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
+  - [su, ubuntu, -c, "cp -r /mnt/${EXPERIMENT_TAG}/* ${GUEST_HOME}/"]
   - [su, ubuntu, -c, "python3 -m venv ${GUEST_HOME}/venv"]
-  - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${TARGET_DIR}/checkpoint/requirements.txt"]
-  - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${TARGET_DIR}/requirements.txt"]
+  - [su, ubuntu, -c, "${VENV_BIN}/pip install -r /mnt/${CHECKPOINT_LIB}/requirements.txt"]
+  - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${GUEST_HOME}/requirements.txt"]
 EOF
 
 user_data="${INSTANCE_DIR}/user-data.qcow2"
@@ -82,7 +84,8 @@ args=(
   -smp 1
   -drive "file=${instance},format=qcow2"
   -drive "file=${user_data},format=qcow2"
-  -virtfs local,path=${PATH_TO_SHARE},mount_tag=${MOUNT_TAG},security_model=none
+  -virtfs local,path=${EXPERIMENT_PATH},mount_tag=${EXPERIMENT_TAG},security_model=none
+  -virtfs local,path=./${CHECKPOINT_LIB},mount_tag=${CHECKPOINT_LIB},security_model=none
   -enable-kvm
   -m 2G
 #  -serial mon:stdio  # use console for monitor
