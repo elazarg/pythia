@@ -57,6 +57,7 @@ package_reboot_if_required: true
 allow_public_ssh_keys: true
 mounts:
  - [${EXPERIMENT_TAG}, /mnt/${EXPERIMENT_TAG}, 9p]
+ - [${CHECKPOINT_LIB}, /mnt/${CHECKPOINT_LIB}, 9p]
 
 write_files:
   - path: ${GUEST_HOME}/.bashrc
