@@ -1,4 +1,4 @@
-from experiment import persist
+from checkpoint import persist
 
 
 def instrument_experiment(experiment_name: str, args: list[str]) -> None:

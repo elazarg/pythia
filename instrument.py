@@ -4,7 +4,7 @@ import subprocess
 import sys
 from typing import Sequence
 
-from experiment import persist
+from checkpoint import persist
 from pythia import ast_transform
 from pythia.analysis import analyze_and_transform
 

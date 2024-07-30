@@ -1,4 +1,4 @@
-from experiment import persist
+from checkpoint import persist
 import sys
 import numpy as np
 import argparse

@@ -9,7 +9,7 @@ if [ -z "$EXPERIMENT" ]; then
   echo "Usage: $0 <experiment>"
   exit 1
 fi
-PATH_TO_SHARE="./experiment"
+PATH_TO_SHARE="./experiment/${EXPERIMENT}"
 if [ ! -d "$PATH_TO_SHARE" ]; then
   echo "Directory $PATH_TO_SHARE does not exist."
   exit 1
@@ -32,7 +32,9 @@ instance="${INSTANCE_DIR}/vm.img"
 cp ./${img} ${instance}
 
 MOUNT_TAG="experiment"
-TARGET_DIR="/home/ubuntu/experiment"
+GUEST_HOME="/home/ubuntu"
+TARGET_DIR="${GUEST_HOME}"
+VENV_BIN="${GUEST_HOME}/venv/bin"
 
 yaml_file="${INSTANCE_DIR}/user-data.yaml"
 cat > ${yaml_file} <<EOF
@@ -46,6 +48,7 @@ ssh_pwauth: True
 
 packages:
   - python3-pip
+  - python3-venv
 
 package_update: true
 package_upgrade: true
@@ -55,18 +58,20 @@ mounts:
  - [${MOUNT_TAG}, ${TARGET_DIR}, 9p]
 
 write_files:
-  - path: /home/ubuntu/.bashrc
+  - path: ${GUEST_HOME}/.bashrc
     permissions: '0640'
     owner: ubuntu:ubuntu
     defer: true
-    content: |+
-      export PYTHONPATH=/home/ubuntu/
     append: true
+    content: |+
+      export PYTHONPATH=${GUEST_HOME}
+      source ${VENV_BIN}/activate
 
 runcmd:
-  - sudo chown -R ubuntu:ubuntu /home/ubuntu
-  - pip3 install --user --break-system-packages -r ${TARGET_DIR}/requirements.txt
-  - pip3 install --user --break-system-packages -r ${TARGET_DIR}/${EXPERIMENT}/requirements.txt
+  - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
+  - [su, ubuntu, -c, "python3 -m venv ${GUEST_HOME}/venv"]
+  - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${TARGET_DIR}/checkpoint/requirements.txt"]
+  - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${TARGET_DIR}/requirements.txt"]
 EOF
 
 user_data="${INSTANCE_DIR}/user-data.qcow2"
@@ -77,6 +82,7 @@ args=(
   -smp 1
   -drive "file=${instance},format=qcow2"
   -drive "file=${user_data},format=qcow2"
+  -virtfs local,path=${PATH_TO_SHARE},mount_tag=${MOUNT_TAG},security_model=none
   -enable-kvm
   -m 2G
 #  -serial mon:stdio  # use console for monitor
@@ -84,7 +90,6 @@ args=(
 #  -nic user
   -device virtio-net-pci,netdev=n1
   -netdev user,id=n1,hostfwd=tcp::10022-:22
-  -virtfs local,path=${PATH_TO_SHARE},mount_tag=${MOUNT_TAG},security_model=none
 #  -nographic
 #  -display none
 #  -daemonize

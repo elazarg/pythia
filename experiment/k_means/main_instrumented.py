@@ -1,4 +1,4 @@
-from experiment import persist
+from checkpoint import persist
 import numpy as np
 import sklearn.datasets
 

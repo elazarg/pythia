@@ -1,4 +1,4 @@
-from experiment import persist
+from checkpoint import persist
 from collections import Counter
 
 

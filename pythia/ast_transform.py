@@ -141,7 +141,7 @@ class Compiler(ast.NodeTransformer):
 
     def visit_Module(self, node: ast.Module) -> ast.Module:
         tree = typing.cast(ast.Module, self.generic_visit(node))
-        import_stmt = self.parser.parse_statement("from experiment import persist")
+        import_stmt = self.parser.parse_statement("from checkpoint import persist")
         res = ast.Module(body=[import_stmt, *tree.body], type_ignores=tree.type_ignores)
         return res
 
