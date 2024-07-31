@@ -152,7 +152,7 @@ def run_iterator(qmp_port: int, iterations: int, sleep_duration_ms: int, tag: st
 def main():
     parser = argparse.ArgumentParser(description="Save a snapshot of the VM's memory.")
     parser.add_argument(
-        "qmp_port",
+        "--qmp_port",
         type=int,
         default=4444,
         help="The port in qemu to connect the QMP client to.",
@@ -161,7 +161,7 @@ def main():
     subparsers = parser.add_subparsers()
     server_parser = subparsers.add_parser("server", help="Run as a server.")
     server_parser.add_argument(
-        "tcp_port", type=int, default=1234, help="TCP port to listen on."
+        "--tcp_port", type=int, default=1234, help="TCP port to listen on."
     )
     server_parser.set_defaults(func=run_server)
 

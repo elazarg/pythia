@@ -3,7 +3,6 @@ import subprocess
 import sys
 import tempfile
 import typing
-from datetime import time
 from typing import Any
 
 import pickle
@@ -14,16 +13,22 @@ import struct
 
 
 FUEL = "FUEL"
+STEP = "STEP"
 
 
 def read_fuel():
     return int(os.environ.get(FUEL, 10**6))
 
 
+def read_step():
+    return int(os.environ.get(STEP, 1))
+
+
 def run_instrumented_file(
     instrumented: str,
     args: list[str],
     fuel: int,
+    step: int,
     capture_stdout: bool = False,
 ) -> str:
     stdout = None
@@ -31,7 +36,7 @@ def run_instrumented_file(
         stdout = subprocess.PIPE
     result = subprocess.run(
         [sys.executable, instrumented] + args,
-        env=os.environ | {"PYTHONPATH": os.getcwd(), FUEL: str(fuel)},
+        env=os.environ | {"PYTHONPATH": os.getcwd(), FUEL: str(fuel), STEP: str(step)},
         stdout=stdout,
     )
     if capture_stdout:
@@ -41,6 +46,7 @@ def run_instrumented_file(
 
 class Loader:
     fuel: int
+    step: int
 
     restored_state: tuple[Any, ...]
     iterator: typing.Optional[typing.Iterable]
@@ -59,6 +65,8 @@ class Loader:
         self.csv_filename = cachedir / "times.csv"
 
         self.fuel = read_fuel()
+        self.i = -1
+        self.step = read_step()
         self.iterator = None
         self.version = 0
         self.restored_state = ()
@@ -87,22 +95,24 @@ class Loader:
         return self.iterator
 
     def commit(self, *args) -> None:
-        self.fuel -= 1
-        if self.fuel <= 0:
-            raise KeyboardInterrupt("Out of fuel")
+        self.i += 1
+        if self.i % self.step != 0:
+            self.fuel -= 1
+            if self.fuel <= 0:
+                raise KeyboardInterrupt("Out of fuel")
 
-        self.version += 1
+            self.version += 1
 
-        temp_filename = self.filename.with_suffix(".tmp")
-        with open(temp_filename, "wb") as snapshot:
-            pickle.dump((self.version, args, self.iterator), snapshot)
+            temp_filename = self.filename.with_suffix(".tmp")
+            with open(temp_filename, "wb") as snapshot:
+                pickle.dump((self.version, args, self.iterator), snapshot)
 
-        pathlib.Path(self.filename).unlink(missing_ok=True)
-        pathlib.Path(temp_filename).rename(self.filename)
+            pathlib.Path(self.filename).unlink(missing_ok=True)
+            pathlib.Path(temp_filename).rename(self.filename)
 
-        with open(self.csv_filename, "a") as f:
-            size = pickle.dumps((self.version, args, self.iterator)).__sizeof__()
-            print(self.version, size, repr(args), end="\n", flush=True, file=f)
+            with open(self.csv_filename, "a") as f:
+                size = pickle.dumps((self.version, args, self.iterator)).__sizeof__()
+                print(self.version, size, repr(args), end="\n", flush=True, file=f)
 
     def __bool__(self) -> bool:
         return self._now_recovering()
@@ -180,8 +190,6 @@ class WrapperTcpClient:
 
 
 class SimpleTcpClient:
-    restored_state = ()
-
     def __init__(self, tag: str) -> None:
         while True:
             try:
@@ -196,18 +204,24 @@ class SimpleTcpClient:
                 input()
             else:
                 break
-        self.i = None
+        self.step = read_step()
+        self.i = -1
+        self.value = None
 
     def commit(self) -> None:
-        self.socket.send(struct.pack("Q", self.i))
-        self.socket.recv(256)  # wait for snapshot
+        self.i += 1
+        if self.i % self.step == 0:
+            # send commend to save_snapshot server to take snapshot
+            self.socket.send(struct.pack("Q", self.value))
+            # wait for snapshot to start, and continue after it's done
+            self.socket.recv(256)
 
     def __enter__(self) -> "SimpleTcpClient":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.socket.close()
 
     def iterate(self, iterable):
-        for self.i in iterable:
-            yield self.i
+        for self.value in iterable:
+            yield self.value

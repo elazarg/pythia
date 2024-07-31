@@ -26,6 +26,12 @@ def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
         default=10**6,
         help="Number of iterations to run before inducing a crash",
     )
+    parser.add_argument(
+        "--step",
+        type=int,
+        default=1,
+        help="Number of iterations to run between checkpointing",
+    )
     parser.add_argument("pythonfile", type=str, help="Python file to run")
     args, remaining_args = parser.parse_known_args(args)
 
@@ -40,6 +46,9 @@ def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
 
     if args.fuel is not None and args.fuel <= 0:
         parser.error(f"Fuel must be a positive integer; got {args.fuel}")
+
+    if args.step is not None and args.step <= 0:
+        parser.error(f"Step must be a positive integer; got {args.step}")
 
     return args, remaining_args
 
@@ -72,7 +81,9 @@ def main() -> None:
     instrumented = generate_instrumented_file(args.kind, args.pythonfile, args.function)
     if args.kind != "tcp":
         try:
-            persist.run_instrumented_file(instrumented, remaining_args, args.fuel)
+            persist.run_instrumented_file(
+                instrumented, remaining_args, args.fuel, args.step
+            )
         except subprocess.CalledProcessError as ex:
             print(f"Error running {instrumented}: {ex}", file=sys.stderr)
             sys.exit(1)

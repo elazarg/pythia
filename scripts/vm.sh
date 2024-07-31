@@ -9,12 +9,17 @@ if [ -z "$EXPERIMENT" ]; then
   echo "Usage: $0 <experiment>"
   exit 1
 fi
+shift 1
+
+QMP_PORT=${1:-4444}
+TCP_PORT=${2:-1234}
+STEP=${3:-1}
+
 EXPERIMENT_PATH="./experiment/${EXPERIMENT}"
 if [ ! -d "$EXPERIMENT_PATH" ]; then
   echo "Directory $EXPERIMENT_PATH does not exist."
   exit 1
 fi
-shift 1
 
 # This is already in qcow2 format.
 # https://cloud-images.ubuntu.com/minimal/releases/noble/release/ubuntu-24.04-minimal-cloudimg-amd64.img
@@ -67,6 +72,7 @@ write_files:
     append: true
     content: |+
       export PYTHONPATH=/mnt
+      export STEP=${STEP}
       source ${VENV_BIN}/activate
 
 runcmd:
@@ -75,6 +81,7 @@ runcmd:
   - [su, ubuntu, -c, "python3 -m venv ${GUEST_HOME}/venv"]
   - [su, ubuntu, -c, "${VENV_BIN}/pip install -r /mnt/${CHECKPOINT_LIB}/requirements.txt"]
   - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${GUEST_HOME}/requirements.txt"]
+  - [su, ubuntu, -c, "cat args.txt | xargs main_tcp.py"]
 EOF
 
 user_data="${INSTANCE_DIR}/user-data.qcow2"
@@ -90,11 +97,11 @@ args=(
   -enable-kvm
   -m 2G
 #  -serial mon:stdio  # use console for monitor
-  -qmp tcp:localhost:4444,server=on,wait=off
+  -qmp tcp:localhost:${QMP_PORT},server=on,wait=off
 #  -nic user
   -device virtio-net-pci,netdev=n1
   -netdev user,id=n1,hostfwd=tcp::10022-:22
-#  -nographic
+  -nographic
 #  -display none
 #  -daemonize
 )
