@@ -28,7 +28,7 @@ def run_instrumented_file(
     instrumented: str,
     args: list[str],
     fuel: int,
-    step: int,
+    step: int = 1,
     capture_stdout: bool = False,
 ) -> str:
     stdout = None
