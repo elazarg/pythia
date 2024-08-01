@@ -56,6 +56,7 @@ allow_public_ssh_keys: true
 packages:
   - python3-pip
   - python3-venv
+  - qemu-guest-agent
 
 mounts:
  - [${EXPERIMENT_TAG}, /mnt/${EXPERIMENT_TAG}, 9p]
@@ -72,13 +73,17 @@ write_files:
       export STEP=${STEP}
       source ${VENV_BIN}/activate
 
+  - path: /etc/modules
+    content: |+
+      virtio_console
+    append: true
+
 runcmd:
   - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
   - [su, ubuntu, -c, "cp -r /mnt/${EXPERIMENT_TAG}/* ${GUEST_HOME}/"]
   - [su, ubuntu, -c, "python3 -m venv ${GUEST_HOME}/venv"]
   - [su, ubuntu, -c, "${VENV_BIN}/pip install -r /mnt/${CHECKPOINT_LIB}/requirements.txt"]
   - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${GUEST_HOME}/requirements.txt"]
-  - [su, ubuntu, -c, "cd ${GUEST_HOME}; cat args.txt | xargs main_tcp.py"]
 EOF
 
 user_data="${INSTANCE_DIR}/user-data.qcow2"
