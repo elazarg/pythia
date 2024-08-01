@@ -10,9 +10,9 @@ if [ -z "$EXPERIMENT" ]; then
   exit 1
 fi
 
-QMP_PORT=${2:-4444}
-TCP_PORT=${3:-1234}
-STEP=${4:-1}
+STEP=${2:-1}
+QMP_PORT=${3:-4444}
+TCP_PORT=${4:-1234}
 shift 4
 
 EXPERIMENT_PATH="./experiment/${EXPERIMENT}"

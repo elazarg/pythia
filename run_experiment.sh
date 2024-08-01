@@ -7,9 +7,12 @@ if [ -z "$EXPERIMENT" ]; then
 fi
 shift 1
 
-QMP_PORT=${1:-4444}
-TCP_PORT=${2:-1234}
+STEP=${2:-1}
+QMP_PORT=${3:-4444}
+TCP_PORT=${4:-1234}
+
+set -x
 
 python save_snapshot.py --qmp_port=$QMP_PORT server --tcp_port=$TCP_PORT &
 
-scripts/vm.sh $EXPERIMENT $QMP_PORT $TCP_PORT
+scripts/vm.sh $EXPERIMENT $STEP $QMP_PORT $TCP_PORT
