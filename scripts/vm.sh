@@ -6,14 +6,14 @@
 # experiment is the first argument
 EXPERIMENT=$1
 if [ -z "$EXPERIMENT" ]; then
-  echo "Usage: $0 <experiment>"
+  echo "Usage: $0 <experiment> [QMP_PORT] [TCP_PORT] [STEP]"
   exit 1
 fi
-shift 1
 
-QMP_PORT=${1:-4444}
-TCP_PORT=${2:-1234}
-STEP=${3:-1}
+QMP_PORT=${2:-4444}
+TCP_PORT=${3:-1234}
+STEP=${4:-1}
+shift 4
 
 EXPERIMENT_PATH="./experiment/${EXPERIMENT}"
 if [ ! -d "$EXPERIMENT_PATH" ]; then
