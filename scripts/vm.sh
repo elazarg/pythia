@@ -104,6 +104,10 @@ args=(
   -device virtio-net-pci,netdev=n1
   -netdev user,id=n1,hostfwd=tcp::10022-:22
   -nographic
+  # guest agent:
+  -chardev socket,path=/tmp/qga.sock,server=on,wait=off,id=qga0
+  -device virtio-serial
+  -device virtserialport,chardev=qga0,name=org.guest_agent.0
 #  -display none
 #  -daemonize
 )
