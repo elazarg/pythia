@@ -50,7 +50,7 @@ class Loader:
 
     restored_state: tuple[Any, ...]
     iterator: typing.Optional[typing.Iterable]
-    version: int
+    i: int
     filename: pathlib.Path
 
     def __init__(self, module_filename: str | pathlib.Path, env) -> None:
@@ -68,16 +68,15 @@ class Loader:
         self.i = -1
         self.step = read_step()
         self.iterator = None
-        self.version = 0
         self.restored_state = ()
 
     def __enter__(self) -> "Loader":
         if self._now_recovering():
             print("Recovering from snapshot", file=sys.stderr)
             with self.filename.open("rb") as snapshot:
-                self.version, self.restored_state, self.iterator = pickle.load(snapshot)
+                self.i, self.restored_state, self.iterator = pickle.load(snapshot)
             print(
-                f"Loaded {self.version=}: {self.restored_state}, {self.iterator}",
+                f"Loaded {self.i=}: {self.restored_state}, {self.iterator}",
                 file=sys.stderr,
             )
         with self.csv_filename.open("w"):
@@ -101,18 +100,16 @@ class Loader:
             if self.fuel <= 0:
                 raise KeyboardInterrupt("Out of fuel")
 
-            self.version += 1
-
             temp_filename = self.filename.with_suffix(".tmp")
             with open(temp_filename, "wb") as snapshot:
-                pickle.dump((self.version, args, self.iterator), snapshot)
+                pickle.dump((self.i, args, self.iterator), snapshot)
 
             pathlib.Path(self.filename).unlink(missing_ok=True)
             pathlib.Path(temp_filename).rename(self.filename)
 
             with open(self.csv_filename, "a") as f:
-                size = pickle.dumps((self.version, args, self.iterator)).__sizeof__()
-                print(self.version, size, repr(args), end="\n", flush=True, file=f)
+                size = pickle.dumps((self.i, args, self.iterator)).__sizeof__()
+                print(self.i, size, repr(args), end="\n", flush=True, file=f)
 
     def __bool__(self) -> bool:
         return self._now_recovering()
@@ -137,9 +134,9 @@ def compute_hash(module_filename: pathlib.Path, *env) -> str:
 
 class PseudoLoader(Loader):
     def commit(self, *args) -> None:
-        size = pickle.dumps((self.version, args, self.iterator)).__sizeof__()
-        print(self.version, size, end="\n", flush=True, file=sys.stderr)
-        self.version += 1
+        size = pickle.dumps((self.i, args, self.iterator)).__sizeof__()
+        print(self.i, size, end="\n", flush=True, file=sys.stderr)
+        self.i += 1
 
     def __enter__(self) -> Loader:
         return self

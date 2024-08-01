@@ -40,7 +40,7 @@ CHECKPOINT_LIB="checkpoint"
 
 EXPERIMENT_TAG="experiment"
 GUEST_HOME="/home/ubuntu"
-VENV_BIN="${GUEST_HOME}/venv/bin"
+VENV_BIN="${GUEST_HOME}/.venv/bin"
 
 yaml_file="${INSTANCE_DIR}/user-data.yaml"
 cat > ${yaml_file} <<EOF
@@ -78,7 +78,7 @@ write_files:
 runcmd:
   - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
   - [su, ubuntu, -c, "cp -r /mnt/${EXPERIMENT_TAG}/* ${GUEST_HOME}/"]
-  - [su, ubuntu, -c, "python3 -m venv ${GUEST_HOME}/venv"]
+  - [su, ubuntu, -c, "python3 -m venv ${GUEST_HOME}/.venv"]
   - [su, ubuntu, -c, "${VENV_BIN}/pip install -r /mnt/${CHECKPOINT_LIB}/requirements.txt"]
   - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${GUEST_HOME}/requirements.txt"]
 EOF
