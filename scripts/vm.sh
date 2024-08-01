@@ -57,6 +57,9 @@ packages:
   - python3-pip
   - python3-venv
 
+package_update: false
+package_upgrade: false
+
 mounts:
  - [${EXPERIMENT_TAG}, /mnt/${EXPERIMENT_TAG}, 9p]
  - [${CHECKPOINT_LIB}, /mnt/${CHECKPOINT_LIB}, 9p]
