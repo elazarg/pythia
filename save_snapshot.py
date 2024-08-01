@@ -15,6 +15,7 @@ import asyncio
 import logging
 import os
 import pathlib
+import shutil
 import socket
 import struct
 import subprocess
@@ -113,8 +114,10 @@ def count_diff(folder: str, i: int) -> int:
 
 async def relay_qmp_dumps(qmp_port: int, server: Server) -> None:
     tag = server.tag
+    assert tag.replace("_", "").isalnum()
     folder = f"{pathlib.Path.cwd().as_posix()}/dumps/{tag}"
-    os.makedirs(folder, exist_ok=True)
+    shutil.rmtree(folder, ignore_errors=True)
+    os.makedirs(folder, exist_ok=False)
     async with SimpleQmpClient(qmp_port) as vm:
         await vm.dump(f"{folder}/0.a.dump")
         with ThreadPoolExecutor() as executor:
