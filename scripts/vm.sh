@@ -51,15 +51,12 @@ cat > ${yaml_file} <<EOF
 password: asdfqwer
 chpasswd: { expire: False }
 ssh_pwauth: True
+allow_public_ssh_keys: true
 
 packages:
   - python3-pip
   - python3-venv
 
-package_update: true
-package_upgrade: true
-package_reboot_if_required: true
-allow_public_ssh_keys: true
 mounts:
  - [${EXPERIMENT_TAG}, /mnt/${EXPERIMENT_TAG}, 9p]
  - [${CHECKPOINT_LIB}, /mnt/${CHECKPOINT_LIB}, 9p]
