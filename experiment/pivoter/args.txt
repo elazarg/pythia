@@ -1,1 +1,1 @@
-test.edges
+enron.small.edges
