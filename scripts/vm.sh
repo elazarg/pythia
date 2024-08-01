@@ -106,7 +106,7 @@ args=(
 #  -daemonize
 )
 
-${QEMU_DIR}qemu-system-x86_64 "${args[@]}" "$@"
+${QEMU_DIR}qemu-system-x86_64 "${args[@]}"
 # args=(
 #   --name nvram-vm
 #   --cpu host
