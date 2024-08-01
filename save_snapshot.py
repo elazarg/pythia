@@ -24,6 +24,8 @@ from typing import Iterator
 
 from checkpoint.qmp_client import SimpleQmpClient
 
+logging.basicConfig(level=logging.INFO)
+
 
 class Server:
     sleep_duration_ms = 0

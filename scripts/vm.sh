@@ -56,7 +56,6 @@ allow_public_ssh_keys: true
 packages:
   - python3-pip
   - python3-venv
-  - qemu-guest-agent
 
 mounts:
  - [${EXPERIMENT_TAG}, /mnt/${EXPERIMENT_TAG}, 9p]
@@ -72,11 +71,6 @@ write_files:
       export PYTHONPATH=/mnt
       export STEP=${STEP}
       source ${VENV_BIN}/activate
-
-  - path: /etc/modules
-    content: |+
-      virtio_console
-    append: true
 
 runcmd:
   - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
@@ -104,10 +98,6 @@ args=(
   -device virtio-net-pci,netdev=n1
   -netdev user,id=n1,hostfwd=tcp::10022-:22
   -nographic
-  # guest agent:
-  -chardev socket,path=/tmp/qga.sock,server=on,wait=off,id=qga0
-  -device virtio-serial
-  -device virtserialport,chardev=qga0,name=org.guest_agent.0
 #  -display none
 #  -daemonize
 )
