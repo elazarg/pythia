@@ -25,7 +25,7 @@ static std::vector<char> read_file(const fs::path& filename, bool remove) {
 
 int main(int argc, char *argv[]) {
     if (argc != 4 && argc != 5) {
-        std::cerr << "Usage: " << argv[0] << "file1 file2 chunk [remove]\n";
+        std::cerr << "Usage: " << argv[0] << " file1 file2 chunk [remove]\n";
         return 1;
     }
     bool remove = false;
@@ -60,4 +60,3 @@ int main(int argc, char *argv[]) {
     std::cout << count * chunk_size  << "\n";
     return 0;
 }
-x
