@@ -13,7 +13,7 @@ def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
     parser = argparse.ArgumentParser(usage="%(prog)s [options] pythonfile [args]")
     parser.add_argument(
         "--kind",
-        choices=["analyze", "naive", "tcp"],
+        choices=["analyze", "naive", "vm"],
         default="analyze",
         help="kind of instrumentation to use",
     )
@@ -54,18 +54,19 @@ def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
 
 
 def generate_instrumented_file(kind: str, pythonfile: str, function: str) -> str:
+    pythonfile = pathlib.Path(pythonfile)
     match kind:
-        case "tcp":
-            instrumented = pythonfile[:-3] + "_tcp.py"
+        case "vm":
+            instrumented = pythonfile.with_name("vm.py")
             tag = pathlib.Path(pythonfile).parent.name
             output = ast_transform.tcp_client(tag, pythonfile, function)
         case "naive":
-            instrumented = pythonfile[:-3] + "_naive.py"
+            instrumented = pythonfile.with_name("naive.py")
             output = ast_transform.transform(pythonfile, dirty_map=None)
         case "analyze":
-            instrumented = pythonfile[:-3] + "_instrumented.py"
+            instrumented = pythonfile.with_name("instrumented.py")
             output = analyze_and_transform(
-                filename=pythonfile,
+                filename=str(pythonfile),
                 function_name=function,
                 print_invariants=False,
                 simplify=False,
@@ -79,7 +80,7 @@ def generate_instrumented_file(kind: str, pythonfile: str, function: str) -> str
 def main() -> None:
     args, remaining_args = parse_args(sys.argv[1:])
     instrumented = generate_instrumented_file(args.kind, args.pythonfile, args.function)
-    if args.kind != "tcp":
+    if args.kind != "vm":
         try:
             persist.run_instrumented_file(
                 instrumented, remaining_args, args.fuel, args.step

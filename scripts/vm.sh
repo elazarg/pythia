@@ -15,7 +15,8 @@ QMP_PORT=${3:-4444}
 TCP_PORT=${4:-1234}
 shift 4
 
-EXPERIMENT_PATH="./experiment/${EXPERIMENT}"
+EXPERIMENT_BASE="./experiment"
+EXPERIMENT_PATH="${EXPERIMENT_BASE}/${EXPERIMENT}"
 if [ ! -d "$EXPERIMENT_PATH" ]; then
   echo "Directory $EXPERIMENT_PATH does not exist."
   exit 1
@@ -73,6 +74,8 @@ write_files:
     append: true
     content: |+
       export PYTHONPATH=/mnt
+      export DUMPS=/mnt/dumps
+      export EXPERIMENT=${EXPERIMENT}
       export STEP=${STEP}
       source ${VENV_BIN}/activate
 
@@ -80,16 +83,16 @@ write_files:
     owner: ubuntu:ubuntu
     defer: true
     content: |+
-      cat args.txt | xargs python main_naive.py
-      cat args.txt | xargs python main_instrumented.py
-      cat args.txt | xargs python main_tcp.py
+      cat args.txt | xargs python ${EXPERIMENT}/naive.py
+      cat args.txt | xargs python ${EXPERIMENT}/instrumented.py
+      cat args.txt | xargs python ${EXPERIMENT}/tcp.py
 
 runcmd:
   - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
-  - [su, ubuntu, -c, "cp -r /mnt/${EXPERIMENT_TAG}/* ${GUEST_HOME}/"]
+  - [su, ubuntu, -c, "cp -r /mnt/${EXPERIMENT_TAG} ${GUEST_HOME}/"]
   - [su, ubuntu, -c, "python3 -m venv ${GUEST_HOME}/.venv"]
   - [su, ubuntu, -c, "${VENV_BIN}/pip install -r /mnt/${CHECKPOINT_LIB}/requirements.txt"]
-  - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${GUEST_HOME}/requirements.txt"]
+  - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${GUEST_HOME}/${EXPERIMENT_TAG}/requirements.txt"]
 EOF
 
 user_data="${INSTANCE_DIR}/user-data.qcow2"
@@ -100,7 +103,7 @@ args=(
   -smp 1
   -drive "file=${instance},format=qcow2"
   -drive "file=${user_data},format=qcow2"
-  -virtfs local,path=${EXPERIMENT_PATH},mount_tag=${EXPERIMENT_TAG},security_model=none
+  -virtfs local,path=${EXPERIMENT_BASE},mount_tag=${EXPERIMENT_TAG},security_model=none
   -virtfs local,path=./${CHECKPOINT_LIB},mount_tag=${CHECKPOINT_LIB},security_model=none
   -virtfs local,path="dumps",mount_tag=dumps,security_model=mapped
   -enable-kvm

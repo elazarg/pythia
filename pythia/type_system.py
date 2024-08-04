@@ -3,6 +3,7 @@ from __future__ import annotations as _
 import ast
 import contextlib
 import os
+import pathlib
 import typing
 from collections import defaultdict
 from dataclasses import dataclass, replace
@@ -1899,9 +1900,8 @@ class TypeCollector:
         return Module(self.symtable.scope_name, class_dict)
 
 
-def parse_file(path: str) -> Module:
-    with open(path) as f:
-        tree = ast.parse(f.read())
+def parse_file(path: pathlib.Path) -> Module:
+    tree = ast.parse(path.read_text())
     module = TypeCollector()
     with module.enter_scope(Path(path).stem):
         return module.visit_Module(tree)
@@ -1914,7 +1914,11 @@ MODULES = Module(
     "typeshed",
     typed_dict(
         [
-            make_row(index, file.split(".")[0], parse_file(f"{TYPESHED_DIR}/{file}"))
+            make_row(
+                index,
+                file.split(".")[0],
+                parse_file(pathlib.Path(f"{TYPESHED_DIR}/{file}")),
+            )
             for index, file in enumerate(os.listdir(TYPESHED_DIR))
         ]
     ),

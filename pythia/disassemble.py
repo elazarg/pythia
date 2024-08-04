@@ -22,14 +22,14 @@ def read_pyc_file(path: str) -> Any:
         return code
 
 
-def do_compile(file_path: str) -> Any:
+def do_compile(file_path: pathlib.Path) -> Any:
     with open(file_path, "rb") as file:
         bytecode = file.read()
 
     return compile(bytecode, file_path, "exec", dont_inherit=True, flags=0, optimize=0)
 
 
-def read_function_using_compile(file_path: str, function_name: str) -> object:
+def read_function_using_compile(file_path: pathlib.Path, function_name: str) -> object:
     """Read a function from a file.
     Currently, it does not support annotations"""
     code = do_compile(file_path)
@@ -48,9 +48,9 @@ class ParsedFile:
     annotated_for: dict[str, frozenset[int]]
 
 
-def read_file(file_path: str) -> ParsedFile:
+def read_file(file_path: pathlib.Path) -> ParsedFile:
     module = ast.parse("from __future__ import annotations\n", filename=file_path)
-    source = pathlib.Path(file_path).read_text(encoding="utf-8")
+    source = file_path.read_text(encoding="utf-8")
     parser = ast_transform.Parser(file_path)
     code = parser.parse(source)
     annotated_for: dict[str, frozenset[int]] = {}

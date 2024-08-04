@@ -1,4 +1,5 @@
 # Data flow analysis and stuff.
+import pathlib
 import typing
 from copy import deepcopy
 from dataclasses import dataclass
@@ -149,7 +150,7 @@ def run(
 
 
 def analyze_function(
-    filename: str,
+    filename: pathlib.Path,
     function_name: typing.Optional[str],
     print_invariants: bool = False,
     simplify: bool = True,
@@ -185,7 +186,7 @@ def analyze_function(
 
 
 def analyze_and_transform(
-    filename: str,
+    filename: pathlib.Path,
     function_name: typing.Optional[str],
     print_invariants: bool = False,
     simplify: bool = True,

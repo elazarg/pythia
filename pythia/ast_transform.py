@@ -1,6 +1,7 @@
 from __future__ import annotations as _
 
 import ast
+import pathlib
 import typing
 
 import black
@@ -13,9 +14,9 @@ def annotated_for_labels(node: ast.FunctionDef) -> frozenset[int]:
 
 
 class Parser:
-    filename: str
+    filename: pathlib.Path
 
-    def __init__(self, filename: str) -> None:
+    def __init__(self, filename: pathlib.Path) -> None:
         self.filename = filename
 
     def parse(self, source: str) -> ast.Module:
@@ -57,7 +58,7 @@ def make_assign(variables: typing.Iterable[str], value: ast.expr):
     )
 
 
-def make_for(for_loop: ast.For, filename: str, _dirty: set[str]) -> ast.With:
+def make_for(for_loop: ast.For, filename: pathlib.Path, _dirty: set[str]) -> ast.With:
     dirty = tuple(sorted(_dirty))
     parse_expression = Parser(filename).parse_expression
     iter = ast.Call(
@@ -121,7 +122,9 @@ class VariableFinder(ast.NodeVisitor):
 
 
 class DirtyTransformer(ast.NodeTransformer):
-    def __init__(self, filename: str, dirty_per_line: dict[int, set[str]]) -> None:
+    def __init__(
+        self, filename: pathlib.Path, dirty_per_line: dict[int, set[str]]
+    ) -> None:
         self.filename = filename
         self.dirty_per_line = dirty_per_line
 
@@ -136,7 +139,7 @@ class DirtyTransformer(ast.NodeTransformer):
 class Compiler(ast.NodeTransformer):
     def __init__(
         self,
-        filename: str,
+        filename: pathlib.Path,
         dirty_map: dict[str, dict[int, set[str]]],
         parser: Parser,
         naive: bool = False,
@@ -172,7 +175,7 @@ class Compiler(ast.NodeTransformer):
 
 
 def transform(
-    filename: str, dirty_map: typing.Optional[dict[str, dict[int, set[str]]]]
+    filename: pathlib.Path, dirty_map: typing.Optional[dict[str, dict[int, set[str]]]]
 ) -> str:
     parser = Parser(filename)
 
@@ -192,7 +195,7 @@ def transform(
     return black.format_str(res, mode=black.FileMode())
 
 
-def make_for_tcp(for_loop: ast.For, tag: str, filename: str) -> ast.With:
+def make_for_tcp(for_loop: ast.For, tag: str, filename: pathlib.Path) -> ast.With:
     parse_expression = Parser(filename).parse_expression
     iter = ast.Call(
         func=parse_expression(f"client.iterate"),
@@ -228,7 +231,7 @@ def make_for_tcp(for_loop: ast.For, tag: str, filename: str) -> ast.With:
 
 
 class TcpTransformer(ast.NodeTransformer):
-    def __init__(self, tag: str, filename: str) -> None:
+    def __init__(self, tag: str, filename: pathlib.Path) -> None:
         self.tag = tag
         self.filename = filename
 
@@ -242,7 +245,7 @@ class TcpTransformer(ast.NodeTransformer):
 
 class TcpCompiler(ast.NodeTransformer):
     def __init__(
-        self, tag: str, filename: str, function_name: str, parser: Parser
+        self, tag: str, filename: pathlib.Path, function_name: str, parser: Parser
     ) -> None:
         self.tag = tag
         self.function_name = function_name
@@ -263,7 +266,7 @@ class TcpCompiler(ast.NodeTransformer):
         return res
 
 
-def tcp_client(tag: str, filename: str, function_name: str) -> str:
+def tcp_client(tag: str, filename: pathlib.Path, function_name: str) -> str:
     parser = Parser(filename)
 
     with open(filename, encoding="utf-8") as f:

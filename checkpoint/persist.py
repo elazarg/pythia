@@ -55,6 +55,8 @@ class Loader:
 
     def __init__(self, module_filename: str | pathlib.Path, env) -> None:
         module_filename = pathlib.Path(module_filename)
+        tag = module_filename.parent.name
+        dumps_path = pathlib.Path("dumps")
 
         # make sure the cache is invalidated when the module changes
         h = compute_hash(module_filename, env)
@@ -62,10 +64,14 @@ class Loader:
         print(f"Using cache directory {cachedir}", file=sys.stderr)
         cachedir.mkdir(parents=False, exist_ok=True)
         self.filename = cachedir / "store.pickle"
-        self.csv_filename = cachedir / "times.csv"
+        self.tsv_filename = (dumps_path / tag / module_filename.stem).with_suffix(
+            ".tsv"
+        )
+        print(self.tsv_filename, file=sys.stderr)
 
         self.fuel = read_fuel()
         self.i = -1
+        self.printing_index = 1
         self.step = read_step()
         self.iterator = None
         self.restored_state = ()
@@ -79,7 +85,7 @@ class Loader:
                 f"Loaded {self.i=}: {self.restored_state}, {self.iterator}",
                 file=sys.stderr,
             )
-        with self.csv_filename.open("w"):
+        with self.tsv_filename.open("w"):
             pass
         return self
 
@@ -95,7 +101,7 @@ class Loader:
 
     def commit(self, *args) -> None:
         self.i += 1
-        if self.i % self.step == 0:
+        if self.i % self.step in [0, 1]:
             self.fuel -= 1
             if self.fuel <= 0:
                 raise KeyboardInterrupt("Out of fuel")
@@ -107,9 +113,19 @@ class Loader:
             pathlib.Path(self.filename).unlink(missing_ok=True)
             pathlib.Path(temp_filename).rename(self.filename)
 
-            with open(self.csv_filename, "a") as f:
+            with open(self.tsv_filename, "a") as f:
                 size = pickle.dumps((self.i, args, self.iterator)).__sizeof__()
-                print(self.i, size, repr(args), end="\n", flush=True, file=f)
+                self.printing_index += 1
+                print(
+                    self.printing_index,
+                    self.i,
+                    size,
+                    repr(args),
+                    sep="\t",
+                    end="\n",
+                    flush=True,
+                    file=f,
+                )
 
     def __bool__(self) -> bool:
         return self._now_recovering()
@@ -132,58 +148,11 @@ def compute_hash(module_filename: pathlib.Path, *env) -> str:
     return h
 
 
-class PseudoLoader(Loader):
-    def commit(self, *args) -> None:
-        size = pickle.dumps((self.i, args, self.iterator)).__sizeof__()
-        print(self.i, size, end="\n", flush=True, file=sys.stderr)
-        self.i += 1
-
-    def __enter__(self) -> Loader:
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        if exc_type is None:
-            print("Finished successfully", file=sys.stderr)
-
-
 def connect(tag: str) -> socket.socket:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect(("10.0.2.2", 1234))
     s.send(tag.encode("utf8"))
     return s
-
-
-class WrapperTcpClient:
-    loader: Loader
-    socket: socket.socket
-    i: Any
-
-    def __init__(self, tag: str, loader: Loader) -> None:
-        self.loader = loader
-        self.socket = connect(tag)
-        self.i = None
-
-    @property
-    def restored_state(self) -> tuple[Any, ...]:
-        return self.loader.restored_state
-
-    def commit(self, *args) -> None:
-        self.loader.commit(*args)
-        data = struct.pack("Q", self.i, *self.restored_state)
-        self.socket.send(data)
-        self.socket.recv(256)  # wait for snapshot
-
-    def __enter__(self) -> "SimpleTcpClient":
-        self.loader = self.loader.__enter__()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        self.loader.__exit__(exc_type, exc_val, exc_tb)
-        self.socket.close()
-
-    def iterate[T](self, iterable: typing.Iterable[T]) -> typing.Iterable[T]:
-        for self.i in self.loader.iterate(iterable):
-            yield self.i
 
 
 class SimpleTcpClient:

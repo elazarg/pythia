@@ -4,7 +4,7 @@ from checkpoint import persist
 def instrument_experiment(experiment_name: str, args: list[str]) -> None:
     def run(fuel: int) -> str:
         return persist.run_instrumented_file(
-            instrumented=f"experiment/{experiment_name}/main_instrumented.py",
+            instrumented=f"experiment/{experiment_name}/instrumented.py",
             args=args,
             fuel=fuel,
             capture_stdout=True,

@@ -23,7 +23,6 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor, Future
 from typing import Iterator
 
-from checkpoint import persist
 from checkpoint.qmp_client import SimpleQmpClient
 
 logging.basicConfig(level=logging.INFO)

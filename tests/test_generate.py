@@ -14,29 +14,30 @@ def find_transaction(text: str) -> list[tuple[int, Any]]:
     ]
 
 
-def compare_transformed_files(actual: str, expected_outfile: str) -> None:
-    expected = pathlib.Path(expected_outfile).read_text(encoding="utf-8")
+def compare_transformed_files(actual: str, expected_outfile: pathlib.Path) -> None:
+    expected = expected_outfile.read_text(encoding="utf-8")
     expected_transaction = find_transaction(expected)
     actual_transaction = find_transaction(actual)
     assert actual_transaction == expected_transaction
     assert actual == expected
 
 
-def naive_transform(filename: str, expected_outfile: str) -> None:
+def naive_transform(filename: pathlib.Path, expected_outfile: pathlib.Path) -> None:
     actual = ast_transform.transform(filename, dirty_map=None)
     compare_transformed_files(actual, expected_outfile)
 
 
 @pytest.mark.parametrize("experiment_name", ["k_means", "feature_selection", "pivoter"])
 def test_naive_transformation(experiment_name: str) -> None:
+    exp = pathlib.Path("experiment") / experiment_name
     naive_transform(
-        filename=f"experiment/{experiment_name}/main.py",
-        expected_outfile=f"experiment/{experiment_name}/main_naive.py",
+        filename=exp / "main.py",
+        expected_outfile=exp / "naive.py",
     )
 
 
 def tcp_transform(
-    tag: str, filename: str, function_name: str, expected_outfile: str
+    tag: str, filename: pathlib.Path, function_name: str, expected_outfile: pathlib.Path
 ) -> None:
     actual = ast_transform.tcp_client(tag, filename, function_name)
     compare_transformed_files(actual, expected_outfile)
@@ -44,19 +45,23 @@ def tcp_transform(
 
 @pytest.mark.parametrize("experiment_name", ["k_means", "feature_selection", "pivoter"])
 def test_tcp_transformation(experiment_name: str) -> None:
+    exp = pathlib.Path("experiment") / experiment_name
+    filename = exp / "main.py"
+    expected_outfile = exp / "vm.py"
     tcp_transform(
         tag=experiment_name,
         function_name="run",
-        filename=f"experiment/{experiment_name}/main.py",
-        expected_outfile=f"experiment/{experiment_name}/main_tcp.py",
+        filename=filename,
+        expected_outfile=expected_outfile,
     )
 
 
 def analyze_and_transform(
     experiment_name: str, function_name: str, simplify: bool
 ) -> None:
-    filename = f"experiment/{experiment_name}/main.py"
-    expected_outfile = f"experiment/{experiment_name}/main_instrumented.py"
+    exp = pathlib.Path("experiment") / experiment_name
+    filename = exp / "main.py"
+    expected_outfile = exp / "instrumented.py"
     actual = analysis.analyze_and_transform(
         filename=filename,
         function_name=function_name,
