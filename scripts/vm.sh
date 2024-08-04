@@ -76,6 +76,14 @@ write_files:
       export STEP=${STEP}
       source ${VENV_BIN}/activate
 
+  - path: ${GUEST_HOME}/.bash_history
+    owner: ubuntu:ubuntu
+    defer: true
+    content: |+
+      cat args.txt | xargs python main_naive.py
+      cat args.txt | xargs python main_instrumented.py
+      cat args.txt | xargs python main_tcp.py
+
 runcmd:
   - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
   - [su, ubuntu, -c, "cp -r /mnt/${EXPERIMENT_TAG}/* ${GUEST_HOME}/"]
