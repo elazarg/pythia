@@ -63,7 +63,7 @@ package_upgrade: false
 mounts:
  - [${EXPERIMENT_TAG}, /mnt/${EXPERIMENT_TAG}, 9p]
  - [${CHECKPOINT_LIB}, /mnt/${CHECKPOINT_LIB}, 9p]
- - [ssh, ${GUEST_HOME}/.ssh, 9p]
+ - [ssh, /mnt/.ssh, 9p]
 
 write_files:
   - path: ${GUEST_HOME}/.bashrc
@@ -78,6 +78,7 @@ write_files:
 
 runcmd:
   - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
+  - [su, ubuntu, -c, "cp -r /mnt/.ssh ${GUEST_HOME}/.ssh"]
   - [su, ubuntu, -c, "cp -r /mnt/${EXPERIMENT_TAG}/* ${GUEST_HOME}/"]
   - [su, ubuntu, -c, "python3 -m venv ${GUEST_HOME}/.venv"]
   - [su, ubuntu, -c, "${VENV_BIN}/pip install -r /mnt/${CHECKPOINT_LIB}/requirements.txt"]
