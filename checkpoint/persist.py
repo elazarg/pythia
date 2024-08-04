@@ -116,16 +116,7 @@ class Loader:
             with open(self.tsv_filename, "a") as f:
                 size = pickle.dumps((self.i, args, self.iterator)).__sizeof__()
                 self.printing_index += 1
-                print(
-                    self.printing_index,
-                    self.i,
-                    size,
-                    repr(args),
-                    sep="\t",
-                    end="\n",
-                    flush=True,
-                    file=f,
-                )
+                print(self.printing_index, size, sep="\t", end="\n", flush=True, file=f)
 
     def __bool__(self) -> bool:
         return self._now_recovering()
