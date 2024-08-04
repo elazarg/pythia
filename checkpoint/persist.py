@@ -114,7 +114,7 @@ class Loader:
             pathlib.Path(temp_filename).rename(self.filename)
 
             with open(self.tsv_filename, "a") as f:
-                size = pickle.results((self.i, args, self.iterator)).__sizeof__()
+                size = pickle.dumps((self.i, args, self.iterator)).__sizeof__()
                 self.printing_index += 1
                 print(
                     self.printing_index,

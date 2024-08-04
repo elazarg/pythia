@@ -9,7 +9,10 @@ if [ -z "$EXPERIMENT" ]; then
   echo "Usage: $0 <experiment> [QMP_PORT] [TCP_PORT] [STEP]"
   exit 1
 fi
+
+mkdir -f results
 mkdir -f results/${EXPERIMENT}
+chmod -R a+w results
 
 STEP=${2:-1}
 QMP_PORT=${3:-4444}
@@ -91,6 +94,7 @@ write_files:
 runcmd:
   - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
   - [su, ubuntu, -c, "cp -r /mnt/${EXPERIMENT_TAG}/* ${GUEST_HOME}/"]
+  - [su, ubuntu, -c, "ln -s /mnt/results ./results"]
   - [su, ubuntu, -c, "python3 -m venv ${GUEST_HOME}/.venv"]
   - [su, ubuntu, -c, "${VENV_BIN}/pip install -r /mnt/${CHECKPOINT_LIB}/requirements.txt"]
   - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${GUEST_HOME}/${EXPERIMENT}/requirements.txt"]
