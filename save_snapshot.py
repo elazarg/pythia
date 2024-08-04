@@ -126,7 +126,7 @@ async def relay_qmp_dumps(qmp_port: int, server: Server) -> None:
             for index in server:
                 async with vm.pause(server.sleep_duration_ms):
                     current_next_file = f"{folder}/{index}.b.dump"
-                    next_prev_file = f"{folder}/{index + persist.read_step()}.a.dump"
+                    next_prev_file = f"{folder}/{index + 1}.a.dump"
                     await vm.dump(current_next_file)
                     os.link(current_next_file, next_prev_file)
                     p: Future[int] = executor.submit(count_diff, folder, index)

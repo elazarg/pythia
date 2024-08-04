@@ -207,9 +207,9 @@ class SimpleTcpClient:
 
     def commit(self) -> None:
         self.i += 1
-        if self.i % self.step == 0:
+        if self.i % self.step in [0, 1]:
             # send commend to save_snapshot server to take snapshot
-            self.socket.send(struct.pack("Q", self.value))
+            self.socket.send(struct.pack("Q", self.i, self.value))
             # wait for snapshot to start, and continue after it's done
             self.socket.recv(256)
 
