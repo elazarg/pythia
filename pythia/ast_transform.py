@@ -45,6 +45,18 @@ class Parser:
                 yield node
 
 
+def make_assign(variables: typing.Iterable[str], value: ast.expr):
+    return ast.Assign(
+        targets=[
+            ast.List(
+                elts=[ast.Name(id=x, ctx=ast.Store()) for x in variables],
+                ctx=ast.Store(),
+            )
+        ],
+        value=value,
+    )
+
+
 def make_for(for_loop: ast.For, filename: str, _dirty: set[str]) -> ast.With:
     dirty = tuple(sorted(_dirty))
     parse_expression = Parser(filename).parse_expression
@@ -81,17 +93,7 @@ def make_for(for_loop: ast.For, filename: str, _dirty: set[str]) -> ast.With:
         body=[
             ast.If(
                 test=parse_expression("transaction"),
-                body=[
-                    ast.Assign(
-                        targets=[
-                            ast.List(
-                                elts=[ast.Name(id=x, ctx=ast.Store()) for x in dirty],
-                                ctx=ast.Store(),
-                            )
-                        ],
-                        value=parse_expression("transaction.move()"),
-                    )
-                ],
+                body=[make_assign(dirty, parse_expression("transaction.move()"))],
                 orelse=[],
             ),
             for_loop,
@@ -133,11 +135,16 @@ class DirtyTransformer(ast.NodeTransformer):
 
 class Compiler(ast.NodeTransformer):
     def __init__(
-        self, filename: str, dirty_map: dict[str, dict[int, set[str]]], parser: Parser
+        self,
+        filename: str,
+        dirty_map: dict[str, dict[int, set[str]]],
+        parser: Parser,
+        naive: bool = False,
     ) -> None:
         self.filename = filename
         self.dirty_map = dirty_map
         self.parser = parser
+        self.naive = naive
 
     def visit_Module(self, node: ast.Module) -> ast.Module:
         tree = typing.cast(ast.Module, self.generic_visit(node))
@@ -146,12 +153,17 @@ class Compiler(ast.NodeTransformer):
         return res
 
     def visit_FunctionDef(self, function: ast.FunctionDef) -> ast.FunctionDef:
-        if function.name not in self.dirty_map:
+        dirty = self.dirty_map.get(function.name)
+        if not dirty:
             return function
-        res = DirtyTransformer(self.filename, self.dirty_map[function.name]).visit(
-            function
-        )
+        res = DirtyTransformer(self.filename, dirty).visit(function)
         assert isinstance(res, ast.FunctionDef)
+        if self.naive:
+            all_dirty = tuple(sorted(set.union(*dirty.values())))
+            initialize = make_assign(
+                all_dirty, self.parser.parse_expression(f"(None,)*{len(all_dirty)}")
+            )
+            res.body.insert(0, initialize)
         return res
 
 
@@ -164,12 +176,13 @@ def transform(
         source = f.read()
     tree = parser.parse(source)
 
-    if dirty_map is None:
+    naive = dirty_map is None
+    if naive:
         finder = VariableFinder()
         finder.visit(tree)
         dirty_map = finder.dirty_map
 
-    tree = Compiler(filename, dirty_map, parser).visit(tree)
+    tree = Compiler(filename, dirty_map, parser, naive=naive).visit(tree)
     tree = ast.fix_missing_locations(tree)
     res = ast.unparse(tree)
     return black.format_str(res, mode=black.FileMode())

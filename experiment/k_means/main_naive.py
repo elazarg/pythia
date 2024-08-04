@@ -4,17 +4,25 @@ import sklearn.datasets
 
 
 def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
-    """A simple clustering method that forms k clusters by iteratively reassigning
-    samples to the closest centroids and after that moves the centroids to the center
-    of the new formed clusters. Do K-Means clustering and return cluster indices
-    @param X: np.ndarray
-        The dataset to cluster, where each row is a sample and each column is a feature.
-    @param k: int
-        The number of clusters the algorithm will form.
-    @param max_iterations: int
-        The number of iterations the algorithm will run for if it does
-        not converge before that.
-    """
+    [
+        X,
+        _,
+        centroids,
+        cluster,
+        cluster_i,
+        clusters,
+        diff,
+        features,
+        i,
+        k,
+        max_iterations,
+        nsamples,
+        prev_centroids,
+        r,
+        sample_i,
+        y_pred,
+    ] = (None,) * 16
+    "A simple clustering method that forms k clusters by iteratively reassigning\n    samples to the closest centroids and after that moves the centroids to the center\n    of the new formed clusters. Do K-Means clustering and return cluster indices\n    @param X: np.ndarray\n        The dataset to cluster, where each row is a sample and each column is a feature.\n    @param k: int\n        The number of clusters the algorithm will form.\n    @param max_iterations: int\n        The number of iterations the algorithm will run for if it does\n        not converge before that.\n    "
     nsamples, features = X.shape
     centroids = X[np.random.choice(nsamples, k)]
     clusters = list[list[int]]()
