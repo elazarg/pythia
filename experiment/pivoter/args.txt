@@ -1,1 +1,1 @@
-enron.small.edges
+experiment/pivoter/enron.small.edges
