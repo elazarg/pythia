@@ -115,7 +115,7 @@ def count_diff(folder: str, i: int) -> int:
 async def relay_qmp_dumps(qmp_port: int, server: Server) -> None:
     tag = server.tag
     assert tag.replace("_", "").isalnum()
-    folder = f"{pathlib.Path.cwd().as_posix()}/dumps/{tag}"
+    folder = f"{pathlib.Path.cwd().as_posix()}/dumps/{tag}_vm"
     shutil.rmtree(folder, ignore_errors=True)
     os.makedirs(folder, exist_ok=False)
     async with SimpleQmpClient(qmp_port) as vm:
@@ -135,9 +135,9 @@ async def relay_qmp_dumps(qmp_port: int, server: Server) -> None:
                 server.finish()
                 os.unlink(next_prev_file)
 
-            with open(f"{folder}.csv", "w") as f:
+            with open(f"{folder}.tsv", "w") as f:
                 for i, p in enumerate(ps):
-                    print(f"{i},{p.result()}", file=f, flush=True)
+                    print(i, p.result(), sep="\t", file=f, flush=True)
 
     os.rmdir(folder)
     logging.info("Done.")
