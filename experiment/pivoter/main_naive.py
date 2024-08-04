@@ -30,18 +30,7 @@ def recursive_cn(g: dict[int, set[int]], root: int, max_only: bool = False):
 
 
 def run(g: dict[int, set[int]], root: int, max_only: bool = False) -> Counter[int]:
-    [
-        counter,
-        curr,
-        g,
-        max_only,
-        neighbour,
-        parent,
-        r,
-        root,
-        root_to_leaf_path,
-        world,
-    ] = (None,) * 10
+    [counter, curr, neighbour, parent, r, root_to_leaf_path, world] = (None,) * 7
     root_to_leaf_path = [root]
     counter = Counter[int]()
     with persist.Loader(__file__, locals()) as transaction:

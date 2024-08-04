@@ -25,25 +25,22 @@ def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
         a,
         dims,
         error,
-        features,
         grad,
         i,
         idx,
         j,
-        k,
         m,
         n,
         p,
         points,
         prediction,
         t,
-        target,
         theta,
         total,
         x,
         xj,
         y,
-    ] = (None,) * 24
+    ] = (None,) * 21
     S = np.array([], "int")
     with persist.Loader(__file__, locals()) as transaction:
         if transaction:

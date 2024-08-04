@@ -5,7 +5,6 @@ import sklearn.datasets
 
 def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     [
-        X,
         _,
         centroids,
         cluster,
@@ -14,14 +13,12 @@ def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
         diff,
         features,
         i,
-        k,
-        max_iterations,
         nsamples,
         prev_centroids,
         r,
         sample_i,
         y_pred,
-    ] = (None,) * 16
+    ] = (None,) * 13
     "A simple clustering method that forms k clusters by iteratively reassigning\n    samples to the closest centroids and after that moves the centroids to the center\n    of the new formed clusters. Do K-Means clustering and return cluster indices\n    @param X: np.ndarray\n        The dataset to cluster, where each row is a sample and each column is a feature.\n    @param k: int\n        The number of clusters the algorithm will form.\n    @param max_iterations: int\n        The number of iterations the algorithm will run for if it does\n        not converge before that.\n    "
     nsamples, features = X.shape
     centroids = X[np.random.choice(nsamples, k)]

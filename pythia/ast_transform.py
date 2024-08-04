@@ -159,9 +159,13 @@ class Compiler(ast.NodeTransformer):
         res = DirtyTransformer(self.filename, dirty).visit(function)
         assert isinstance(res, ast.FunctionDef)
         if self.naive:
-            all_dirty = tuple(sorted(set.union(*dirty.values())))
+            all_vars = set.union(*dirty.values())
+            args = {
+                node.arg for node in ast.walk(res.args) if isinstance(node, ast.arg)
+            }
+            locals = tuple(sorted(all_vars - args))
             initialize = make_assign(
-                all_dirty, self.parser.parse_expression(f"(None,)*{len(all_dirty)}")
+                locals, self.parser.parse_expression(f"(None,)*{len(locals)}")
             )
             res.body.insert(0, initialize)
         return res
