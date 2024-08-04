@@ -95,7 +95,7 @@ class Loader:
 
     def commit(self, *args) -> None:
         self.i += 1
-        if self.i % self.step != 0:
+        if self.i % self.step == 0:
             self.fuel -= 1
             if self.fuel <= 0:
                 raise KeyboardInterrupt("Out of fuel")
