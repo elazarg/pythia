@@ -63,7 +63,7 @@ package_upgrade: false
 mounts:
  - [${EXPERIMENT_TAG}, /mnt/${EXPERIMENT_TAG}, 9p]
  - [${CHECKPOINT_LIB}, /mnt/${CHECKPOINT_LIB}, 9p]
- - [ssh, /mnt/.ssh, 9p]
+ - [dumps, /mnt/dumps, 9p]
 
 write_files:
   - path: ${GUEST_HOME}/.bashrc
@@ -78,7 +78,6 @@ write_files:
 
 runcmd:
   - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
-  - [su, ubuntu, -c, "cp -r /mnt/.ssh ${GUEST_HOME}/.ssh"]
   - [su, ubuntu, -c, "cp -r /mnt/${EXPERIMENT_TAG}/* ${GUEST_HOME}/"]
   - [su, ubuntu, -c, "python3 -m venv ${GUEST_HOME}/.venv"]
   - [su, ubuntu, -c, "${VENV_BIN}/pip install -r /mnt/${CHECKPOINT_LIB}/requirements.txt"]
@@ -95,7 +94,7 @@ args=(
   -drive "file=${user_data},format=qcow2"
   -virtfs local,path=${EXPERIMENT_PATH},mount_tag=${EXPERIMENT_TAG},security_model=none
   -virtfs local,path=./${CHECKPOINT_LIB},mount_tag=${CHECKPOINT_LIB},security_model=none
-  -virtfs local,path="$HOME/.ssh",mount_tag=ssh,security_model=none
+  -virtfs local,path="dumps",mount_tag=dumps,security_model=passthrough
   -enable-kvm
   -m 2G
 #  -serial mon:stdio  # use console for monitor
