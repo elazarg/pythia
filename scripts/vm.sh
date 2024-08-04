@@ -19,8 +19,7 @@ QMP_PORT=${3:-4444}
 TCP_PORT=${4:-1234}
 shift 4
 
-EXPERIMENT_BASE="./experiment"
-EXPERIMENT_PATH="${EXPERIMENT_BASE}/${EXPERIMENT}"
+EXPERIMENT_PATH="experiment/${EXPERIMENT}"
 if [ ! -d "$EXPERIMENT_PATH" ]; then
   echo "Directory $EXPERIMENT_PATH does not exist."
   exit 1
@@ -41,9 +40,7 @@ mkdir -p ${INSTANCE_DIR}
 instance="${INSTANCE_DIR}/vm.img"
 cp ./${img} ${instance}
 
-CHECKPOINT_LIB="checkpoint"
-
-EXPERIMENT_TAG="experiment"
+PROJECT_DIR="/mnt/pythia"
 GUEST_HOME="/home/ubuntu"
 VENV_BIN="${GUEST_HOME}/.venv/bin"
 
@@ -66,9 +63,7 @@ package_update: false
 package_upgrade: false
 
 mounts:
- - [${EXPERIMENT_TAG}, /mnt/${EXPERIMENT_TAG}, 9p]
- - [${CHECKPOINT_LIB}, /mnt/${CHECKPOINT_LIB}, 9p]
- - [results, /mnt/results, 9p]
+ - [pythia, ${PROJECT_DIR}, 9p]
 
 write_files:
   - path: ${GUEST_HOME}/.bashrc
@@ -77,27 +72,26 @@ write_files:
     defer: true
     append: true
     content: |+
-      export PYTHONPATH=/mnt
-      export RESULTS=/mnt/results
       export EXPERIMENT=${EXPERIMENT}
       export STEP=${STEP}
       source ${VENV_BIN}/activate
+      export PYTHONPYCACHEPREFIX=/tmp/pythia
+      export PYTHONPATH=${PROJECT_DIR}
+      cd ${PROJECT_DIR}
 
   - path: ${GUEST_HOME}/.bash_history
     owner: ubuntu:ubuntu
     defer: true
     content: |+
-      cat ${EXPERIMENT}/args.txt | xargs python ${EXPERIMENT}/naive.py
-      cat ${EXPERIMENT}/args.txt | xargs python ${EXPERIMENT}/instrumented.py
-      cat ${EXPERIMENT}/args.txt | xargs python ${EXPERIMENT}/vm.py
+      cat ${EXPERIMENT_PATH}/args.txt | xargs python ${EXPERIMENT_PATH}/naive.py
+      cat ${EXPERIMENT_PATH}/args.txt | xargs python ${EXPERIMENT_PATH}/instrumented.py
+      cat ${EXPERIMENT_PATH}/args.txt | xargs python ${EXPERIMENT_PATH}/vm.py
 
 runcmd:
   - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
-  - [su, ubuntu, -c, "cp -r /mnt/${EXPERIMENT_TAG}/* ${GUEST_HOME}/"]
-  - [su, ubuntu, -c, "ln -s /mnt/results ./results"]
   - [su, ubuntu, -c, "python3 -m venv ${GUEST_HOME}/.venv"]
-  - [su, ubuntu, -c, "${VENV_BIN}/pip install -r /mnt/${CHECKPOINT_LIB}/requirements.txt"]
-  - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${GUEST_HOME}/${EXPERIMENT}/requirements.txt"]
+  - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${PROJECT_DIR}/checkpoint/requirements.txt"]
+  - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${PROJECT_DIR}/${EXPERIMENT_PATH}/requirements.txt"]
 EOF
 
 user_data="${INSTANCE_DIR}/user-data.qcow2"
@@ -108,9 +102,7 @@ args=(
   -smp 1
   -drive "file=${instance},format=qcow2"
   -drive "file=${user_data},format=qcow2"
-  -virtfs local,path=${EXPERIMENT_BASE},mount_tag=${EXPERIMENT_TAG},security_model=none
-  -virtfs local,path=./${CHECKPOINT_LIB},mount_tag=${CHECKPOINT_LIB},security_model=none
-  -virtfs local,path="results",mount_tag="results",security_model=mapped
+  -virtfs local,path=".",mount_tag=pythia,security_model=mapped
   -enable-kvm
   -m 2G
 #  -serial mon:stdio  # use console for monitor
