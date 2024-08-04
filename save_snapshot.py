@@ -139,7 +139,7 @@ async def relay_qmp_results(qmp_port: int, server: Server) -> None:
 
             results_folder = cwd / "results" / tag
             results_folder.mkdir(exist_ok=True, parents=True)
-            with open(results_folder / f"{tag}_vm.tsv", "w") as f:
+            with open(results_folder / "vm.tsv", "w") as f:
                 for i, p in enumerate(ps):
                     print(i, p.result(), sep="\t", file=f, flush=True)
 
