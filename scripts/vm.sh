@@ -63,6 +63,7 @@ package_upgrade: false
 mounts:
  - [${EXPERIMENT_TAG}, /mnt/${EXPERIMENT_TAG}, 9p]
  - [${CHECKPOINT_LIB}, /mnt/${CHECKPOINT_LIB}, 9p]
+ - [ssh, ${GUEST_HOME}/.ssh, 9p]
 
 write_files:
   - path: ${GUEST_HOME}/.bashrc
@@ -93,6 +94,7 @@ args=(
   -drive "file=${user_data},format=qcow2"
   -virtfs local,path=${EXPERIMENT_PATH},mount_tag=${EXPERIMENT_TAG},security_model=none
   -virtfs local,path=./${CHECKPOINT_LIB},mount_tag=${CHECKPOINT_LIB},security_model=none
+  -virtfs local,path="$HOME/.ssh",mount_tag=ssh,security_model=none
   -enable-kvm
   -m 2G
 #  -serial mon:stdio  # use console for monitor
