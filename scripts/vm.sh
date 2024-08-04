@@ -83,16 +83,16 @@ write_files:
     owner: ubuntu:ubuntu
     defer: true
     content: |+
-      cat args.txt | xargs python ${EXPERIMENT}/naive.py
-      cat args.txt | xargs python ${EXPERIMENT}/instrumented.py
-      cat args.txt | xargs python ${EXPERIMENT}/tcp.py
+      cat ${EXPERIMENT}/args.txt | xargs python ${EXPERIMENT}/naive.py
+      cat ${EXPERIMENT}/args.txt | xargs python ${EXPERIMENT}/instrumented.py
+      cat ${EXPERIMENT}/args.txt | xargs python ${EXPERIMENT}/tcp.py
 
 runcmd:
   - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
   - [su, ubuntu, -c, "cp -r /mnt/${EXPERIMENT_TAG} ${GUEST_HOME}/"]
   - [su, ubuntu, -c, "python3 -m venv ${GUEST_HOME}/.venv"]
   - [su, ubuntu, -c, "${VENV_BIN}/pip install -r /mnt/${CHECKPOINT_LIB}/requirements.txt"]
-  - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${GUEST_HOME}/${EXPERIMENT_TAG}/requirements.txt"]
+  - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${GUEST_HOME}/${EXPERIMENT}/requirements.txt"]
 EOF
 
 user_data="${INSTANCE_DIR}/user-data.qcow2"
