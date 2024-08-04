@@ -19,6 +19,7 @@ def log(idx: int, k: int) -> None:
 
 
 def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
+    """select k features from features using target as the target variable"""
     # define new solution
     # features: n x m
     # target: n x 1

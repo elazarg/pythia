@@ -15,6 +15,7 @@ def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
         The number of iterations the algorithm will run for if it does
         not converge before that.
     """
+    np.random.seed(42)
     nsamples, features = X.shape
     centroids = X[np.random.choice(nsamples, k)]
     clusters = list[list[int]]()

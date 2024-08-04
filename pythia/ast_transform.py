@@ -170,7 +170,8 @@ class Compiler(ast.NodeTransformer):
             initialize = make_assign(
                 locals, self.parser.parse_expression(f"(None,)*{len(locals)}")
             )
-            res.body.insert(0, initialize)
+            # skip docstring, should work most of the time
+            res.body.insert(1, initialize)
         return res
 
 

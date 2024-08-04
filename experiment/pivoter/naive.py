@@ -30,6 +30,7 @@ def recursive_cn(g: dict[int, set[int]], root: int, max_only: bool = False):
 
 
 def run(g: dict[int, set[int]], root: int, max_only: bool = False) -> Counter[int]:
+    """extracts maximal cliques from a graph"""
     [counter, curr, neighbour, parent, r, root_to_leaf_path, world] = (None,) * 7
     root_to_leaf_path = [root]
     counter = Counter[int]()

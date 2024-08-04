@@ -126,6 +126,9 @@ class random:
     def rand(dims: tuple) -> ndarray: ...
 
     @staticmethod
+    def seed(seed: int) -> None: ...
+
+    @staticmethod
     @new
     def choice(a: ndarray | int, size: int) -> ndarray: ...
 

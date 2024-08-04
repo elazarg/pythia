@@ -18,6 +18,7 @@ def log(idx: int, k: int) -> None:
 
 
 def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
+    """select k features from features using target as the target variable"""
     S = np.array([], "int")
     with persist.Loader(__file__, locals()) as transaction:
         if transaction:
