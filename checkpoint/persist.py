@@ -209,7 +209,7 @@ class SimpleTcpClient:
         self.i += 1
         if self.i % self.step in [0, 1]:
             # send commend to save_snapshot server to take snapshot
-            self.socket.send(struct.pack("Q", self.i, self.value))
+            self.socket.send(struct.pack("Q", self.i))
             # wait for snapshot to start, and continue after it's done
             self.socket.recv(256)
 
