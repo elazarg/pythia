@@ -123,13 +123,13 @@ async def relay_qmp_dumps(qmp_port: int, server: Server) -> None:
         await vm.dump(f"{folder}/0.a.dump")
         with ThreadPoolExecutor() as executor:
             ps: list[Future[int]] = []
-            for index in server:
+            for i, index in enumerate(server):
                 async with vm.pause(server.sleep_duration_ms):
-                    current_next_file = f"{folder}/{index}.b.dump"
-                    next_prev_file = f"{folder}/{index + 1}.a.dump"
+                    current_next_file = f"{folder}/{i}.b.dump"
+                    next_prev_file = f"{folder}/{i + 1}.a.dump"
                     await vm.dump(current_next_file)
                     os.link(current_next_file, next_prev_file)
-                    p: Future[int] = executor.submit(count_diff, folder, index)
+                    p: Future[int] = executor.submit(count_diff, folder, i)
                     if p is not None:
                         ps.append(p)
             else:
