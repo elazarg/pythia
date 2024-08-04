@@ -94,7 +94,7 @@ args=(
   -drive "file=${user_data},format=qcow2"
   -virtfs local,path=${EXPERIMENT_PATH},mount_tag=${EXPERIMENT_TAG},security_model=none
   -virtfs local,path=./${CHECKPOINT_LIB},mount_tag=${CHECKPOINT_LIB},security_model=none
-  -virtfs local,path="dumps",mount_tag=dumps,security_model=passthrough
+  -virtfs local,path="dumps",mount_tag=dumps,security_model=mapped
   -enable-kvm
   -m 2G
 #  -serial mon:stdio  # use console for monitor
