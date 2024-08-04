@@ -96,7 +96,8 @@ class IteratorServer(Server):
         return self.i
 
 
-def count_diff(folder: str, i: int) -> int:
+def count_diff(folder: pathlib.Path, i: int) -> int:
+    folder = folder.as_posix()
     result = subprocess.run(
         [
             "./count_diff",
@@ -112,46 +113,49 @@ def count_diff(folder: str, i: int) -> int:
     return int(result.stdout.strip())
 
 
-async def relay_qmp_dumps(qmp_port: int, server: Server) -> None:
+async def relay_qmp_results(qmp_port: int, server: Server) -> None:
     tag = server.tag
     assert tag.replace("_", "").isalnum()
-    folder = f"{pathlib.Path.cwd().as_posix()}/dumps/{tag}_vm"
-    shutil.rmtree(folder, ignore_errors=True)
-    os.makedirs(folder, exist_ok=False)
+    cwd = pathlib.Path.cwd()
+    dumps_folder = cwd / "dumps" / tag
+    shutil.rmtree(dumps_folder, ignore_errors=True)
+    os.makedirs(dumps_folder, exist_ok=False)
     async with SimpleQmpClient(qmp_port) as vm:
-        await vm.dump(f"{folder}/0.a.dump")
+        await vm.dump(f"{dumps_folder}/0.a.dump")
         with ThreadPoolExecutor() as executor:
             ps: list[Future[int]] = []
             for i, index in enumerate(server):
                 async with vm.pause(server.sleep_duration_ms):
-                    current_next_file = f"{folder}/{i}.b.dump"
-                    next_prev_file = f"{folder}/{i + 1}.a.dump"
+                    current_next_file = dumps_folder / f"{i}.b.dump"
+                    next_prev_file = dumps_folder / f"{i + 1}.a.dump"
                     await vm.dump(current_next_file)
                     os.link(current_next_file, next_prev_file)
-                    p: Future[int] = executor.submit(count_diff, folder, i)
+                    p: Future[int] = executor.submit(count_diff, dumps_folder, i)
                     if p is not None:
                         ps.append(p)
             else:
                 server.finish()
                 os.unlink(next_prev_file)
 
-            with open(f"{folder}.tsv", "w") as f:
+            results_folder = cwd / "results" / tag
+            results_folder.mkdir(exist_ok=True, parents=True)
+            with open(results_folder / f"{tag}_vm.tsv", "w") as f:
                 for i, p in enumerate(ps):
                     print(i, p.result(), sep="\t", file=f, flush=True)
 
-    os.rmdir(folder)
+    os.rmdir(dumps_folder)
     logging.info("Done.")
 
 
 def run_server(qmp_port: int, tcp_port: int):
     with SimpleTcpServer(tcp_port) as server:
-        asyncio.run(relay_qmp_dumps(qmp_port, server))
+        asyncio.run(relay_qmp_results(qmp_port, server))
 
 
 def run_iterator(qmp_port: int, iterations: int, sleep_duration_ms: int, tag: str):
     assert iterations > 0
     server = IteratorServer(iterations, sleep_duration_ms, tag)
-    asyncio.run(relay_qmp_dumps(qmp_port, server))
+    asyncio.run(relay_qmp_results(qmp_port, server))
 
 
 def main():
@@ -179,7 +183,7 @@ def main():
         type=int,
         help="The number of milliseconds between snapshots.",
     )
-    iterator_parser.add_argument("tag", type=str, help="Save as ./dumps/[tag].csv.")
+    iterator_parser.add_argument("tag", type=str, help="Save as ./results/[tag].csv.")
     iterator_parser.set_defaults(func=run_iterator)
 
     args = parser.parse_args()

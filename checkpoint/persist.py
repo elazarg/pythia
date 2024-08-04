@@ -56,7 +56,7 @@ class Loader:
     def __init__(self, module_filename: str | pathlib.Path, env) -> None:
         module_filename = pathlib.Path(module_filename)
         tag = module_filename.parent.name
-        dumps_path = pathlib.Path("dumps")
+        results_path = pathlib.Path("results")
 
         # make sure the cache is invalidated when the module changes
         h = compute_hash(module_filename, env)
@@ -64,7 +64,7 @@ class Loader:
         print(f"Using cache directory {cachedir}", file=sys.stderr)
         cachedir.mkdir(parents=False, exist_ok=True)
         self.filename = cachedir / "store.pickle"
-        self.tsv_filename = (dumps_path / tag / module_filename.stem).with_suffix(
+        self.tsv_filename = (results_path / tag / module_filename.stem).with_suffix(
             ".tsv"
         )
         print(self.tsv_filename, file=sys.stderr)
@@ -114,7 +114,7 @@ class Loader:
             pathlib.Path(temp_filename).rename(self.filename)
 
             with open(self.tsv_filename, "a") as f:
-                size = pickle.dumps((self.i, args, self.iterator)).__sizeof__()
+                size = pickle.results((self.i, args, self.iterator)).__sizeof__()
                 self.printing_index += 1
                 print(
                     self.printing_index,

@@ -9,6 +9,7 @@ if [ -z "$EXPERIMENT" ]; then
   echo "Usage: $0 <experiment> [QMP_PORT] [TCP_PORT] [STEP]"
   exit 1
 fi
+mkdir -f results/${EXPERIMENT}
 
 STEP=${2:-1}
 QMP_PORT=${3:-4444}
@@ -64,7 +65,7 @@ package_upgrade: false
 mounts:
  - [${EXPERIMENT_TAG}, /mnt/${EXPERIMENT_TAG}, 9p]
  - [${CHECKPOINT_LIB}, /mnt/${CHECKPOINT_LIB}, 9p]
- - [dumps, /mnt/dumps, 9p]
+ - [results, /mnt/results, 9p]
 
 write_files:
   - path: ${GUEST_HOME}/.bashrc
@@ -74,7 +75,7 @@ write_files:
     append: true
     content: |+
       export PYTHONPATH=/mnt
-      export DUMPS=/mnt/dumps
+      export RESULTS=/mnt/results
       export EXPERIMENT=${EXPERIMENT}
       export STEP=${STEP}
       source ${VENV_BIN}/activate
@@ -83,9 +84,9 @@ write_files:
     owner: ubuntu:ubuntu
     defer: true
     content: |+
-      cat ${EXPERIMENT_PATH}/args.txt | xargs python ${EXPERIMENT_PATH}/naive.py
-      cat ${EXPERIMENT_PATH}/args.txt | xargs python ${EXPERIMENT_PATH}/instrumented.py
-      cat ${EXPERIMENT_PATH}/args.txt | xargs python ${EXPERIMENT_PATH}/vm.py
+      cat ${EXPERIMENT}/args.txt | xargs python ${EXPERIMENT}/naive.py
+      cat ${EXPERIMENT}/args.txt | xargs python ${EXPERIMENT}/instrumented.py
+      cat ${EXPERIMENT}/args.txt | xargs python ${EXPERIMENT}/vm.py
 
 runcmd:
   - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
@@ -105,7 +106,7 @@ args=(
   -drive "file=${user_data},format=qcow2"
   -virtfs local,path=${EXPERIMENT_BASE},mount_tag=${EXPERIMENT_TAG},security_model=none
   -virtfs local,path=./${CHECKPOINT_LIB},mount_tag=${CHECKPOINT_LIB},security_model=none
-  -virtfs local,path="dumps",mount_tag=dumps,security_model=mapped
+  -virtfs local,path="results",mount_tag="results",security_model=mapped
   -enable-kvm
   -m 2G
 #  -serial mon:stdio  # use console for monitor
