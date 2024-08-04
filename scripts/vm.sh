@@ -10,8 +10,7 @@ if [ -z "$EXPERIMENT" ]; then
   exit 1
 fi
 
-mkdir -f results
-mkdir -f results/${EXPERIMENT}
+mkdir -p results/${EXPERIMENT}
 chmod -R a+w results
 
 STEP=${2:-1}
