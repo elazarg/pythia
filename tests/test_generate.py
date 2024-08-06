@@ -27,7 +27,9 @@ def naive_transform(filename: pathlib.Path, expected_outfile: pathlib.Path) -> N
     compare_transformed_files(actual, expected_outfile)
 
 
-@pytest.mark.parametrize("experiment_name", ["k_means", "feature_selection", "pivoter"])
+@pytest.mark.parametrize(
+    "experiment_name", ["k_means", "feature_selection", "pivoter", "trivial"]
+)
 def test_naive_transformation(experiment_name: str) -> None:
     exp = pathlib.Path("experiment") / experiment_name
     naive_transform(
@@ -43,7 +45,9 @@ def tcp_transform(
     compare_transformed_files(actual, expected_outfile)
 
 
-@pytest.mark.parametrize("experiment_name", ["k_means", "feature_selection", "pivoter"])
+@pytest.mark.parametrize(
+    "experiment_name", ["k_means", "feature_selection", "pivoter", "trivial"]
+)
 def test_tcp_transformation(experiment_name: str) -> None:
     exp = pathlib.Path("experiment") / experiment_name
     filename = exp / "main.py"
@@ -93,6 +97,15 @@ def test_k_means(simplify: bool) -> None:
 def test_pivoter(simplify: bool) -> None:
     analyze_and_transform(
         experiment_name="pivoter",
+        function_name="run",
+        simplify=simplify,
+    )
+
+
+@pytest.mark.parametrize("simplify", [True, False])
+def test_trivial(simplify: bool) -> None:
+    analyze_and_transform(
+        experiment_name="trivial",
         function_name="run",
         simplify=simplify,
     )

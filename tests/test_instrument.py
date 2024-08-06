@@ -35,3 +35,10 @@ def test_pivoter() -> None:
         experiment_name="pivoter",
         args="--filename=experiment/pivoter/enron.small.edges".split(),
     )
+
+
+def test_trivial() -> None:
+    instrument_experiment(
+        experiment_name="trivial",
+        args=[],
+    )
