@@ -41,7 +41,7 @@ def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
     if not args.function.isidentifier():
         parser.error(f"Function must be a valid identifier; got {args.function}")
     code = pathlib.Path(args.pythonfile).read_text()
-    if f"\ndef {args.function}(" not in code:
+    if f"def {args.function}(" not in code:
         parser.error(f"Function {args.function} not found in {args.pythonfile}")
 
     if args.fuel is not None and args.fuel <= 0:
@@ -53,7 +53,9 @@ def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
     return args, remaining_args
 
 
-def generate_instrumented_file(kind: str, pythonfile: str, function: str) -> str:
+def generate_instrumented_file(
+    kind: str, pythonfile: str, function: str
+) -> pathlib.Path:
     pythonfile = pathlib.Path(pythonfile)
     match kind:
         case "vm":
@@ -66,7 +68,7 @@ def generate_instrumented_file(kind: str, pythonfile: str, function: str) -> str
         case "analyze":
             instrumented = pythonfile.with_name("instrumented.py")
             output = analyze_and_transform(
-                filename=str(pythonfile),
+                filename=pythonfile,
                 function_name=function,
                 print_invariants=False,
                 simplify=False,

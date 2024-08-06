@@ -25,7 +25,7 @@ def read_step():
 
 
 def run_instrumented_file(
-    instrumented: str,
+    instrumented: pathlib.Path,
     args: list[str],
     fuel: int,
     step: int = 1,
@@ -35,7 +35,7 @@ def run_instrumented_file(
     if capture_stdout:
         stdout = subprocess.PIPE
     result = subprocess.run(
-        [sys.executable, instrumented] + args,
+        [sys.executable, instrumented.as_posix()] + args,
         env=os.environ | {"PYTHONPATH": os.getcwd(), FUEL: str(fuel), STEP: str(step)},
         stdout=stdout,
     )
@@ -64,10 +64,10 @@ class Loader:
         print(f"Using cache directory {cachedir}", file=sys.stderr)
         cachedir.mkdir(parents=False, exist_ok=True)
         self.filename = cachedir / "store.pickle"
+        (results_path / tag).mkdir(parents=True, exist_ok=True)
         self.tsv_filename = (results_path / tag / module_filename.stem).with_suffix(
             ".tsv"
         )
-        print(self.tsv_filename, file=sys.stderr)
 
         self.fuel = read_fuel()
         self.i = -1

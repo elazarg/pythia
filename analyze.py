@@ -16,7 +16,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     output = analyze_and_transform(
-        args.filename,
+        pathlib.Path(args.filename),
         *args.function_name,
         print_invariants=args.print_invariants,
         simplify=args.simplify
