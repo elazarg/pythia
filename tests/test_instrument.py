@@ -1,13 +1,13 @@
+import pathlib
+
 from checkpoint import persist
 
 
 def instrument_experiment(experiment_name: str, args: list[str]) -> None:
     def run(fuel: int) -> str:
+        instrumented = pathlib.Path("experiment") / experiment_name / "instrumented.py"
         return persist.run_instrumented_file(
-            instrumented=f"experiment/{experiment_name}/instrumented.py",
-            args=args,
-            fuel=fuel,
-            capture_stdout=True,
+            instrumented=instrumented, args=args, fuel=fuel, capture_stdout=True
         )
 
     expected = run(10**6)

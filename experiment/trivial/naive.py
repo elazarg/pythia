@@ -3,10 +3,11 @@ from checkpoint import persist
 
 def run() -> None:
     """Trivial baseline"""
+    [i] = (None,) * 1
     with persist.Loader(__file__, locals()) as transaction:
         if transaction:
             [i] = transaction.move()
-        for i in transaction.iterate(range(1000)):  # type: int
+        for i in transaction.iterate(range(100)):  # type: int
             pass
             transaction.commit(i)
 

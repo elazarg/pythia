@@ -18,8 +18,8 @@ def compare_transformed_files(actual: str, expected_outfile: pathlib.Path) -> No
     expected = expected_outfile.read_text(encoding="utf-8")
     expected_transaction = find_transaction(expected)
     actual_transaction = find_transaction(actual)
-    assert actual_transaction == expected_transaction
     assert actual == expected
+    assert actual_transaction == expected_transaction
 
 
 def naive_transform(filename: pathlib.Path, expected_outfile: pathlib.Path) -> None:
