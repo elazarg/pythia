@@ -87,7 +87,6 @@ write_files:
       cat ${EXPERIMENT_PATH}/args.txt | xargs python ${EXPERIMENT_PATH}/vm.py
 
 runcmd:
-  - sudo swapoff -a
   - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
   - [su, ubuntu, -c, "python3 -m venv ${GUEST_HOME}/.venv"]
   - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${PROJECT_DIR}/checkpoint/requirements.txt"]
