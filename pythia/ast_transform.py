@@ -104,8 +104,9 @@ def make_for(for_loop: ast.For, filename: pathlib.Path, _dirty: set[str]) -> ast
 
 
 class VariableFinder(ast.NodeVisitor):
-    def __init__(self) -> None:
+    def __init__(self, with_args: bool) -> None:
         self.dirty_map: dict[str, dict[int, set[str]]] = {}
+        self.with_args = with_args
 
     def visit_FunctionDef(self, func: ast.FunctionDef) -> None:
         dirty = {node.arg for node in ast.walk(func.args) if isinstance(node, ast.arg)}
@@ -114,6 +115,10 @@ class VariableFinder(ast.NodeVisitor):
             for node in ast.walk(func)
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
         }
+        if not self.with_args:
+            dirty -= {
+                node.arg for node in ast.walk(func.args) if isinstance(node, ast.arg)
+            }
         self.dirty_map[func.name] = {
             node.lineno: dirty
             for node in ast.walk(func)
@@ -162,11 +167,7 @@ class Compiler(ast.NodeTransformer):
         res = DirtyTransformer(self.filename, dirty).visit(function)
         assert isinstance(res, ast.FunctionDef)
         if self.naive:
-            all_vars = set.union(*dirty.values())
-            args = {
-                node.arg for node in ast.walk(res.args) if isinstance(node, ast.arg)
-            }
-            locals = tuple(sorted(all_vars - args))
+            locals = tuple(sorted(set.union(*dirty.values())))
             initialize = make_assign(
                 locals, self.parser.parse_expression(f"(None,)*{len(locals)}")
             )
@@ -186,7 +187,7 @@ def transform(
 
     naive = dirty_map is None
     if naive:
-        finder = VariableFinder()
+        finder = VariableFinder(with_args=False)
         finder.visit(tree)
         dirty_map = finder.dirty_map
 

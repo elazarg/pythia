@@ -36,18 +36,9 @@ def run(g: dict[int, set[int]], root: int, max_only: bool = False) -> Counter[in
     counter = Counter[int]()
     with persist.Loader(__file__, locals()) as transaction:
         if transaction:
-            [
-                counter,
-                curr,
-                g,
-                max_only,
-                neighbour,
-                parent,
-                r,
-                root,
-                root_to_leaf_path,
-                world,
-            ] = transaction.move()
+            [counter, curr, neighbour, parent, r, root_to_leaf_path, world] = (
+                transaction.move()
+            )
         for r in transaction.iterate(range(10**100)):  # type: int
             if not root_to_leaf_path:
                 break
@@ -73,16 +64,7 @@ def run(g: dict[int, set[int]], root: int, max_only: bool = False) -> Counter[in
                         root_to_leaf_path.append(neighbour)
                         break
             transaction.commit(
-                counter,
-                curr,
-                g,
-                max_only,
-                neighbour,
-                parent,
-                r,
-                root,
-                root_to_leaf_path,
-                world,
+                counter, curr, neighbour, parent, r, root_to_leaf_path, world
             )
     return counter
 

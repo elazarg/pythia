@@ -38,7 +38,6 @@ def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     with persist.Loader(__file__, locals()) as transaction:
         if transaction:
             [
-                X,
                 _,
                 centroids,
                 cluster,
@@ -47,8 +46,6 @@ def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
                 diff,
                 features,
                 i,
-                k,
-                max_iterations,
                 nsamples,
                 prev_centroids,
                 r,
@@ -66,7 +63,6 @@ def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
             if not diff.any():
                 break
             transaction.commit(
-                X,
                 _,
                 centroids,
                 cluster,
@@ -75,8 +71,6 @@ def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
                 diff,
                 features,
                 i,
-                k,
-                max_iterations,
                 nsamples,
                 prev_centroids,
                 r,
