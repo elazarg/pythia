@@ -122,10 +122,6 @@ def concatenate(arrays: tuple | ndarray) -> ndarray: ...
 @module
 class random:
     @staticmethod
-    @new
-    def rand(dims: tuple) -> ndarray: ...
-
-    @staticmethod
     def seed(seed: int) -> None: ...
 
     @staticmethod

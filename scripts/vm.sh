@@ -45,7 +45,7 @@ VENV_BIN="${GUEST_HOME}/.venv/bin"
 
 yaml_file="${INSTANCE_DIR}/user-data.yaml"
 cat > ${yaml_file} <<EOF
-#cloud-config
+#D
 
 # For the password.
 # user: "ubuntu"
@@ -87,6 +87,7 @@ write_files:
       cat ${EXPERIMENT_PATH}/args.txt | xargs python ${EXPERIMENT_PATH}/vm.py
 
 runcmd:
+  - sudo swapoff -a
   - sudo chown -R ubuntu:ubuntu ${GUEST_HOME}
   - [su, ubuntu, -c, "python3 -m venv ${GUEST_HOME}/.venv"]
   - [su, ubuntu, -c, "${VENV_BIN}/pip install -r ${PROJECT_DIR}/checkpoint/requirements.txt"]
