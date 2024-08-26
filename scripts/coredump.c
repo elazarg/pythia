@@ -25,7 +25,7 @@ static bool read_range(struct range* address) {
     return true;
 }
 
-static void dump_memfile(long length) {
+static void dump_size(long length) {
     if (length == 0) {
         return;
     }
@@ -42,7 +42,13 @@ static void dump_memfile(long length) {
         exit(1);
     }
     fwrite(&page, 1, bytes_read, stdout);
-    return dump_memfile(length - bytes_read);
+    return dump_size(length - bytes_read);
+}
+
+static void dump_memfile(struct range address) {
+//    fprintf(stderr, "dump %lx-%lx\n", address.start, address.end);
+    fseeko(pMemFile, address.start, SEEK_SET);
+    dump_size(address.end - address.start);
 }
 
 static FILE* open_proc(int pid, const char* basename) {
@@ -64,7 +70,7 @@ int main(int argc, char **argv) {
     }
     const int pid = atoi(argv[1]);
     if (ptrace(PTRACE_ATTACH, pid, NULL, NULL) < 0) {
-        printf("Unable to attach to the pid specified\n");
+        printf("Unable to attach to pid %d\n", pid);
         exit(1);
     }
     wait(NULL);
@@ -78,18 +84,13 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    for (struct range next; read_range(&next); ) {
-        if (next.start == current.end) {
-            current.end = next.end;
-            continue;
+    for (struct range next; read_range(&next); current.end = next.end) {
+        if (next.start != current.end) {
+            dump_memfile(current);
+            current.start = next.start;
         }
-        fprintf(stderr, "dump %lx-%lx\n", current.start, current.end);
-        fseeko(pMemFile, current.start, SEEK_SET);
-        dump_memfile(current.end - current.start);
-        current = next;
     }
-    fseeko(pMemFile, current.start, SEEK_SET);
-    dump_memfile(current.end - current.start);
+    dump_memfile(current);
 
     fclose(pMapsFile);
     fclose(pMemFile);
