@@ -95,8 +95,9 @@ runcmd:
 EOF
 
 user_data="${INSTANCE_DIR}/user-data.qcow2"
-cloud-localds ${user_data} ${yaml_file} --disk-format=qcow2
+cloud-localds "${user_data}" "${yaml_file}" --disk-format=qcow2
 
+# shellcheck disable=SC2054
 args=(
   -cpu host
   -smp 1
@@ -106,16 +107,16 @@ args=(
   -enable-kvm
   -m 2G
 #  -serial mon:stdio  # use console for monitor
-  -qmp tcp:localhost:${QMP_PORT},server=on,wait=off
+  -qmp "tcp:localhost:${QMP_PORT},server=on,wait=off"
 #  -nic user
   -device virtio-net-pci,netdev=n1
-  -netdev user,id=n1,hostfwd=tcp::10022-:22
+  -netdev "user,id=n1,hostfwd=tcp::10022-:${TCP_PORT}"
   -nographic
 #  -display none
 #  -daemonize
 )
 
-${QEMU_DIR}qemu-system-x86_64 "${args[@]}"
+"${QEMU_DIR}"qemu-system-x86_64 "${args[@]}"
 # args=(
 #   --name nvram-vm
 #   --cpu host

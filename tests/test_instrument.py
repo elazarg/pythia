@@ -16,9 +16,9 @@ def instrument_experiment(experiment_name: str, args: list[str]) -> None:
     assert actual == expected
 
 
-def test_instrument_feature_selection() -> None:
+def test_instrument_omp() -> None:
     instrument_experiment(
-        experiment_name="feature_selection",
+        experiment_name="omp",
         args="healthstudy --k 50".split(),
     )
 

@@ -528,7 +528,7 @@ def test_attr():
     return y
 
 
-def feature_selection(X: np.ndarray, y: np.ndarray):
+def omp(X: np.ndarray, y: np.ndarray):
     y = np.concatenate(y)
     X = (X - X.mean()) / X.std()
     X = np.c_[np.ones(X.shape[0]), X]

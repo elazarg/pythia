@@ -19,55 +19,10 @@ def log(idx: int, k: int) -> None:
 
 def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     """select k features from features using target as the target variable"""
-    [
-        S,
-        X,
-        _,
-        a,
-        dims,
-        error,
-        grad,
-        i,
-        idx,
-        j,
-        m,
-        n,
-        p,
-        points,
-        prediction,
-        t,
-        theta,
-        total,
-        x,
-        xj,
-        y,
-    ] = (None,) * 21
     S = np.array([], "int")
     with persist.Loader(__file__, locals()) as transaction:
         if transaction:
-            [
-                S,
-                X,
-                _,
-                a,
-                dims,
-                error,
-                grad,
-                i,
-                idx,
-                j,
-                m,
-                n,
-                p,
-                points,
-                prediction,
-                t,
-                theta,
-                total,
-                x,
-                xj,
-                y,
-            ] = transaction.move()
+            [S] = transaction.move()
         for idx in transaction.iterate(range(k)):  # type: int
             log(idx, k)
             dims = np.unique(S[S >= 0])
@@ -110,35 +65,13 @@ def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
                 S = np.unique(append_int(S, a))
             else:
                 break
-            transaction.commit(
-                S,
-                X,
-                _,
-                a,
-                dims,
-                error,
-                grad,
-                i,
-                idx,
-                j,
-                m,
-                n,
-                p,
-                points,
-                prediction,
-                t,
-                theta,
-                total,
-                x,
-                xj,
-                y,
-            )
+            transaction.commit(S)
     return S
 
 
 def main(dataset: str, k: int) -> None:
-    features = np.load(f"experiment/feature_selection/{dataset}_features.npy")
-    target = np.load(f"experiment/feature_selection/{dataset}_target.npy")
+    features = np.load(f"experiment/omp/{dataset}_features.npy")
+    target = np.load(f"experiment/omp/{dataset}_target.npy")
     S = run(features, target, k)
     print(S)
 
