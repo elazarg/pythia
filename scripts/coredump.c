@@ -3,26 +3,57 @@
 #include <limits.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
+#include <stdbool.h>
 
-#define pageLength 4096
+struct range {
+    unsigned long start;
+    unsigned long end;
+};
 
-static void dump_memory_region(FILE* pMemFile, unsigned long start_address, long length) {
-    static unsigned char page[pageLength];
-    fseeko(pMemFile, start_address, SEEK_SET);
-    size_t bytes_read=1;
-    for (unsigned long address=start_address; address < start_address + length; address += bytes_read) {
-        bytes_read = fread(&page, 1, pageLength, pMemFile);
-        fwrite(&page, 1, bytes_read, stdout);
-        if (bytes_read == 0) {
-            break;
-        }
+#define PAGE_SIZE 4096  * 256
+static unsigned char page[PAGE_SIZE] __attribute__ ((aligned (4096)));
+
+static FILE* pMemFile = NULL;
+static FILE* pMapsFile = NULL;
+
+static bool read_range(struct range* address) {
+    char line[256];
+    if (fgets(line, 256, pMapsFile) == NULL) {
+        return false;
     }
+    sscanf(line, "%lx-%lx %*[^\n]\n", &address->start, &address->end);
+    return true;
+}
+
+static void dump_memfile(long length) {
+    if (length == 0) {
+        return;
+    }
+    if (length < 0) {
+        fprintf(stderr, "negative length: %ld\n", length);
+        exit(1);
+    }
+    long bytes_read = (long)fread(&page, 1, PAGE_SIZE, pMemFile);
+    if (bytes_read == 0) {
+        return;
+    }
+    if (bytes_read < 0) {
+        fprintf(stderr, "bytes_read too large: %lu\n", (size_t)bytes_read);
+        exit(1);
+    }
+    fwrite(&page, 1, bytes_read, stdout);
+    return dump_memfile(length - bytes_read);
 }
 
 static FILE* open_proc(int pid, const char* basename) {
     static char buf[256];
     sprintf(buf, "/proc/%d/%s", pid, basename);
-    return fopen(buf, "r");
+    FILE* res = fopen(buf, "r");
+    if (!res) {
+        fprintf(stderr, "Failed to open proc files\n");
+        exit(1);
+    }
+    return res;
 }
 
 int main(int argc, char **argv) {
@@ -38,17 +69,28 @@ int main(int argc, char **argv) {
     }
     wait(NULL);
 
-    FILE* pMapsFile = open_proc(pid, "maps");
-    FILE* pMemFile = open_proc(pid, "mem");
+    pMapsFile = open_proc(pid, "maps");
+    pMemFile = open_proc(pid, "mem");
 
-    char line[256];
-    while (fgets(line, 256, pMapsFile) != NULL) {
-        unsigned long start_address;
-        unsigned long end_address;
-        sscanf(line, "%lx-%lx %*[^\n]\n", &start_address, &end_address);
-        fprintf(stderr, "%lx-%lx\n", start_address, end_address);
-        dump_memory_region(pMemFile, start_address, end_address - start_address);
+    struct range current;
+    if (!read_range(&current)) {
+        fprintf(stderr, "empty maps file\n");
+        exit(1);
     }
+
+    for (struct range next; read_range(&next); ) {
+        if (next.start == current.end) {
+            current.end = next.end;
+            continue;
+        }
+        fprintf(stderr, "dump %lx-%lx\n", current.start, current.end);
+        fseeko(pMemFile, current.start, SEEK_SET);
+        dump_memfile(current.end - current.start);
+        current = next;
+    }
+    fseeko(pMemFile, current.start, SEEK_SET);
+    dump_memfile(current.end - current.start);
+
     fclose(pMapsFile);
     fclose(pMemFile);
 

@@ -6,17 +6,9 @@
 # experiment is the first argument
 EXPERIMENT=$1
 if [ -z "$EXPERIMENT" ]; then
-  echo "Usage: $0 <experiment> [QMP_PORT] [TCP_PORT] [STEP]"
+  echo "Usage: $0 <experiment> [STEP] [QMP_PORT]"
   exit 1
 fi
-
-mkdir -p results/${EXPERIMENT}
-chmod -R a+w results
-
-STEP=${2:-1}
-QMP_PORT=${3:-4444}
-TCP_PORT=${4:-1234}
-shift 4
 
 EXPERIMENT_PATH="experiment/${EXPERIMENT}"
 if [ ! -d "$EXPERIMENT_PATH" ]; then
@@ -24,27 +16,35 @@ if [ ! -d "$EXPERIMENT_PATH" ]; then
   exit 1
 fi
 
+mkdir -p "results/${EXPERIMENT}"
+chmod -R a+w results
+
+STEP=${2:-1}
+QMP_PORT=${3:-4444}
+shift 3
+
+
 # This is already in qcow2 format.
 # https://cloud-images.ubuntu.com/minimal/releases/noble/release/ubuntu-24.04-minimal-cloudimg-amd64.img
 img=ubuntu-24.04-minimal-cloudimg-amd64.img
 if [ ! -f "./$img" ]; then
   wget "https://cloud-images.ubuntu.com/minimal/releases/noble/release/${img}"
-  ${QEMU_DIR}qemu-img resize ${img} +2G
+  "${QEMU_DIR}"qemu-img resize ${img} +2G
 fi
 
 INSTANCE_DIR="./pool/${EXPERIMENT}"
-rm -rf ${INSTANCE_DIR}
-mkdir -p ${INSTANCE_DIR}
+rm -rf "${INSTANCE_DIR}"
+mkdir -p "${INSTANCE_DIR}"
 
 instance="${INSTANCE_DIR}/vm.img"
-cp ./${img} ${instance}
+cp ./${img} "${instance}"
 
 PROJECT_DIR="/mnt/pythia"
 GUEST_HOME="/home/ubuntu"
 VENV_BIN="${GUEST_HOME}/.venv/bin"
 
 yaml_file="${INSTANCE_DIR}/user-data.yaml"
-cat > ${yaml_file} <<EOF
+cat > "${yaml_file}" <<EOF
 #cloud-config
 
 # For the password.
@@ -95,22 +95,21 @@ runcmd:
 EOF
 
 user_data="${INSTANCE_DIR}/user-data.qcow2"
-cloud-localds "${user_data}" "${yaml_file}" --disk-format=qcow2
+cloud-localds --disk-format=qcow2 "${user_data}" "${yaml_file}"
 
-# shellcheck disable=SC2054
 args=(
   -cpu host
   -smp 1
   -drive "file=${instance},format=qcow2"
   -drive "file=${user_data},format=qcow2"
-  -virtfs local,path=".",mount_tag=pythia,security_model=mapped
+  -virtfs "local,path=.,mount_tag=pythia,security_model=mapped"
   -enable-kvm
   -m 2G
 #  -serial mon:stdio  # use console for monitor
   -qmp "tcp:localhost:${QMP_PORT},server=on,wait=off"
 #  -nic user
-  -device virtio-net-pci,netdev=n1
-  -netdev "user,id=n1,hostfwd=tcp::10022-:${TCP_PORT}"
+  -device "virtio-net-pci,netdev=n1"
+  -netdev "user,id=n1,hostfwd=tcp::10022-:22"
   -nographic
 #  -display none
 #  -daemonize
