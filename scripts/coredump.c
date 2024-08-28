@@ -10,18 +10,23 @@ struct range {
     unsigned long end;
 };
 
-#define PAGE_SIZE 4096  * 256
+#define PAGE_SIZE (4096 * 256)
 static unsigned char page[PAGE_SIZE] __attribute__ ((aligned (4096)));
 
 static FILE* pMemFile = NULL;
 static FILE* pMapsFile = NULL;
 
 static bool read_range(struct range* address) {
-    char line[256];
+    char line[257];
     if (fgets(line, 256, pMapsFile) == NULL) {
         return false;
     }
-    sscanf(line, "%lx-%lx %*[^\n]\n", &address->start, &address->end);
+    line[256] = '\0';
+    int n_read = sscanf(line, "%lx-%lx %*[^\n]\n", &address->start, &address->end);
+    if (n_read != 2) {
+        fprintf(stderr, "Failed to parse: %s\n", line);
+        exit(1);
+    }
     return true;
 }
 
@@ -33,15 +38,15 @@ static void dump_size(long length) {
         fprintf(stderr, "negative length: %ld\n", length);
         exit(1);
     }
-    long bytes_read = (long)fread(&page, 1, PAGE_SIZE, pMemFile);
-    if (bytes_read == 0) {
-        return;
-    }
-    if (bytes_read < 0) {
-        fprintf(stderr, "bytes_read too large: %lu\n", (size_t)bytes_read);
+    const long bytes_read = (long)fread(&page, 1, PAGE_SIZE, pMemFile);
+    const size_t bytes_written = fwrite(&page, 1, bytes_read, stdout);
+    if (bytes_written < bytes_read) {
+        fprintf(stderr, "Write failed\n");
         exit(1);
     }
-    fwrite(&page, 1, bytes_read, stdout);
+    if (bytes_read < PAGE_SIZE) {
+        return;
+    }
     return dump_size(length - bytes_read);
 }
 
@@ -51,11 +56,12 @@ static void dump_memfile(struct range address) {
 }
 
 static FILE* open_proc(int pid, const char* basename) {
-    static char buf[256];
+    static char buf[257];
     sprintf(buf, "/proc/%d/%s", pid, basename);
+    buf[256] = 0;
     FILE* res = fopen(buf, "r");
     if (!res) {
-        fprintf(stderr, "Failed to open proc files\n");
+        fprintf(stderr, "Failed to open proc file %s\n", buf);
         exit(1);
     }
     return res;
@@ -79,7 +85,7 @@ int main(int argc, char **argv) {
 
     struct range current;
     if (!read_range(&current)) {
-        fprintf(stderr, "empty maps file\n");
+        fprintf(stderr, "Empty maps file\n");
         exit(1);
     }
 
