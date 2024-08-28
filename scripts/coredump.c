@@ -46,7 +46,6 @@ static void dump_size(long length) {
 }
 
 static void dump_memfile(struct range address) {
-//    fprintf(stderr, "dump %lx-%lx\n", address.start, address.end);
     fseeko(pMemFile, address.start, SEEK_SET);
     dump_size(address.end - address.start);
 }
