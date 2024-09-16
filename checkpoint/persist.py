@@ -1,10 +1,10 @@
 import os
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import typing
-from typing import Any
-
 import pickle
 import pathlib
 import hashlib
@@ -46,9 +46,8 @@ def run_instrumented_file(
 
 class Loader:
     fuel: int
-    step: int
 
-    restored_state: tuple[Any, ...]
+    restored_state: tuple
     iterator: typing.Optional[typing.Iterable]
     i: int
     filename: pathlib.Path
@@ -72,7 +71,6 @@ class Loader:
         self.fuel = read_fuel()
         self.i = -1
         self.printing_index = 1
-        self.step = read_step()
         self.iterator = None
         self.restored_state = ()
 
@@ -101,7 +99,7 @@ class Loader:
 
     def commit(self, *args) -> None:
         self.i += 1
-        if self.i % self.step in [0, 1]:
+        if self.i % STEP_VALUE in [0, 1]:
             self.fuel -= 1
             if self.fuel <= 0:
                 raise KeyboardInterrupt("Out of fuel")
@@ -161,13 +159,11 @@ class SimpleTcpClient:
                 input()
             else:
                 break
-        self.step = read_step()
         self.i = -1
-        self.value = None
 
     def commit(self) -> None:
         self.i += 1
-        if self.i % self.step in [0, 1]:
+        if self.i % STEP_VALUE in [0, 1]:
             # send commend to save_snapshot server to take snapshot
             self.socket.send(struct.pack("Q", self.i))
             # wait for snapshot to start, and continue after it's done
@@ -180,5 +176,73 @@ class SimpleTcpClient:
         self.socket.close()
 
     def iterate(self, iterable):
-        for self.value in iterable:
-            yield self.value
+        for value in iterable:
+            yield value
+
+
+def diff_vm_snapshot(folder: pathlib.Path, i: int) -> int:
+    folder = folder.as_posix()
+    result = subprocess.run(
+        [
+            "./diff_vm_snapshot",
+            f"{folder}/{i}.a.dump",
+            f"{folder}/{i}.b.dump",
+            "64",
+            "remove",
+        ],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("Failed to run diff_vm_snapshot", result)
+    return int(result.stdout.strip())
+
+
+def diff_coredump(folder: pathlib.Path, i: int) -> int:
+    folder = folder.as_posix()
+    result = subprocess.run(
+        [
+            "./diff_coredump",
+            f"{folder}/{i}.a.dump",
+            f"{folder}/{i}.b.dump",
+        ],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("Failed to run diff_coredump", result)
+    return int(result.stdout.strip())
+
+
+def coredump(tag: str, index: int) -> None:
+    pid = os.getpid()
+    result = subprocess.run(["gcore" "-o" f"{tag}" f"{pid}"], shell=True)
+    if result.returncode != 0:
+        raise RuntimeError("Failed to run diff_coredump", result)
+    os.rename(f"{tag}.{pid}", f"{tag}/{index}.core")
+
+
+def make_dumps_folder(tag: str) -> pathlib.Path:
+    cwd = pathlib.Path.cwd()
+    dumps_folder = cwd / "dumps" / tag
+    shutil.rmtree(dumps_folder, ignore_errors=True)
+    dumps_folder.mkdir(exist_ok=False, parents=True)
+    return dumps_folder
+
+
+def make_results_folder(tag: str) -> pathlib.Path:
+    cwd = pathlib.Path.cwd()
+    results_folder = cwd / "results" / tag
+    results_folder.mkdir(exist_ok=True, parents=True)
+    return results_folder
+
+
+PID = os.getpid()
+STEP_VALUE = read_step()
+
+
+def sigint() -> None:
+    os.kill(PID, signal.SIGINT)
+
+
+def self_coredump(i) -> None:
+    if i % STEP_VALUE in [0, 1]:
+        sigint()

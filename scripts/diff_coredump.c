@@ -47,10 +47,10 @@ static void dump_size(long length) {
     if (bytes_read < PAGE_SIZE) {
         return;
     }
-    return dump_size(length - bytes_read);
+    return dump_size(length - PAGE_SIZE);
 }
 
-static void dump_memfile(struct range address) {
+static void dump_mem(struct range address) {
     fseeko(pMemFile, address.start, SEEK_SET);
     dump_size(address.end - address.start);
 }
@@ -91,11 +91,11 @@ int main(int argc, char **argv) {
 
     for (struct range next; read_range(&next); current.end = next.end) {
         if (next.start != current.end) {
-            dump_memfile(current);
+            dump_mem(current);
             current.start = next.start;
         }
     }
-    dump_memfile(current);
+    dump_mem(current);
 
     fclose(pMapsFile);
     fclose(pMemFile);

@@ -1804,7 +1804,10 @@ class TypeCollector:
             if update is not None:
                 assert isinstance(update, ast.Call)
                 assert len(update.args) == 1
-                update_type = self.expr_to_type(update.args[0])
+                update_arg = update.args[0]
+                if isinstance(update_arg, ast.Constant) and isinstance(update_arg.value, str):
+                    update_arg = ast.parse(update_arg.s).body[0].value
+                update_type = self.expr_to_type(update_arg)
             else:
                 update_type = None
             # side_effect = parse_side_effect(fdef.body)

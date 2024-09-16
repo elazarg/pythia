@@ -14,16 +14,14 @@ $iterations times do:
 import asyncio
 import logging
 import os
-import pathlib
-import shutil
 import socket
 import struct
-import subprocess
 import argparse
 from concurrent.futures import ThreadPoolExecutor, Future
 from typing import Iterator
 
 from checkpoint.qmp_client import SimpleQmpClient
+from checkpoint import persist
 
 logging.basicConfig(level=logging.INFO)
 
@@ -96,30 +94,10 @@ class IteratorServer(Server):
         return self.i
 
 
-def count_diff(folder: pathlib.Path, i: int) -> int:
-    folder = folder.as_posix()
-    result = subprocess.run(
-        [
-            "./count_diff",
-            f"{folder}/{i}.a.dump",
-            f"{folder}/{i}.b.dump",
-            "64",
-            "remove",
-        ],
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError("Failed to run count_diff", result)
-    return int(result.stdout.strip())
-
-
 async def relay_qmp_results(qmp_port: int, server: Server) -> None:
     tag = server.tag
     assert tag.replace("_", "").isalnum()
-    cwd = pathlib.Path.cwd()
-    dumps_folder = cwd / "dumps" / tag
-    shutil.rmtree(dumps_folder, ignore_errors=True)
-    os.makedirs(dumps_folder, exist_ok=False)
+    dumps_folder = persist.make_dumps_folder(tag)
     async with SimpleQmpClient(qmp_port) as vm:
         await vm.dump(f"{dumps_folder}/0.a.dump")
         with ThreadPoolExecutor() as executor:
@@ -130,15 +108,16 @@ async def relay_qmp_results(qmp_port: int, server: Server) -> None:
                     next_prev_file = dumps_folder / f"{i + 1}.a.dump"
                     await vm.dump(current_next_file)
                     os.link(current_next_file, next_prev_file)
-                    p: Future[int] = executor.submit(count_diff, dumps_folder, i)
+                    p: Future[int] = executor.submit(
+                        persist.diff_vm_snapshot, dumps_folder, i
+                    )
                     if p is not None:
                         ps.append(p)
             else:
                 server.finish()
                 os.unlink(next_prev_file)
 
-            results_folder = cwd / "results" / tag
-            results_folder.mkdir(exist_ok=True, parents=True)
+            results_folder = persist.make_results_folder(tag)
             version_number = len(
                 [x for x in results_folder.iterdir() if x.name.startswith("vm_")]
             )
