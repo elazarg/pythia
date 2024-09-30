@@ -36,12 +36,16 @@ int main(int argc, char *argv[]) {
         }
         remove = true;
     }
-    const std::vector<char> buffer1 = read_file(argv[1], remove);
-    const std::vector<char> buffer2 = read_file(argv[2], remove);
+    std::vector<char> buffer1 = read_file(argv[1], remove);
+    std::vector<char> buffer2 = read_file(argv[2], remove);
 
+    size_t diff = 0;
     if (buffer1.size() != buffer2.size()) {
-        std::cerr << "Error: file sizes differ\n";
-        return 1;
+        size_t m = std::min(buffer1.size(), buffer2.size());
+        diff = std::max(buffer1.size(), buffer2.size()) - m;
+        std::cerr << "Error: file sizes differ, comparing first " << m << " bytes\n";
+        buffer1.resize(m);
+        buffer2.resize(m);
     }
     std::size_t size = buffer1.size();
 
@@ -57,6 +61,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    std::cout << count * chunk_size  << "\n";
+    std::cout << count * chunk_size + diff << "\n";
     return 0;
 }
