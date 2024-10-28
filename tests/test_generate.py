@@ -27,9 +27,7 @@ def naive_transform(filename: pathlib.Path, expected_outfile: pathlib.Path) -> N
     compare_transformed_files(actual, expected_outfile)
 
 
-@pytest.mark.parametrize(
-    "experiment_name", ["k_means", "omp", "pivoter", "trivial"]
-)
+@pytest.mark.parametrize("experiment_name", ["k_means", "omp", "pivoter", "trivial"])
 def test_naive_transformation(experiment_name: str) -> None:
     exp = pathlib.Path("experiment") / experiment_name
     naive_transform(
@@ -45,15 +43,32 @@ def tcp_transform(
     compare_transformed_files(actual, expected_outfile)
 
 
-@pytest.mark.parametrize(
-    "experiment_name", ["k_means", "omp", "pivoter", "trivial"]
-)
+@pytest.mark.parametrize("experiment_name", ["k_means", "omp", "pivoter", "trivial"])
 def test_tcp_transformation(experiment_name: str) -> None:
     exp = pathlib.Path("experiment") / experiment_name
     filename = exp / "main.py"
     expected_outfile = exp / "vm.py"
     tcp_transform(
         tag=experiment_name,
+        function_name="run",
+        filename=filename,
+        expected_outfile=expected_outfile,
+    )
+
+
+def proc_transform(
+    filename: pathlib.Path, function_name: str, expected_outfile: pathlib.Path
+) -> None:
+    actual = ast_transform.coredump(filename, function_name)
+    compare_transformed_files(actual, expected_outfile)
+
+
+@pytest.mark.parametrize("experiment_name", ["k_means", "omp", "pivoter", "trivial"])
+def test_proc_transformation(experiment_name: str) -> None:
+    exp = pathlib.Path("experiment") / experiment_name
+    filename = exp / "main.py"
+    expected_outfile = exp / "proc.py"
+    proc_transform(
         function_name="run",
         filename=filename,
         expected_outfile=expected_outfile,
