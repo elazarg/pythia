@@ -10,7 +10,7 @@ import pathlib
 import hashlib
 import socket
 import struct
-
+from checkpoint.criu_binding import set_criu, criu_dump
 
 FUEL = "FUEL"
 STEP = "STEP"
@@ -59,10 +59,10 @@ class Loader:
 
         # make sure the cache is invalidated when the module changes
         h = compute_hash(module_filename, env)
-        cachedir = pathlib.Path(tempfile.gettempdir()) / f"pythia-{h}"
-        print(f"Using cache directory {cachedir}", file=sys.stderr)
-        cachedir.mkdir(parents=False, exist_ok=True)
-        self.filename = cachedir / "store.pickle"
+        cache_dir = pathlib.Path(tempfile.gettempdir()) / f"pythia-{h}"
+        print(f"Using cache directory {cache_dir}", file=sys.stderr)
+        cache_dir.mkdir(parents=False, exist_ok=True)
+        self.filename = cache_dir / "store.pickle"
         (results_path / tag).mkdir(parents=True, exist_ok=True)
         self.tsv_filename = (results_path / tag / module_filename.stem).with_suffix(
             ".tsv"
@@ -243,6 +243,34 @@ def sigint() -> None:
     os.kill(PID, signal.SIGINT)
 
 
-def self_coredump(i) -> None:
-    if i % STEP_VALUE in [0, 1]:
-        sigint()
+SET_CRIU = False
+CRIU_FOLDER = pathlib.Path("criu_images")
+CRIU_DUMPS = CRIU_FOLDER / "dumps"
+
+coredump_iterations = 0
+coredump_steps = 0
+
+
+def self_coredump() -> None:
+    global coredump_iterations, coredump_steps
+    if not coredump_iterations:
+        CRIU_FOLDER.mkdir(exist_ok=True)
+        shutil.rmtree(CRIU_DUMPS, ignore_errors=True)
+        CRIU_DUMPS.mkdir(exist_ok=False)
+        set_criu(CRIU_FOLDER)
+    coredump_iterations += 1
+
+    if coredump_iterations % STEP_VALUE in [0, 1]:
+        criu_dump()
+        image_file = CRIU_FOLDER / "pages-1.img"
+        if not image_file.exists():
+            raise RuntimeError(
+                "CRIU image was not created. Make sure to run the CRIU service:\n"
+                "sudo criu service --shell-job --address /tmp/criu_service.socket"
+            )
+        target_image = CRIU_DUMPS / f"{coredump_steps:05d}.a.img"
+        os.rename(CRIU_FOLDER / "pages-1.img", target_image)
+        if coredump_steps > 0:
+            source_image = CRIU_DUMPS / f"{coredump_steps-1:05d}.b.img"
+            source_image.hardlink_to(target_image)
+        coredump_steps += 1

@@ -54,12 +54,26 @@ chpasswd: { expire: False }
 ssh_pwauth: True
 allow_public_ssh_keys: true
 
+package_update: true
+package_upgrade: false
+
+autoinstall:
+  apt:
+    preserve_sources_list: false
+    primary:
+      - arches: [amd64, i386]
+        uri: http://us.archive.ubuntu.com/ubuntu
+      - arches: [default]
+        uri: http://ports.ubuntu.com/ubuntu-ports
+    sources:
+      deadsnakes-ppa:
+        source: ppa:criu/ppa
+
 packages:
   - python3-pip
   - python3-venv
+  - criu
 
-package_update: false
-package_upgrade: false
 
 mounts:
  - [pythia, ${PROJECT_DIR}, 9p]

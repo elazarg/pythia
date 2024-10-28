@@ -3,6 +3,7 @@ from __future__ import annotations as _
 import ast
 import pathlib
 import typing
+from typing import Callable
 
 import black
 
@@ -197,61 +198,82 @@ def transform(
     return black.format_str(res, mode=black.FileMode())
 
 
-def make_for_tcp(for_loop: ast.For, tag: str, filename: pathlib.Path) -> ast.With:
-    parse_expression = Parser(filename).parse_expression
-    iter = ast.Call(
-        func=parse_expression(f"client.iterate"),
-        args=[for_loop.iter],
-        keywords=[],
-    )
-
-    for_loop = ast.For(
-        target=for_loop.target,
-        iter=iter,
-        body=[
-            *for_loop.body,
-            ast.Expr(parse_expression(f"client.commit()")),
-        ],
-        orelse=for_loop.orelse,
-        type_comment=for_loop.type_comment,
-        lineno=for_loop.lineno,
-        col_offset=for_loop.col_offset,
-    )
-
-    res = ast.With(
-        items=[
-            ast.withitem(
-                context_expr=parse_expression(f'persist.SimpleTcpClient("{tag}")'),
-                optional_vars=ast.Name(id="client", ctx=ast.Store()),
-            )
-        ],
-        body=[
-            for_loop,
-        ],
-    )
-    return res
+type Maker = Callable[[ast.For], ast.stmt]
 
 
-class TcpTransformer(ast.NodeTransformer):
-    def __init__(self, tag: str, filename: pathlib.Path) -> None:
-        self.tag = tag
-        self.filename = filename
+def make_for_tcp(tag: str, filename: pathlib.Path) -> Maker:
+    def maker(for_loop: ast.For) -> ast.With:
+        parse_expression = Parser(filename).parse_expression
+        iter = ast.Call(
+            func=parse_expression(f"client.iterate"),
+            args=[for_loop.iter],
+            keywords=[],
+        )
 
-    def visit_For(self, for_loop: ast.For) -> ast.With | ast.For:
+        for_loop = ast.For(
+            target=for_loop.target,
+            iter=iter,
+            body=[
+                *for_loop.body,
+                ast.Expr(parse_expression(f"client.commit()")),
+            ],
+            orelse=for_loop.orelse,
+            type_comment=for_loop.type_comment,
+            lineno=for_loop.lineno,
+            col_offset=for_loop.col_offset,
+        )
+
+        res = ast.With(
+            items=[
+                ast.withitem(
+                    context_expr=parse_expression(f'persist.SimpleTcpClient("{tag}")'),
+                    optional_vars=ast.Name(id="client", ctx=ast.Store()),
+                )
+            ],
+            body=[
+                for_loop,
+            ],
+        )
+        return res
+
+    return maker
+
+
+def make_coredump(filename: pathlib.Path) -> Maker:
+    def maker(for_loop: ast.For) -> ast.For:
+        parse_expression = Parser(filename).parse_expression
+        return ast.For(
+            target=for_loop.target,
+            iter=for_loop.iter,
+            body=[
+                ast.Expr(parse_expression(f"persist.self_coredump()")),
+                *for_loop.body,
+            ],
+            orelse=for_loop.orelse,
+            type_comment=for_loop.type_comment,
+            lineno=for_loop.lineno,
+            col_offset=for_loop.col_offset,
+        )
+
+    return maker
+
+
+class SimpleTransformer(ast.NodeTransformer):
+    def __init__(self, maker: Maker) -> None:
+        self.maker = maker
+
+    def visit_For(self, for_loop: ast.For) -> ast.stmt:
         for_loop = typing.cast(ast.For, self.generic_visit(for_loop))
         assert isinstance(for_loop, ast.For)
         if not for_loop.type_comment:
             return for_loop
-        return make_for_tcp(for_loop, self.tag, self.filename)
+        return self.maker(for_loop)
 
 
-class TcpCompiler(ast.NodeTransformer):
-    def __init__(
-        self, tag: str, filename: pathlib.Path, function_name: str, parser: Parser
-    ) -> None:
-        self.tag = tag
+class SimpleCompiler(ast.NodeTransformer):
+    def __init__(self, for_maker: Maker, function_name: str, parser: Parser) -> None:
+        self.for_maker = for_maker
         self.function_name = function_name
-        self.filename = filename
         self.parser = parser
 
     def visit_Module(self, node: ast.Module) -> ast.Module:
@@ -263,19 +285,27 @@ class TcpCompiler(ast.NodeTransformer):
     def visit_FunctionDef(self, function: ast.FunctionDef) -> ast.FunctionDef:
         if function.name != self.function_name:
             return function
-        res = TcpTransformer(self.tag, self.filename).visit(function)
+        res = SimpleTransformer(self.for_maker).visit(function)
         assert isinstance(res, ast.FunctionDef)
         return res
 
 
-def tcp_client(tag: str, filename: pathlib.Path, function_name: str) -> str:
+def generate_simple(filename: pathlib.Path, function_name: str, maker: Maker) -> str:
     parser = Parser(filename)
 
     with open(filename, encoding="utf-8") as f:
         source = f.read()
     tree = parser.parse(source)
 
-    tree = TcpCompiler(tag, filename, function_name, parser).visit(tree)
+    tree = SimpleCompiler(maker, function_name, parser).visit(tree)
     tree = ast.fix_missing_locations(tree)
     res = ast.unparse(tree)
     return black.format_str(res, mode=black.FileMode())
+
+
+def tcp_client(tag: str, filename: pathlib.Path, function_name: str) -> str:
+    return generate_simple(filename, function_name, make_for_tcp(tag, filename))
+
+
+def coredump(filename: pathlib.Path, function_name: str) -> str:
+    return generate_simple(filename, function_name, make_coredump(filename))

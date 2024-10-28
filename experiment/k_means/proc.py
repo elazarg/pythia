@@ -1,4 +1,4 @@
-from checkpoint.persist import self_coredump
+from checkpoint import persist
 import numpy as np
 import sklearn.datasets
 
@@ -21,7 +21,7 @@ def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     centroids = X[np.random.choice(nsamples, k)]
     clusters = list[list[int]]()
     for i in range(max_iterations):  # type: int
-        self_coredump(i)
+        persist.self_coredump()
         clusters = [list[int]() for _ in range(k)]
         for sample_i in range(len(X)):
             r = np.argmin(np.linalg.norm(X[sample_i] - centroids, axis=1))

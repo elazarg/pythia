@@ -10,10 +10,12 @@ from pythia.analysis import analyze_and_transform
 
 
 def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
-    parser = argparse.ArgumentParser(usage="%(prog)s [options] pythonfile [args]")
+    parser = argparse.ArgumentParser(
+        allow_abbrev=False, usage="%(prog)s [options] pythonfile [args]"
+    )
     parser.add_argument(
         "--kind",
-        choices=["analyze", "naive", "vm"],
+        choices=["analyze", "naive", "vm", "proc"],
         default="analyze",
         help="kind of instrumentation to use",
     )
@@ -65,6 +67,9 @@ def generate_instrumented_file(
         case "naive":
             instrumented = pythonfile.with_name("naive.py")
             output = ast_transform.transform(pythonfile, dirty_map=None)
+        case "proc":
+            instrumented = pythonfile.with_name("proc.py")
+            output = ast_transform.coredump(pythonfile, function)
         case "analyze":
             instrumented = pythonfile.with_name("instrumented.py")
             output = analyze_and_transform(
