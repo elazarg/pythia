@@ -1375,6 +1375,8 @@ def binop_to_dunder_method(op: str) -> tuple[str, typing.Optional[str]]:
 
 def unop_to_dunder_method(op: str) -> str:
     match op:
+        case "bool":
+            return "__bool__"
         case "-":
             return "__neg__"
         case "+":
@@ -1805,7 +1807,9 @@ class TypeCollector:
                 assert isinstance(update, ast.Call)
                 assert len(update.args) == 1
                 update_arg = update.args[0]
-                if isinstance(update_arg, ast.Constant) and isinstance(update_arg.value, str):
+                if isinstance(update_arg, ast.Constant) and isinstance(
+                    update_arg.value, str
+                ):
                     update_arg = ast.parse(update_arg.s).body[0].value
                 update_type = self.expr_to_type(update_arg)
             else:

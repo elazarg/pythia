@@ -87,18 +87,24 @@ def make_int() -> int:
     return 1
 
 
-def pair() -> tuple[int, float]:
-    x = 2
-    res = x + 1
-    return res
+def simple_tuple() -> tuple[int, int]:
+    return (1, 2)
 
 
 def destruct():
-    a, b = pair()
+    a, b = simple_tuple()
 
 
-def test_tuple(a: int, b: float) -> int:
+def test_tuple_simple_assign(a: int, b: float) -> None:
+    (c, d) = (a, b)
+
+
+def test_tuple_assign_through_var(a: int, b: float) -> None:
     x = (a, b)
     (c, d) = x
+
+
+def test_tuple2(a: int, b: float) -> int:
+    x = (a, b)
     y = x[1]
     return y
