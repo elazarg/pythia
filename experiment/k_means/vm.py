@@ -24,10 +24,10 @@ def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
         for i in client.iterate(range(max_iterations)):  # type: int
             clusters = [list[int]() for _ in range(k)]
             for sample_i in range(len(X)):
-                r = np.argmin(np.linalg.norm(X[sample_i] - centroids, axis=1))
+                r = np.argmin(np.linalg.norm(X[sample_i] - centroids, None, 1))
                 clusters[r].append(sample_i)
             prev_centroids = centroids
-            centroids = np.array([np.mean(X[cluster], axis=0) for cluster in clusters])
+            centroids = np.array([np.mean(X[cluster], 0) for cluster in clusters])
             diff = centroids - prev_centroids
             if not diff.any():
                 break
