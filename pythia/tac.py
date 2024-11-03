@@ -595,10 +595,16 @@ def make_tac_no_dels(
         case ["BINARY", "OP"] | ["COMPARE", "OP"] | ["IS", "OP"] | ["CONTAINS", "OP"]:
             left = stackvar(stack_depth - 1)
             right = stackvar(stack_depth)
+            res = []
+            if argrepr.startswith("bool("):
+                argrepr = argrepr[5:-1]
+                res = [Assign(lhs, Unary(UnOp.BOOL, lhs))]
             if argrepr != "!=" and argrepr[-1] == "=" and argrepr[0] != "=":
-                return [Assign(lhs, Binary(left, argrepr[:-1], right, inplace=True))]
+                return [
+                    Assign(lhs, Binary(left, argrepr[:-1], right, inplace=True))
+                ] + res
             else:
-                return [Assign(lhs, Binary(left, argrepr, right, inplace=False))]
+                return [Assign(lhs, Binary(left, argrepr, right, inplace=False))] + res
         case ["LIST", "APPEND" as op] | ["SET", "ADD" as op]:
             opvar = Var(op.lower())
             return [
