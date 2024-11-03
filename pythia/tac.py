@@ -50,13 +50,14 @@ class PredefinedFunction(enum.Enum):
 
 
 class UnOp(enum.Enum):
-    NOT = 0
-    POS = 1
-    INVERT = 2
-    NEG = 3
-    ITER = 4
-    YIELD_ITER = 5
-    NEXT = 6
+    BOOL = 0
+    NOT = 1
+    POS = 2
+    INVERT = 3
+    NEG = 4
+    ITER = 5
+    YIELD_ITER = 6
+    NEXT = 7
 
 
 @dataclass(frozen=True)
@@ -514,7 +515,7 @@ def make_tac_cfg(f: typing.Any, simplify: bool = False) -> gu.Cfg[Tac]:
         sys.version_info[:2] in allowed
     ), f"Python version is {sys.version_info} but only {allowed} is supported"
     depths, ins_cfg = instruction_cfg.make_instruction_block_cfg(f)
-    # gu.pretty_print_cfg(gu.simplify_cfg(ins_cfg))
+    gu.pretty_print_cfg(gu.simplify_cfg(ins_cfg))
     trace_origin: dict[int, instruction_cfg.Instruction] = {}
 
     def instruction_block_to_tac_block(
@@ -538,6 +539,7 @@ def make_tac_cfg(f: typing.Any, simplify: bool = False) -> gu.Cfg[Tac]:
     tac_cfg.annotator = annotator
 
     tac_cfg = gu.simplify_cfg(tac_cfg)
+    gu.pretty_print_cfg(tac_cfg)
     if not simplify:
         tac_cfg = gu.refine_to_chain(tac_cfg)
     return tac_cfg
@@ -561,6 +563,7 @@ def make_tac_no_dels(
             return []
         case (
             ["UNARY", sop]
+            | ["TO", sop]
             | ["GET", "ITER" as sop]
             | ["GET", "YIELD" as sop, "FROM", "ITER"]
         ):
@@ -571,6 +574,8 @@ def make_tac_no_dels(
                     op = UnOp.NEG
                 case "INVERT":
                     op = UnOp.INVERT
+                case "BOOL":
+                    op = UnOp.NOT
                 case "NOT":
                     op = UnOp.NOT
                 case "ITER":
@@ -684,10 +689,10 @@ def make_tac_no_dels(
             argrepr1, argrepr2 = argrepr.split(",")
             val1, val2 = val
             first = make_tac_no_dels(
-                first_op, val1, 1, stack_depth - 1, argrepr1, start_lineno
+                first_op, val1, 1, stack_depth, argrepr1, start_lineno
             )
             second = make_tac_no_dels(
-                second_op, val2, 1, stack_depth, argrepr2, start_lineno
+                second_op, val2, 1, stack_depth + 1, argrepr2, start_lineno
             )
             return first + second
         case ["LOAD", *ops]:
@@ -734,8 +739,6 @@ def make_tac_no_dels(
                     stackvar(stack_depth - 2),
                 )
             ]
-        case ["TO", "BOOL"]:
-            return [Assign(lhs, Call(Var("bool"), (lhs,)))]
         case ["PUSH", "NULL"]:
             return []
         case ["POP", "BLOCK"]:

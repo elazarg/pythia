@@ -38,7 +38,7 @@ def is_jump_source(ins: Instruction) -> bool:
 
 
 def is_jump(ins: Instruction) -> bool:
-    if sys.version_info >= (3, 12):
+    if sys.version_info >= (3, 13):
         return ins.opcode in dis.hasjump
     return ins.opcode in dis.hasjrel or ins.opcode in dis.hasjabs
 

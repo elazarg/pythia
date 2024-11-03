@@ -278,6 +278,8 @@ class Pointer:
 
 def unop_to_str(op: tac.UnOp) -> str:
     match op:
+        case tac.UnOp.BOOL:
+            return "bool"
         case tac.UnOp.NEG:
             return "-"
         case tac.UnOp.NOT:
