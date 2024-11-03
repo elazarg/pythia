@@ -509,7 +509,7 @@ def make_class(name: str) -> Attribute:
 
 
 def make_tac_cfg(f: typing.Any, simplify: bool = False) -> gu.Cfg[Tac]:
-    allowed = {(3, 12)}
+    allowed = {(3, 12), (3, 13)}
     assert (
         sys.version_info[:2] in allowed
     ), f"Python version is {sys.version_info} but only {allowed} is supported"
@@ -672,6 +672,24 @@ def make_tac_no_dels(
             return [Assign(lhs, stackvar(out - val))]
         case ["LOAD", "ASSERTION", "ERROR"]:
             return []  # Assign(lhs, Const(AssertionError()))]
+        case (
+            ["STORE", "FAST", "LOAD", "FAST"]
+            | ["STORE", "FAST", "STORE", "FAST"]
+            | ["LOAD", "FAST", "LOAD", "FAST"]
+        ):
+            # python13 superinstruction
+            # split superinstruction into two instructions:
+            first_op = "LOAD_FAST" if opname.startswith("LOAD_FAST") else "STORE_FAST"
+            second_op = "LOAD_FAST" if opname.endswith("LOAD_FAST") else "STORE_FAST"
+            argrepr1, argrepr2 = argrepr.split(",")
+            val1, val2 = val
+            first = make_tac_no_dels(
+                first_op, val1, 1, stack_depth - 1, argrepr1, start_lineno
+            )
+            second = make_tac_no_dels(
+                second_op, val2, 1, stack_depth, argrepr2, start_lineno
+            )
+            return first + second
         case ["LOAD", *ops]:
             assert isinstance(val, str), f"{opname}, {val}, {argrepr}"
             match ops:
@@ -716,6 +734,8 @@ def make_tac_no_dels(
                     stackvar(stack_depth - 2),
                 )
             ]
+        case ["TO", "BOOL"]:
+            return [Assign(lhs, Call(Var("bool"), (lhs,)))]
         case ["PUSH", "NULL"]:
             return []
         case ["POP", "BLOCK"]:
@@ -783,8 +803,15 @@ def make_tac_no_dels(
             nargs = val & 0xFF
             if sys.version_info[:2] == (3, 12):
                 stack_depth -= nargs
+            elif sys.version_info[:2] == (3, 13):
+                stack_depth -= nargs
+            else:
+                assert False
             mid = [stackvar(i + 1) for i in range(stack_depth, stack_depth + nargs)]
-            return [Assign(lhs, Call(stackvar(stack_depth), tuple(mid)))]
+            res = [Assign(lhs, Call(stackvar(stack_depth), tuple(mid)))]
+            return res
+        case ["CALL", "KW"]:
+            assert False, "added in python3.13"
         case ["CALL", "INTRINSIC", v]:
             assert False, "added in python3.12"
         case ["CALL", "FUNCTION", "EX"]:
@@ -850,6 +877,8 @@ def make_tac_no_dels(
             if val & 0x08:
                 function.free_var_cells = stackvar(stack_depth - i)
             return [Assign(lhs, function)]
+        case _:
+            raise NotImplementedError(f"{opname}, {val}, {argrepr}")
     return [Unsupported(opname)]
 
 
