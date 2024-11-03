@@ -809,15 +809,15 @@ def make_tac_no_dels(
             ]
         case ["CALL"]:
             assert isinstance(val, int)
-            nargs = val & 0xFF
+            argc = val & 0xFF
             if sys.version_info[:2] == (3, 12):
-                stack_depth -= nargs
+                func = stack_depth - argc
             elif sys.version_info[:2] == (3, 13):
-                stack_depth -= nargs
+                func = stack_depth - argc
             else:
-                assert False
-            mid = [stackvar(i + 1) for i in range(stack_depth, stack_depth + nargs)]
-            res = [Assign(lhs, Call(stackvar(stack_depth), tuple(mid)))]
+                assert False, sys.version_info
+            args = tuple([stackvar(stack_depth - i) for i in reversed(range(argc))])
+            res = [Assign(lhs, Call(stackvar(func), args))]
             return res
         case ["CALL", "KW"]:
             assert False, "added in python3.13"
