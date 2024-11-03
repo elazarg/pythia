@@ -1,5 +1,4 @@
 networkx==3.3.0
-matplotlib==3.9.0
 pytest==8.2.1
 qemu.qmp==0.0.3
 black==24.4.2

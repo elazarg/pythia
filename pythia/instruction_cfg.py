@@ -1,4 +1,5 @@
 import dis
+import sys
 import typing
 from dis import Instruction
 from typing import Any
@@ -37,6 +38,8 @@ def is_jump_source(ins: Instruction) -> bool:
 
 
 def is_jump(ins: Instruction) -> bool:
+    if sys.version_info >= (3, 12):
+        return ins.opcode in dis.hasjump
     return ins.opcode in dis.hasjrel or ins.opcode in dis.hasjabs
 
 
