@@ -39,8 +39,9 @@ class Clibrary:
     A class for wrapping C libraries and their functions.
     """
 
-    def __init__(self, library_name: str):
+    def __init__(self, library_name: str, namespace_prefix: str = "") -> None:
         self.lib = ctypes.CDLL(find_library(library_name))
+        self.namespace_prefix = namespace_prefix
 
     def function[
         *Args, Res
@@ -48,7 +49,7 @@ class Clibrary:
         """
         A decorator method for wrapping individual C functions.
         """
-        func_name = func.__name__
+        func_name = f"{self.namespace_prefix}{func.__name__}"
         annotations = func.__annotations__
 
         c_func = getattr(self.lib, func_name)
