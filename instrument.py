@@ -29,6 +29,12 @@ def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
         help="Number of iterations to run before inducing a crash",
     )
     parser.add_argument(
+        "--no-generate",
+        type=bool,
+        default=False,
+        help="Do not generate instrumented file",
+    )
+    parser.add_argument(
         "--step",
         type=int,
         default=1,
@@ -55,39 +61,52 @@ def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
     return args, remaining_args
 
 
-def generate_instrumented_file(
-    kind: str, pythonfile: str, function: str
-) -> pathlib.Path:
-    pythonfile = pathlib.Path(pythonfile)
+def instrumented_filename(kind: str) -> str:
     match kind:
         case "naive":
-            instrumented = pythonfile.with_name("naive.py")
-            output = ast_transform.transform(pythonfile, dirty_map=None)
+            return "naive.py"
         case "vm":
-            instrumented = pythonfile.with_name("vm.py")
-            tag = pathlib.Path(pythonfile).parent.name
-            output = ast_transform.tcp_client(tag, pythonfile, function)
+            return "vm.py"
         case "proc":
-            instrumented = pythonfile.with_name("proc.py")
-            tag = pathlib.Path(pythonfile).parent.name
-            output = ast_transform.coredump(tag, pythonfile, function)
+            return "proc.py"
         case "analyze":
-            instrumented = pythonfile.with_name("instrumented.py")
+            return "instrumented.py"
+        case _:
+            raise ValueError(f"Unknown kind {kind}")
+
+
+def generate_instrumented_file_text(
+    kind: str, source_file: pathlib.Path, function: str
+) -> str:
+    tag = source_file.parent.name
+    match kind:
+        case "naive":
+            output = ast_transform.transform(source_file, dirty_map=None)
+        case "vm":
+            output = ast_transform.tcp_client(tag, source_file, function)
+        case "proc":
+            output = ast_transform.coredump(tag, source_file, function)
+        case "analyze":
             output = analyze_and_transform(
-                filename=pythonfile,
+                filename=source_file,
                 function_name=function,
                 print_invariants=False,
                 simplify=False,
             )
         case _:
             raise ValueError(f"Unknown kind {kind}")
-    pathlib.Path(instrumented).write_text(output)
-    return instrumented
+    return output
 
 
 def main() -> None:
     args, remaining_args = parse_args(sys.argv[1:])
-    instrumented = generate_instrumented_file(args.kind, args.pythonfile, args.function)
+    instrumented = pathlib.Path(args.pythonfile).with_name(
+        instrumented_filename(args.kind)
+    )
+    if not args.no_generate:
+        instrumented.write_text(
+            generate_instrumented_file_text(args.kind, args.pythonfile, args.function)
+        )
     if args.kind != "vm":
         try:
             persist.run_instrumented_file(
