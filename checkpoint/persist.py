@@ -276,13 +276,12 @@ if os.name == "posix":
                 global coredump_steps
                 folder = CRIU_FOLDER / f"{coredump_steps}"
                 folder.mkdir(exist_ok=True, parents=True)
-                criu.set_images_dir(folder)
-
                 if coredump_steps > 0:
                     parent = f"../{coredump_steps-1}".encode()
                     criu.set_parent_images(parent)
                 criu.set_log_file(b"criu.log")
-                criu.dump()
+                with criu.set_images_dir(folder):
+                    criu.dump()
                 coredump_steps += 1
 
             if not coredump_iterations:
