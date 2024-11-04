@@ -267,6 +267,7 @@ if os.name == "posix":
             criu.set_auto_dedup(False)
 
         def make_dump(criu_folder: pathlib.Path) -> None:
+            # Try to minimize memory footprint
             global coredump_steps
             if coredump_steps > 0:
                 parent = f"../{coredump_steps-1}".encode()
@@ -281,6 +282,7 @@ if os.name == "posix":
             coredump_steps += 1
 
         def self_coredump(tag: str) -> None:
+            # Try to minimize memory footprint
             global coredump_iterations
 
             if not coredump_iterations:
@@ -289,5 +291,6 @@ if os.name == "posix":
 
             coredump_iterations += 1
 
-            if coredump_iterations % STEP_VALUE in [0, 1]:
+            mod = coredump_iterations % STEP_VALUE
+            if mod == 0 or mod == 1:
                 make_dump(CRIU_IMAGES / tag)
