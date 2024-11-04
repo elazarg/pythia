@@ -273,7 +273,6 @@ if os.name == "posix":
                 parent = f"../{coredump_steps-1}".encode()
                 criu.set_parent_images(parent)
                 del parent
-            criu.set_log_file(b"criu.log")
             folder = criu_folder / f"{coredump_steps}"
             folder.mkdir(exist_ok=True, parents=True)
             with criu.set_images_dir(folder):
