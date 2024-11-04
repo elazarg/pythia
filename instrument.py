@@ -30,7 +30,7 @@ def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
     )
     parser.add_argument(
         "--no-generate",
-        type=bool,
+        action="store_true",
         default=False,
         help="Do not generate instrumented file",
     )
