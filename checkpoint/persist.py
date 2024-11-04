@@ -269,7 +269,7 @@ if os.name == "posix":
                 criu.set_shell_job(True)
                 criu.set_leave_running(True)
                 criu.set_service_address(b"/tmp/criu_service.socket")
-                # criu.set_track_mem(True)
+                criu.set_track_mem("WSL" not in os.uname().release)
                 criu.set_auto_dedup(False)
 
             def make_dump() -> None:
