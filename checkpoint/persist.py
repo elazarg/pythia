@@ -261,14 +261,16 @@ if os.name == "posix":
 
             def make_dump() -> None:
                 global coredump_steps
-                criu.set_images_dir(CRIU_FOLDER / f"{coredump_steps}")
+                folder = CRIU_FOLDER / f"{coredump_steps}"
+                folder.mkdir(exist_ok=True, parents=True)
+                criu.set_images_dir(folder)
+
                 if coredump_steps > 0:
                     criu.set_parent_images(bytes(CRIU_FOLDER / f"{coredump_steps-1}"))
                 criu.dump()
                 coredump_steps += 1
 
             if not coredump_iterations:
-                CRIU_FOLDER.mkdir(exist_ok=True, parents=True)
                 shutil.rmtree(CRIU_DUMPS, ignore_errors=True)
                 CRIU_DUMPS.mkdir(exist_ok=False)
 
