@@ -252,56 +252,42 @@ if os.name == "posix":
         coredump_iterations = 0
         coredump_steps = 0
         pid = os.getpid()
+        CRIU_IMAGES = pathlib.Path("criu_images").absolute()
+
+        def init_opts():
+            if criu.init_opts() < 0:
+                raise OSError("CRIU init failed")
+            criu.set_log_file(b"criu.log")
+            criu.set_log_level(4)
+            criu.set_pid(pid)
+            criu.set_shell_job(True)
+            criu.set_leave_running(True)
+            criu.set_service_address(b"/tmp/criu_service.socket")
+            criu.set_track_mem("WSL" not in os.uname().release)
+            criu.set_auto_dedup(False)
+
+        def make_dump(criu_folder: pathlib.Path) -> None:
+            global coredump_steps
+            if coredump_steps > 0:
+                parent = f"../{coredump_steps-1}".encode()
+                criu.set_parent_images(parent)
+                del parent
+            criu.set_log_file(b"criu.log")
+            folder = criu_folder / f"{coredump_steps}"
+            folder.mkdir(exist_ok=True, parents=True)
+            with criu.set_images_dir(folder):
+                del folder
+                criu.dump()
+            coredump_steps += 1
 
         def self_coredump(tag: str) -> None:
             global coredump_iterations
-            PARENTS = True
-            SETUP_CRIU = False
-            CRIU_FOLDER = pathlib.Path("criu_images").absolute() / tag
-            CRIU_DUMPS = CRIU_FOLDER / "dumps"
-
-            def init_opts():
-                if criu.init_opts() < 0:
-                    raise OSError("CRIU init failed")
-                criu.set_log_file(b"criu.log")
-                criu.set_log_level(4)
-                criu.set_pid(pid)
-                criu.set_shell_job(True)
-                criu.set_leave_running(True)
-                criu.set_service_address(b"/tmp/criu_service.socket")
-                criu.set_track_mem("WSL" not in os.uname().release)
-                criu.set_auto_dedup(False)
-
-            def make_dump() -> None:
-                global coredump_steps
-                folder = CRIU_FOLDER / f"{coredump_steps}"
-                folder.mkdir(exist_ok=True, parents=True)
-                if coredump_steps > 0:
-                    parent = f"../{coredump_steps-1}".encode()
-                    criu.set_parent_images(parent)
-                criu.set_log_file(b"criu.log")
-                with criu.set_images_dir(folder):
-                    criu.dump()
-                coredump_steps += 1
 
             if not coredump_iterations:
-                shutil.rmtree(CRIU_DUMPS, ignore_errors=True)
-                CRIU_DUMPS.mkdir(exist_ok=False, parents=True)
                 init_opts()
-                make_dump()
+                make_dump(CRIU_IMAGES / tag)
+
             coredump_iterations += 1
 
             if coredump_iterations % STEP_VALUE in [0, 1]:
-                make_dump()
-                if not PARENTS:
-                    image_file = CRIU_FOLDER / "pages-1.img"
-                    if not image_file.exists():
-                        raise RuntimeError(
-                            "CRIU image was not created. Make sure to run the CRIU service:\n"
-                            "sudo criu service --shell-job --address /tmp/criu_service.socket"
-                        )
-                    target_image = CRIU_DUMPS / f"{coredump_steps:05d}.a.img"
-                    os.rename(image_file, target_image)
-                    if coredump_steps > 1:
-                        source_image = CRIU_DUMPS / f"{coredump_steps-1:05d}.b.img"
-                        source_image.hardlink_to(target_image)
+                make_dump(CRIU_IMAGES / tag)
