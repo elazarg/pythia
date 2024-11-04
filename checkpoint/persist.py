@@ -245,7 +245,7 @@ def sigint() -> None:
 
 if os.name == "posix":
     try:
-        from checkpoint.criu_binding import setup_criu, criu_dump
+        from . import criu
     except AttributeError:
         print("CRIU is not available", file=sys.stderr)
     else:
@@ -253,21 +253,42 @@ if os.name == "posix":
         coredump_steps = 0
 
         def self_coredump(tag: str) -> None:
-            global coredump_iterations, coredump_steps
-            DEDUP = True
+            global coredump_iterations
+            PARENTS = True
             SETUP_CRIU = False
             CRIU_FOLDER = pathlib.Path("criu_images") / tag
             CRIU_DUMPS = CRIU_FOLDER / "dumps"
+
+            def make_dump() -> None:
+                global coredump_steps
+                criu.set_images_dir(CRIU_FOLDER / f"{coredump_steps}")
+                if coredump_steps > 0:
+                    criu.set_parent_images(bytes(CRIU_FOLDER / f"{coredump_steps-1}"))
+                criu.dump()
+                coredump_steps += 1
+
             if not coredump_iterations:
-                CRIU_FOLDER.mkdir(exist_ok=True)
+                CRIU_FOLDER.mkdir(exist_ok=True, parents=True)
                 shutil.rmtree(CRIU_DUMPS, ignore_errors=True)
                 CRIU_DUMPS.mkdir(exist_ok=False)
-                setup_criu(CRIU_FOLDER, dedup=DEDUP)
+
+                if criu.init_opts() < 0:
+                    raise OSError("CRIU init failed")
+                criu.set_log_file(b"criu.log")
+                criu.set_log_level(4)
+                criu.set_pid(os.getpid())
+                criu.set_shell_job(True)
+                criu.set_leave_running(True)
+                criu.set_service_address(b"/tmp/criu_service.socket")
+                criu.set_track_mem(True)
+                criu.set_auto_dedup(False)
+
+                make_dump()
             coredump_iterations += 1
 
             if coredump_iterations % STEP_VALUE in [0, 1]:
-                criu_dump()
-                if not DEDUP:
+                make_dump()
+                if not PARENTS:
                     image_file = CRIU_FOLDER / "pages-1.img"
                     if not image_file.exists():
                         raise RuntimeError(
@@ -276,7 +297,6 @@ if os.name == "posix":
                         )
                     target_image = CRIU_DUMPS / f"{coredump_steps:05d}.a.img"
                     os.rename(image_file, target_image)
-                    if coredump_steps > 0:
+                    if coredump_steps > 1:
                         source_image = CRIU_DUMPS / f"{coredump_steps-1:05d}.b.img"
                         source_image.hardlink_to(target_image)
-                    coredump_steps += 1
