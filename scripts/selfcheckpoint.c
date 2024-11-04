@@ -13,7 +13,7 @@
 
 int fd = -1;
 
-void set_criu() {
+void setup_criu() {
     if (criu_init_opts() < 0) {
         perror("CRIU init failed");
         exit(EXIT_FAILURE);
@@ -35,7 +35,7 @@ void set_criu() {
 }
 
 int main() {
-    set_criu();
+    setup_criu();
 
     // if (access("./criu_images", F_OK) == 0) {
     //     printf("Restoring from checkpoint...\n");

@@ -1,1 +1,1 @@
-healthstudy --k=200
+healthstudy --k=35

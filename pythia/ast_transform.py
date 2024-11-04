@@ -239,14 +239,14 @@ def make_for_tcp(tag: str, filename: pathlib.Path) -> Maker:
     return maker
 
 
-def make_coredump(filename: pathlib.Path) -> Maker:
+def make_coredump(tag: str, filename: pathlib.Path) -> Maker:
     def maker(for_loop: ast.For) -> ast.For:
         parse_expression = Parser(filename).parse_expression
         return ast.For(
             target=for_loop.target,
             iter=for_loop.iter,
             body=[
-                ast.Expr(parse_expression(f"persist.self_coredump()")),
+                ast.Expr(parse_expression(f'persist.self_coredump("{tag}")')),
                 *for_loop.body,
             ],
             orelse=for_loop.orelse,
@@ -307,5 +307,5 @@ def tcp_client(tag: str, filename: pathlib.Path, function_name: str) -> str:
     return generate_simple(filename, function_name, make_for_tcp(tag, filename))
 
 
-def coredump(filename: pathlib.Path, function_name: str) -> str:
-    return generate_simple(filename, function_name, make_coredump(filename))
+def coredump(tag: str, filename: pathlib.Path, function_name: str) -> str:
+    return generate_simple(filename, function_name, make_coredump(tag, filename))

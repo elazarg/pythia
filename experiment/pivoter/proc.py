@@ -34,7 +34,7 @@ def run(g: dict[int, set[int]], root: int, max_only: bool = False) -> Counter[in
     root_to_leaf_path = [root]
     counter = Counter[int]()
     for r in range(10**100):  # type: int
-        persist.self_coredump()
+        persist.self_coredump("pivoter")
         if not root_to_leaf_path:
             break
         world = get_world(g, root_to_leaf_path)

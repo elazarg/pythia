@@ -23,7 +23,19 @@ def criu_restore() -> int: ...
 
 
 @criu.function
+def criu_restore_child() -> int: ...
+
+
+@criu.function
 def criu_set_images_dir_fd(fd: int) -> None: ...
+
+
+def criu_set_images_dir(path: str | bytes | PathLike[str] | PathLike[bytes]) -> None:
+    try:
+        fd = os.open(path, os.O_DIRECTORY)
+    except OSError as e:
+        raise OSError(f"Failed to open criu_images directory: {e}")
+    criu_set_images_dir_fd(fd)
 
 
 @criu.function
@@ -78,26 +90,29 @@ def criu_set_log_level(log_level: int) -> None: ...
 def criu_set_log_file(log_file: bytes) -> None: ...
 
 
-def set_criu(folder: str | bytes | PathLike[str] | PathLike[bytes]) -> None:
+@criu.function
+def criu_set_auto_dedup(auto_dedup: bool) -> None: ...
+
+
+def setup_criu(
+    folder: str | bytes | PathLike[str] | PathLike[bytes], dedup: bool
+) -> None:
     if criu_init_opts() < 0:
         raise OSError("CRIU init failed")
 
-    try:
-        fd = os.open(folder, os.O_DIRECTORY)
-    except OSError as e:
-        raise OSError(f"Failed to open criu_images directory: {e}")
-    criu_set_images_dir_fd(fd)
-
+    criu_set_images_dir(folder)
     criu_set_log_file(b"criu.log")
     criu_set_log_level(4)
     criu_set_pid(os.getpid())
+    criu_set_shell_job(True)
     criu_set_leave_running(True)
     criu_set_service_address(b"/tmp/criu_service.socket")
-    criu_set_track_mem(False)
+    criu_set_track_mem(True)
+    # criu_set_auto_dedup(dedup)
 
 
 if __name__ == "__main__":
-    set_criu("../scripts/criu_images")
+    setup_criu("../scripts/criu_images")
     c = criu_check()
     if c < 0:
         print(f"Failed to check CRIU: {os.strerror(c)}")

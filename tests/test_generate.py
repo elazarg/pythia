@@ -57,9 +57,9 @@ def test_tcp_transformation(experiment_name: str) -> None:
 
 
 def proc_transform(
-    filename: pathlib.Path, function_name: str, expected_outfile: pathlib.Path
+    tag: str, filename: pathlib.Path, function_name: str, expected_outfile: pathlib.Path
 ) -> None:
-    actual = ast_transform.coredump(filename, function_name)
+    actual = ast_transform.coredump(tag, filename, function_name)
     compare_transformed_files(actual, expected_outfile)
 
 
@@ -69,6 +69,7 @@ def test_proc_transformation(experiment_name: str) -> None:
     filename = exp / "main.py"
     expected_outfile = exp / "proc.py"
     proc_transform(
+        tag=experiment_name,
         function_name="run",
         filename=filename,
         expected_outfile=expected_outfile,
