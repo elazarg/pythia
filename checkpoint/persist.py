@@ -251,13 +251,26 @@ if os.name == "posix":
     else:
         coredump_iterations = 0
         coredump_steps = 0
+        pid = os.getpid()
 
         def self_coredump(tag: str) -> None:
             global coredump_iterations
             PARENTS = True
             SETUP_CRIU = False
-            CRIU_FOLDER = pathlib.Path("criu_images") / tag
+            CRIU_FOLDER = pathlib.Path("criu_images").absolute() / tag
             CRIU_DUMPS = CRIU_FOLDER / "dumps"
+
+            def init_opts():
+                if criu.init_opts() < 0:
+                    raise OSError("CRIU init failed")
+                criu.set_log_file(b"criu.log")
+                criu.set_log_level(4)
+                criu.set_pid(pid)
+                criu.set_shell_job(True)
+                criu.set_leave_running(True)
+                criu.set_service_address(b"/tmp/criu_service.socket")
+                # criu.set_track_mem(True)
+                criu.set_auto_dedup(False)
 
             def make_dump() -> None:
                 global coredump_steps
@@ -266,25 +279,16 @@ if os.name == "posix":
                 criu.set_images_dir(folder)
 
                 if coredump_steps > 0:
-                    criu.set_parent_images(bytes(CRIU_FOLDER / f"{coredump_steps-1}"))
+                    parent = f"../{coredump_steps-1}".encode()
+                    criu.set_parent_images(parent)
+                criu.set_log_file(b"criu.log")
                 criu.dump()
                 coredump_steps += 1
 
             if not coredump_iterations:
                 shutil.rmtree(CRIU_DUMPS, ignore_errors=True)
-                CRIU_DUMPS.mkdir(exist_ok=False)
-
-                if criu.init_opts() < 0:
-                    raise OSError("CRIU init failed")
-                criu.set_log_file(b"criu.log")
-                criu.set_log_level(4)
-                criu.set_pid(os.getpid())
-                criu.set_shell_job(True)
-                criu.set_leave_running(True)
-                criu.set_service_address(b"/tmp/criu_service.socket")
-                criu.set_track_mem(True)
-                criu.set_auto_dedup(False)
-
+                CRIU_DUMPS.mkdir(exist_ok=False, parents=True)
+                init_opts()
                 make_dump()
             coredump_iterations += 1
 
