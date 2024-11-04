@@ -105,7 +105,9 @@ def main() -> None:
     )
     if not args.no_generate:
         instrumented.write_text(
-            generate_instrumented_file_text(args.kind, args.pythonfile, args.function)
+            generate_instrumented_file_text(
+                args.kind, pathlib.Path(args.pythonfile), args.function
+            )
         )
     if args.kind != "vm":
         try:

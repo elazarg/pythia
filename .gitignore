@@ -10,3 +10,4 @@ __pycache__
 **/cache
 venv*
 **/dumps
+criu_images
