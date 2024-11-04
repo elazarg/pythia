@@ -1,3 +1,5 @@
+import contextlib
+from typing import Iterator
 from os import PathLike
 import os
 
@@ -30,12 +32,16 @@ def restore_child() -> int: ...
 def set_images_dir_fd(fd: int) -> None: ...
 
 
+@contextlib.contextmanager
 def set_images_dir(path: str | bytes | PathLike[str] | PathLike[bytes]) -> None:
     try:
         fd = os.open(path, os.O_DIRECTORY)
     except OSError as e:
         raise OSError(f"Failed to open criu_images directory: {e}")
-    set_images_dir_fd(fd)
+    else:
+        set_images_dir_fd(fd)
+        yield
+        os.close(fd)
 
 
 @lib.function
