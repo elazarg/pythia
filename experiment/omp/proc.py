@@ -21,7 +21,7 @@ def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     """select k features from features using target as the target variable"""
     S = np.array([], "int")
     for idx in range(k):  # type: int
-        persist.self_coredump()
+        persist.self_coredump("omp")
         log(idx, k)
         dims = np.unique(S[S >= 0])
         target = np.array(target).reshape(target.shape[0], -1)

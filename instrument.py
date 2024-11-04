@@ -60,16 +60,17 @@ def generate_instrumented_file(
 ) -> pathlib.Path:
     pythonfile = pathlib.Path(pythonfile)
     match kind:
+        case "naive":
+            instrumented = pythonfile.with_name("naive.py")
+            output = ast_transform.transform(pythonfile, dirty_map=None)
         case "vm":
             instrumented = pythonfile.with_name("vm.py")
             tag = pathlib.Path(pythonfile).parent.name
             output = ast_transform.tcp_client(tag, pythonfile, function)
-        case "naive":
-            instrumented = pythonfile.with_name("naive.py")
-            output = ast_transform.transform(pythonfile, dirty_map=None)
         case "proc":
             instrumented = pythonfile.with_name("proc.py")
-            output = ast_transform.coredump(pythonfile, function)
+            tag = pathlib.Path(pythonfile).parent.name
+            output = ast_transform.coredump(tag, pythonfile, function)
         case "analyze":
             instrumented = pythonfile.with_name("instrumented.py")
             output = analyze_and_transform(

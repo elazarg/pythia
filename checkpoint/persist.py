@@ -245,37 +245,38 @@ def sigint() -> None:
 
 if os.name == "posix":
     try:
-        from checkpoint.criu_binding import set_criu, criu_dump
+        from checkpoint.criu_binding import setup_criu, criu_dump
     except AttributeError:
         print("CRIU is not available", file=sys.stderr)
     else:
-        SET_CRIU = False
-        CRIU_FOLDER = pathlib.Path("criu_images")
-        CRIU_DUMPS = CRIU_FOLDER / "dumps"
-
         coredump_iterations = 0
         coredump_steps = 0
 
-        def self_coredump() -> None:
+        def self_coredump(tag: str) -> None:
             global coredump_iterations, coredump_steps
+            DEDUP = True
+            SETUP_CRIU = False
+            CRIU_FOLDER = pathlib.Path("criu_images") / tag
+            CRIU_DUMPS = CRIU_FOLDER / "dumps"
             if not coredump_iterations:
                 CRIU_FOLDER.mkdir(exist_ok=True)
                 shutil.rmtree(CRIU_DUMPS, ignore_errors=True)
                 CRIU_DUMPS.mkdir(exist_ok=False)
-                set_criu(CRIU_FOLDER)
+                setup_criu(CRIU_FOLDER, dedup=DEDUP)
             coredump_iterations += 1
 
             if coredump_iterations % STEP_VALUE in [0, 1]:
                 criu_dump()
-                image_file = CRIU_FOLDER / "pages-1.img"
-                if not image_file.exists():
-                    raise RuntimeError(
-                        "CRIU image was not created. Make sure to run the CRIU service:\n"
-                        "sudo criu service --shell-job --address /tmp/criu_service.socket"
-                    )
-                target_image = CRIU_DUMPS / f"{coredump_steps:05d}.a.img"
-                os.rename(CRIU_FOLDER / "pages-1.img", target_image)
-                if coredump_steps > 0:
-                    source_image = CRIU_DUMPS / f"{coredump_steps-1:05d}.b.img"
-                    source_image.hardlink_to(target_image)
-                coredump_steps += 1
+                if not DEDUP:
+                    image_file = CRIU_FOLDER / "pages-1.img"
+                    if not image_file.exists():
+                        raise RuntimeError(
+                            "CRIU image was not created. Make sure to run the CRIU service:\n"
+                            "sudo criu service --shell-job --address /tmp/criu_service.socket"
+                        )
+                    target_image = CRIU_DUMPS / f"{coredump_steps:05d}.a.img"
+                    os.rename(image_file, target_image)
+                    if coredump_steps > 0:
+                        source_image = CRIU_DUMPS / f"{coredump_steps-1:05d}.b.img"
+                        source_image.hardlink_to(target_image)
+                    coredump_steps += 1
