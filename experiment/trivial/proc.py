@@ -4,7 +4,7 @@ from checkpoint import persist
 def run() -> None:
     """Trivial baseline"""
     for i in range(100):  # type: int
-        persist.self_coredump()
+        persist.self_coredump("trivial")
         pass
 
 
