@@ -7,6 +7,10 @@ def list_append(y: int):
     x.append(y)
 
 
+def list_set(x: list[int]):
+    x[0] = ""
+
+
 def list_add(k: int):
     x = [1] + [k]
     y = [(1,)] + [(2,)]
