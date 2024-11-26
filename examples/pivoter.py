@@ -33,7 +33,7 @@ def run(
     g: dict[int, set[int]], root: int, max_only: bool = False
 ) -> collections.Counter[int]:
     root_to_leaf_path = [root]
-    counter = collections.Counter()
+    counter = collections.Counter[int]()
     for r in range(10**100):  # type: int
         if not root_to_leaf_path:
             break

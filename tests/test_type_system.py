@@ -248,15 +248,36 @@ def test_tuple():
     assert right == FLOAT
 
 
-def test_list():
-    t1 = ts.Instantiation(LIST, (INT,))
-    gt = ts.subscr_get_property(t1, ts.literal("__getitem__"))
+def test_list_add():
+    t_int = ts.Instantiation(LIST, (INT,))
+    gt = ts.subscr_get_property(t_int, ts.literal("__add__"))
+    x = ts.call(gt, make_rows(t_int))
+    assert x == t_int
+
+
+def test_list_getitem():
+    t_int = ts.Instantiation(LIST, (INT,))
+    gt = ts.subscr_get_property(t_int, ts.literal("__getitem__"))
     x = ts.call(gt, make_rows(ts.literal(0)))
     assert x == INT
 
-    gt = ts.subscr_get_property(t1, ts.literal("__add__"))
-    x = ts.call(gt, make_rows(t1))
-    assert x == t1
+
+def test_list_setitem():
+    t_bottom = ts.Instantiation(LIST, (ts.BOTTOM,))
+
+    st = ts.subscr_get_property(t_bottom, ts.literal("__setitem__"))
+    applied = ts.partial(
+        st, make_rows(ts.literal(0), ts.literal(0)), only_callable_empty=True
+    )
+    t_literal = ts.get_side_effect(applied).update
+    assert t_literal == ts.Instantiation(LIST, (ts.literal(0),))
+
+    st = ts.subscr_get_property(t_literal, ts.literal("__setitem__"))
+    applied = ts.partial(
+        st, make_rows(ts.literal(1), ts.literal(1)), only_callable_empty=True
+    )
+    t_two_literals = ts.get_side_effect(applied).update
+    assert t_two_literals == ts.Instantiation(LIST, (INT,))
 
 
 def test_list_join():

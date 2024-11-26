@@ -739,11 +739,13 @@ def make_tac_no_dels(
             attr = Attribute(stackvar(stack_depth), Var(val))
             return [Assign(attr, stackvar(stack_depth - 1))]
         case ["STORE", "SUBSCR"]:
+            # var[key] = value
+            key = stackvar(stack_depth)
+            var = stackvar(stack_depth - 1)
+            value = stackvar(stack_depth - 2)
             return [
-                Assign(
-                    Subscript(stackvar(stack_depth - 1), stackvar(stack_depth)),
-                    stackvar(stack_depth - 2),
-                )
+                Assign(fresh, Attribute(var, Var("__setitem__"))),
+                Assign(None, Call(fresh, (key, value))),
             ]
         case ["PUSH", "NULL"]:
             return []

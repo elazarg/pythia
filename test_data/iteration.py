@@ -15,8 +15,8 @@ def setitem(x: np.ndarray, i: int, y: float) -> None:
     x[i] = y
 
 
-def counter(i: int, j: int, f: np.ndarray) -> None:
-    res = collections.Counter()
+def counter(i: int, j: int) -> None:
+    res = collections.Counter[int]()
     res[i] += j
 
 
