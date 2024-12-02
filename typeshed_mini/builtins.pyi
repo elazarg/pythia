@@ -94,14 +94,14 @@ class tuple[*Args]:
     # def __add__(self: tuple[*Args], other: tuple[*Args2]) -> tuple[*Args, *Args2]: pass
 
 class list[T]:
-    @update(list[T])
+    @update(list[T], *1)
     def __init__(self, iterable: Iterable[T] = None) -> None: ...
     def __init__(self) -> None: ...
     def __bool__(self) -> bool: ...
     def __getitem__[N: Literal[int]](self: list[T], index: N) -> T:
         result = self[index]
 
-    @update(list[T | Q])
+    @update(list[T | Q], 2)
     def __setitem__[Q, N](self: list[T], index: N, value: Q) -> None:
         self[index] = value
 
@@ -119,15 +119,15 @@ class list[T]:
     def clear(self: list) -> None:
         del self[:]
 
-    @update(list[T | Q])
+    @update(list[T | Q], 1)
     def append[Q](self: list[T], x: Q) -> None:
         self[_] = x
 
-    @update(list[T | Q])
+    @update(list[T | Q], 2)
     def insert[Q](self: list[T], i: int, x: Q) -> None:
         self[_] = x
 
-    @update(list[T | Q])
+    @update(list[T | Q], *2)
     def extend[Q](self: list[T], x: list[Q]) -> None:
         self += x
 
@@ -162,7 +162,7 @@ class list[T]:
         pass
 
 class set[T]:
-    @update(set[T])
+    @update(set[T], *1)
     def __init__(self, other: Iterable[T]) -> None: ...
     def __init__(self) -> None: ...
     def __bool__(self) -> bool: ...
@@ -176,11 +176,11 @@ class set[T]:
     def copy(self: set[T]) -> set[T]:
         result += self
 
-    @update(set[T])
+    @update(set[T])  # set[Bottom]
     def clear(self: set[T]) -> None:
         del self[:]
 
-    @update(set[T | Q])
+    @update(set[T | Q], 1)
     def add[Q](self: set[T], x: Q) -> None:
         self[_] = x
 
@@ -206,7 +206,7 @@ class dict[K, V]:
         result += self
 
     def __getitem__(self: dict[K, V], key: K) -> V: ...
-    @update(dict[K | K1, V | V1])
+    @update(dict[K | K1, V | V1], 2)
     def __setitem__[K1, V1](self: dict[K, V], key: K1, value: V1) -> None: ...
     @new
     def keys(self: dict[K, V]) -> Iterable[K]:

@@ -682,9 +682,10 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     func_type = predefined(var)
                 else:
                     assert False, f"Expected Var or PredefinedFunction, got {var}"
-                if isinstance(
-                    func_type, ts.Instantiation
-                ) and func_type.generic == ts.Ref("builtins.type"):
+                if (
+                    isinstance(func_type, ts.Instantiation)
+                    and func_type.generic == ts.TYPE
+                ):
                     func_type = ts.get_init_func(func_type)
                 assert isinstance(
                     func_type, ts.Overloaded
@@ -703,7 +704,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
 
                 side_effect = ts.get_side_effect(applied)
                 dirty = make_dirty()
-                if side_effect.update is not None:
+                if side_effect.update[0] is not None:
                     func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
                     if isinstance(func_obj, pythia.dom_concrete.Set):
                         raise RuntimeError(
@@ -732,15 +733,39 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     ]
                     # Expected two objects: self argument and locals
 
-                    if new_tp.types[self_obj] != side_effect.update:
+                    if True or new_tp.types[self_obj] != side_effect.update[0]:
                         if monomorophized:
                             raise RuntimeError(
                                 f"Update with aliased objects: {aliasing_pointers} (not: {func_obj, LOCALS})"
                             )
-                        new_tp.types[self_obj] = side_effect.update
-                        if side_effect.name == "append":
-                            x = arg_objects[0]
-                            new_tp.pointers.update(self_obj, tac.Var("*"), x)
+                        new_tp.types[self_obj] = side_effect.update[0]
+                        arg_indices_to_point = side_effect.update[1]
+                        if arg_indices_to_point:
+                            for i in arg_indices_to_point:
+                                starred = False
+                                if isinstance(i, ts.Star):
+                                    assert len(i.items) == 1
+                                    i = i.items[0]
+                                    starred = True
+
+                                if isinstance(i, ts.Literal) and isinstance(
+                                    i.value, int
+                                ):
+                                    # TODO: minus one only for self. Should be fixed on binding
+                                    v = i.value - 1
+                                    assert v < len(
+                                        arg_objects
+                                    ), f"{v} >= {len(arg_objects)}"
+                                    targets = arg_objects[v]
+                                    if starred:
+                                        targets = prev_tp.pointers[
+                                            targets, tac.Var("*")
+                                        ]
+                                    new_tp.pointers.update(
+                                        self_obj, tac.Var("*"), targets
+                                    )
+                                else:
+                                    assert False, i
 
                 t = ts.get_return(applied)
                 assert t != ts.BOTTOM, f"Expected non-bottom return type for {locals()}"
@@ -792,7 +817,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 assert isinstance(applied, ts.Overloaded)
                 side_effect = ts.get_side_effect(applied)
                 dirty = make_dirty()
-                if side_effect.update is not None:
+                if side_effect.update[0] is not None:
                     dirty = make_dirty_from_keys(
                         value_objects, pythia.dom_concrete.Set[tac.Var].top()
                     )

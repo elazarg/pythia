@@ -1,14 +1,9 @@
 from dataclasses import replace
 
 from pythia import type_system as ts
+from pythia.type_system import INT, FLOAT, STR, LIST, SET, TUPLE
 
-INT = ts.Ref("builtins.int")
-FLOAT = ts.Ref("builtins.float")
-STR = ts.Ref("builtins.str")
 ARRAY = ts.Ref("numpy.ndarray")
-LIST = ts.Ref("builtins.list")
-SET = ts.Ref("builtins.set")
-TUPLE = ts.Ref("builtins.tuple")
 
 T = ts.TypeVar("T")
 T1 = ts.TypeVar("T1")
@@ -32,7 +27,7 @@ def make_function(
     return_type: ts.TypeExpr,
     params: ts.TypedDict,
     type_params=(),
-    update=None,
+    update=(None, ()),
     new=None,
 ) -> ts.FunctionType:
     if new is None:
@@ -225,7 +220,7 @@ def test_tuple():
         params=ts.typed_dict([ts.make_row(0, "item", N)]),
         return_type=ts.Access(tuple_star, N),
         is_property=False,
-        side_effect=ts.SideEffect(new=False, bound_method=True, name="__getitem__"),
+        side_effect=ts.SideEffect(new=False, bound_method=True),
         type_params=(N,),
     )
     assert g == ts.overload([f])
@@ -269,14 +264,14 @@ def test_list_setitem():
     applied = ts.partial(
         st, make_rows(ts.literal(0), ts.literal(0)), only_callable_empty=True
     )
-    t_literal = ts.get_side_effect(applied).update
+    t_literal = ts.get_side_effect(applied).update[0]
     assert t_literal == ts.Instantiation(LIST, (ts.literal(0),))
 
     st = ts.subscr_get_property(t_literal, ts.literal("__setitem__"))
     applied = ts.partial(
         st, make_rows(ts.literal(1), ts.literal(1)), only_callable_empty=True
     )
-    t_two_literals = ts.get_side_effect(applied).update
+    t_two_literals = ts.get_side_effect(applied).update[0]
     assert t_two_literals == ts.Instantiation(LIST, (INT,))
 
 
@@ -334,7 +329,7 @@ def test_set_constructor():
     assert isinstance(x, ts.Overloaded)
     assert len(x.items) == 1
     x = x.items[0]
-    assert x.side_effect.update == ts.Instantiation(SET, (INT,))
+    assert x.side_effect.update[0] == ts.Instantiation(SET, (INT,))
 
 
 def test_list_constructor():
