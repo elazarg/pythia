@@ -17,21 +17,19 @@ def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
         The number of iterations the algorithm will run for if it does
         not converge before that.
     """
-    nsamples, features = X.shape
-    centroids = X[np.random.choice(nsamples, k)]
+    centroids = X[np.random.choice(X.shape[0], k)]
     clusters = list[list[int]]()
     for i in range(max_iterations):  # type: int
         persist.self_coredump("k_means")
         clusters = [list[int]() for _ in range(k)]
         for sample_i in range(len(X)):
-            r = np.argmin(np.linalg.norm(X[sample_i] - centroids, None, 1))
+            r = np.linalg.norm(X[sample_i] - centroids, None, 1).argmin()
             clusters[r].append(sample_i)
-        prev_centroids = centroids
-        centroids = np.array([np.mean(X[cluster], 0) for cluster in clusters])
-        diff = centroids - prev_centroids
-        if not diff.any():
+        new_centroids = np.array([X[cluster].mean(0) for cluster in clusters])
+        if np.allclose(centroids, new_centroids):
             break
-    y_pred = np.zeros(nsamples)
+        centroids = new_centroids
+    y_pred = np.zeros(X.shape[0])
     for cluster_i in range(len(clusters)):
         for sample_i in clusters[cluster_i]:
             y_pred[sample_i] = cluster_i
