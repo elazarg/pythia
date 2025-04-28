@@ -5,10 +5,10 @@ def run() -> None:
     """Trivial baseline"""
     with persist.Loader(__file__, locals()) as transaction:
         if transaction:
-            [i] = transaction.move()
+            [] = transaction.move()
         for i in transaction.iterate(range(100)):  # type: int
             pass
-            transaction.commit(i)
+            transaction.commit()
 
 
 if __name__ == "__main__":

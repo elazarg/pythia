@@ -20,7 +20,7 @@ class Set[T]:
     def __repr__(self):
         if isinstance(self._set, Top):
             return "Set(TOP)"
-        items = ", ".join(repr(x) for x in self._set)
+        items = ", ".join(sorted([repr(x) for x in self._set]))
         return f"Set({items})"
 
     def __deepcopy__(self, memodict={}):
@@ -114,7 +114,7 @@ type SetDomain[K] = Set[K] | Top | Bottom
 class Map[K, T]:
     # Essentially a defaultdict, but a defaultdict makes values appear out of nowhere
     _map: dict[K, T]
-    default: T
+    default: typing.Callable[[], T]
 
     def __init__(
         self,
@@ -172,7 +172,7 @@ class Map[K, T]:
         del self._map[key]
 
     def __repr__(self) -> str:
-        items = ", ".join(f"{k}={v}" for k, v in self._map.items())
+        items = ", ".join(sorted([f"{k}={v}" for k, v in self._map.items()]))
         return f"Map({items})"
 
     def __str__(self) -> str:

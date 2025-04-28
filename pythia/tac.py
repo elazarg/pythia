@@ -344,8 +344,10 @@ def free_vars(tac: Tac) -> set[Var]:
     match tac:
         case Nop():
             return set()
-        case Assign():
-            return free_vars_lval(tac.lhs) | free_vars_expr(tac.expr)
+        case Assign() as assign:
+            if assign.or_null:
+                return free_vars_lval(assign.lhs)
+            return free_vars_lval(assign.lhs) | free_vars_expr(assign.expr)
         case Jump():
             return free_vars_expr(tac.cond)
         case For():

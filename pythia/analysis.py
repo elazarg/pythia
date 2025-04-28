@@ -134,12 +134,13 @@ def run(
 
     dirty_map = {}
     for loop_start, i in for_locations:
+        loc = (loop_start, i)
+        loop_entry = gu.find_loop_entry(cfg, loop_start)
         loop_end = gu.find_loop_end(cfg, loop_start)
-        dirty_map[(loop_start, i)] = set(
-            find_dirty_roots(
-                typed_pointer_invariants.post[loop_end],
-                liveness_invariants.post[loop_end],
-            )
+        post_end_invariant = typed_pointer_invariants.post[loop_end]
+        pre_start_liveness_invariant = liveness_invariants.pre[loop_entry]
+        dirty_map[loc] = set(
+            find_dirty_roots(post_end_invariant, pre_start_liveness_invariant)
         )
 
     invariants: dict[str, InvariantTriple] = {
@@ -201,4 +202,5 @@ def analyze_and_transform(
         }
         for function_name, result in analysis_result.items()
     }
+    print("Dirty map:\n", dirty_map)
     return ast_transform.transform(filename, dirty_map)

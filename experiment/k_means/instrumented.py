@@ -22,7 +22,7 @@ def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     clusters = list[list[int]]()
     with persist.Loader(__file__, locals()) as transaction:
         if transaction:
-            [clusters] = transaction.move()
+            [centroids] = transaction.move()
         for i in transaction.iterate(range(max_iterations)):  # type: int
             clusters = [list[int]() for _ in range(k)]
             for sample_i in range(len(X)):
@@ -33,7 +33,7 @@ def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
             diff = centroids - prev_centroids
             if not diff.any():
                 break
-            transaction.commit(clusters)
+            transaction.commit(centroids)
     y_pred = np.zeros(nsamples)
     for cluster_i in range(len(clusters)):
         for sample_i in clusters[cluster_i]:

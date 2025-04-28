@@ -16,9 +16,9 @@ import pythia.type_system as ts
 
 
 # Abstract location can be either:
-# 1. line of code where it is allocated
-# 2. parameter
-# 3. immutable value of a certain type
+# 1. Line of code where it is allocated
+# 2. Parameter
+# 3. Immutable value of a certain type
 # 4. Scope: Globals, locals*
 
 
@@ -61,7 +61,9 @@ class LocationObject:
     location: Location
 
     def __repr__(self) -> str:
-        return f"@location {self.location}"
+        label, index = self.location
+        label += index
+        return f"@location {label}"
 
 
 type Object = typing.Union[LocationObject, Param, Immutable, Scope]
@@ -247,15 +249,19 @@ class Pointer:
     def __str__(self) -> str:
         join = (
             lambda target_obj: "{"
-            + ", ".join(str(x) for x in target_obj.as_set())
+            + ", ".join(sorted([str(x) for x in target_obj.as_set()]))
             + "}"
         )
         return ", ".join(
-            (f"{source_obj}:" if source_obj is not LOCALS else "")
-            + f"{field}->{join(target_obj)}"
-            for source_obj in self.graph
-            for field, target_obj in self.graph[source_obj].items()
-            if self.graph[source_obj][field]
+            sorted(
+                [
+                    (f"{source_obj}:" if source_obj is not LOCALS else "")
+                    + f"{field}->{join(target_obj)}"
+                    for source_obj in self.graph
+                    for field, target_obj in self.graph[source_obj].items()
+                    if self.graph[source_obj][field]
+                ]
+            )
         )
 
     @staticmethod
@@ -381,7 +387,9 @@ class TypeMap:
         return TypeMap(res)
 
     def __str__(self) -> str:
-        return ",".join(f"{obj}: {type_expr}" for obj, type_expr in self.map.items())
+        return ",".join(
+            sorted([f"{obj}: {type_expr}" for obj, type_expr in self.map.items()])
+        )
 
     @staticmethod
     def initial(annotations: pythia.dom_concrete.Map[Param, ts.TypeExpr]) -> TypeMap:
@@ -427,7 +435,13 @@ class TypedPointer:
         )
 
     def __str__(self) -> str:
-        return str(self.pointers) + "\n" + str(self.types)
+        return (
+            str(self.pointers)
+            + "\n    Types: "
+            + str(self.types)
+            + "\n    Dirty: "
+            + str(self.dirty)
+        )
 
     @staticmethod
     def initial(
@@ -909,29 +923,26 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Var() as var:
                 tp.pointers[LOCALS, var] = pointed
                 tp.types[pointed] = t
-                tp.dirty.update(
-                    make_dirty_from_keys(
-                        pythia.dom_concrete.Set[Object].singleton(LOCALS),
-                        pythia.dom_concrete.Set[tac.Var].singleton(var),
-                    )
+                new_dirty = make_dirty_from_keys(
+                    pythia.dom_concrete.Set[Object].singleton(LOCALS),
+                    pythia.dom_concrete.Set[tac.Var].singleton(var),
                 )
+                tp.dirty = tp.dirty.join(new_dirty)
             case tac.Attribute(var=var, field=field):
                 targets = tp.pointers[LOCALS, var]
                 tp.pointers[targets, field] = pointed
-                tp.dirty.update(
-                    make_dirty_from_keys(
-                        targets, pythia.dom_concrete.Set[tac.Var].singleton(field)
-                    )
+                new_dirty = make_dirty_from_keys(
+                    targets, pythia.dom_concrete.Set[tac.Var].singleton(field)
                 )
+                tp.dirty = tp.dirty.join(new_dirty)
             case tac.Subscript(var=var):
                 targets = tp.pointers[LOCALS, var]
                 tp.pointers[targets, tac.Var("*")] = pointed
-                tp.dirty.update(
-                    make_dirty_from_keys(
-                        targets,
-                        pythia.dom_concrete.Set[tac.Var].singleton(tac.Var("*")),
-                    )
+                new_dirty = make_dirty_from_keys(
+                    targets,
+                    pythia.dom_concrete.Set[tac.Var].singleton(tac.Var("*")),
                 )
+                tp.dirty = tp.dirty.join(new_dirty)
             case _:
                 assert False, f"unexpected signature {signature}"
 
@@ -957,13 +968,13 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
 
         match ins:
             case tac.Assign(lhs, expr, or_null):
-                (pointed, types, dirty) = self.expr(
+                (pointed, types, new_dirty) = self.expr(
                     prev_tp, expr, LocationObject(location), tp
                 )
                 if or_null and len(pointed.as_set()) == 0:
                     t = ts.literal(ts.NULL)
-                    (pointed, types, dirty) = (immutable(t), t, make_dirty())
-                tp.dirty.update(dirty)
+                    (pointed, types, new_dirty) = (immutable(t), t, make_dirty())
+                tp.dirty = tp.dirty.join(new_dirty)
                 self.signature(tp, lhs, pointed, types)
             case tac.Return(var):
                 val = tp.pointers[LOCALS, var]
@@ -1027,19 +1038,20 @@ def find_reachable(
 
 def find_dirty_roots(tp: TypedPointer, liveness: Liveness) -> typing.Iterator[str]:
     assert not isinstance(liveness, domain.Bottom)
+    alive = liveness.as_set()
     for var in tp.dirty[LOCALS].as_set():
         if var.is_stackvar:
             continue
+        if not var in alive:
+            continue
         yield var.name
-    alive = liveness.as_set()
     for var, target in tp.pointers[LOCALS].items():
+        if var.is_stackvar:
+            continue
         if var.name == "return":
             continue
+        if not var in alive:
+            continue
         reachable = set(find_reachable(tp.pointers, alive, set(), target.as_set()))
-        if var in alive and any(tp.dirty[obj] for obj in reachable):
-            if var.is_stackvar:
-                continue
+        if any(tp.dirty[obj] for obj in reachable):
             yield var.name
-
-    # TODO: assert that all dirty objects are reachable from locals
-    # TODO: assert that only the iterator is reachable from stack variables
