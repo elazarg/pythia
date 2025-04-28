@@ -7,7 +7,7 @@ np.random.seed(42)
 def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     """A simple clustering method that forms k clusters by iteratively reassigning
     samples to the closest centroids and after that moves the centroids to the center
-    of the new formed clusters. Do K-Means clustering and return cluster indices
+    of the newly formed clusters. Do K-Means clustering and return cluster indices
     @param X: np.ndarray
         The dataset to cluster, where each row is a sample and each column is a feature.
     @param k: int

@@ -5,7 +5,7 @@
 all: diff_coredump diff_vm_snapshot
 
 diff_coredump:
-	gcc -O2 -std=c23 diff_coredump.c -o diff_coredump
+	gcc -O2 -std=c17 diff_coredump.c -o diff_coredump
 	
 
 diff_vm_snapshot:
