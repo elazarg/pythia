@@ -184,7 +184,7 @@ def diff_vm_snapshot(folder: pathlib.Path, i: int) -> int:
     folder = folder.as_posix()
     result = subprocess.run(
         [
-            "./diff_vm_snapshot",
+            "./scripts/diff_vm_snapshot",
             f"{folder}/{i}.a.dump",
             f"{folder}/{i}.b.dump",
             "64",
@@ -201,7 +201,7 @@ def diff_coredump(folder: pathlib.Path, i: int) -> int:
     folder = folder.as_posix()
     result = subprocess.run(
         [
-            "./diff_coredump",
+            "./scripts/diff_coredump",
             f"{folder}/{i}.a.dump",
             f"{folder}/{i}.b.dump",
         ],
