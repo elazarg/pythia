@@ -269,6 +269,7 @@ if os.name == "posix":
         def make_dump(criu_folder: pathlib.Path) -> None:
             # Try to minimize memory footprint
             global coredump_steps
+
             if coredump_steps > 0:
                 parent = f"../{coredump_steps-1}".encode()
                 criu.set_parent_images(parent)
@@ -277,6 +278,9 @@ if os.name == "posix":
             folder.mkdir(exist_ok=True, parents=True)
             with criu.set_images_dir(folder):
                 del folder
+                # Test: force dirty page so 0-sized dumps are invalid
+                force_dirty = bytearray(4096)
+                force_dirty[:] = bytes([coredump_steps % 256]) * 4096
                 criu.dump()
             coredump_steps += 1
 
@@ -290,6 +294,5 @@ if os.name == "posix":
 
             coredump_iterations += 1
 
-            mod = coredump_iterations % STEP_VALUE
-            if mod == 0 or mod == 1:
+            if (coredump_iterations % STEP_VALUE) in [0, 1]:
                 make_dump(CRIU_IMAGES / tag)
