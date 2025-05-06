@@ -280,9 +280,7 @@ if os.name == "posix":
                 del folder
                 # Test: force dirty page so 0-sized dumps are invalid
                 force_dirty = bytearray(4096)
-                force_dirty[:coredump_steps] = (
-                    bytes([coredump_steps % 256]) * coredump_steps
-                )
+                force_dirty[:] = bytes([coredump_steps % 256]) * 4096
                 criu.dump()
             coredump_steps += 1
 
