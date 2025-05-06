@@ -279,8 +279,8 @@ if os.name == "posix":
             with criu.set_images_dir(folder):
                 del folder
                 # Test: force dirty page so 0-sized dumps are invalid
-                force_dirty = bytearray(4096)
-                force_dirty[:] = bytes([coredump_steps % 256]) * 4096
+                # force_dirty = bytearray(4096)
+                # force_dirty[:] = bytes([coredump_steps % 256]) * 4096
                 criu.dump()
             coredump_steps += 1
 
