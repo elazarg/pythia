@@ -283,13 +283,12 @@ if os.name == "posix":
             folder = criu_folder / f"{coredump_steps}"
             folder.mkdir(exist_ok=True, parents=True)
             with criu.set_images_dir(folder):
-                del folder
                 # Test: force dirty page so 0-sized dumps are invalid
                 # force_dirty = bytearray(4096)
                 # force_dirty[:] = bytes([coredump_steps % 256]) * 4096
                 if criu.dump() < 0:
                     raise OSError("CRIU dump failed")
-                assert_nonzero_size(criu_folder)
+                assert_nonzero_size(folder)
             coredump_steps += 1
 
         def self_coredump(tag: str) -> None:
