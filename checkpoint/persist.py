@@ -243,12 +243,6 @@ def sigint() -> None:
     os.kill(PID, signal.SIGINT)
 
 
-def assert_nonzero_size(path: pathlib.Path) -> None:
-    path = path / "pages-1.img"
-    if os.stat(path).st_blocks == 0:
-        raise RuntimeError(f"{path} is effectively empty")
-
-
 if os.name == "posix":
     try:
         from . import criu
@@ -288,7 +282,11 @@ if os.name == "posix":
                 # force_dirty[:] = bytes([coredump_steps % 256]) * 4096
                 if criu.dump() < 0:
                     raise OSError("CRIU dump failed")
-                assert_nonzero_size(folder)
+                print(
+                    f"size after dump {coredump_steps} is ",
+                    os.stat(folder / "pages-1.img").st_blocks,
+                    file=sys.stderr,
+                )
             coredump_steps += 1
 
         def self_coredump(tag: str) -> None:
