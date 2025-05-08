@@ -281,7 +281,8 @@ if os.name == "posix":
                 # Test: force dirty page so 0-sized dumps are invalid
                 # force_dirty = bytearray(4096)
                 # force_dirty[:] = bytes([coredump_steps % 256]) * 4096
-                criu.dump()
+                if criu.dump() < 0:
+                    raise OSError("CRIU dump failed")
             coredump_steps += 1
 
         def self_coredump(tag: str) -> None:
