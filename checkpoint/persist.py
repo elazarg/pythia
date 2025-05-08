@@ -245,11 +245,7 @@ def sigint() -> None:
 
 def assert_nonzero_size(path: pathlib.Path) -> None:
     path = path / "pages-1.img"
-    try:
-        stat = os.stat(path)
-    except FileNotFoundError:
-        return
-    if stat.st_blocks == 0:
+    if os.stat(path).st_blocks == 0:
         raise RuntimeError(f"{path} is effectively empty")
 
 
