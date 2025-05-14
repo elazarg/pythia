@@ -28,3 +28,4 @@ make
 
 apt install -y asciidoc xmlto 
 make install
+ldconfig
