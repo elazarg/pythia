@@ -262,16 +262,16 @@ def print(x) -> None:
 def round(x: float) -> int:
     pass
 
-def min(x, y) -> int:
+def min[T](x: T, y: T) -> T:
     pass
 
-def max(x, y) -> int:
+def max[T](x: T, y: T) -> T:
     pass
 
 def max[T](xs: Iterable[T]) -> T:
     pass
 
-def sum(x) -> int:
+def sum[T](xs: Iterable[T]) -> T:
     pass
 
 def all(x) -> bool:

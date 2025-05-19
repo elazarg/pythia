@@ -446,6 +446,10 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
         case (Union(items), other) | (other, Union(items)):  # type: ignore
             return Union(items | {other}).squeeze()
         case (Overloaded() as f, Overloaded() as g):
+            if len(f.items) == 0:
+                return g
+            if len(g.items) == 0:
+                return f
             if len(f.items) == 1 and len(g.items) == 1:
                 res = join(f.items[0], g.items[0])
                 if isinstance(res, FunctionType):
