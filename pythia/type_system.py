@@ -21,6 +21,7 @@ class Ref:
 
 
 ANY = Ref("typing.Any")
+LITERAL = Ref("typing.Literal")
 LIST = Ref("builtins.list")
 TUPLE = Ref("builtins.tuple")
 SET = Ref("builtins.set")
@@ -1633,6 +1634,10 @@ class TypeExpressionParser(ast.NodeVisitor):
 
     def visit_Subscript(self, subscr: ast.Subscript) -> TypeExpr:
         generic = self.to_type(subscr.value)
+        if isinstance(subscr.value, ast.Name):
+            if subscr.value.id == "Literal":
+                assert isinstance(subscr.slice, ast.Constant)
+                return self.visit_Constant(subscr.slice)
         if isinstance(generic, TypeVar):
             return Access(generic, self.to_type(subscr.slice))
         match subscr.slice:

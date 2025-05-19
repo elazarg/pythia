@@ -1,4 +1,3 @@
-
 class Any: ...
 
 class Iterator[T](Protocol):

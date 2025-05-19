@@ -264,9 +264,7 @@ if os.name == "posix":
             criu.set_leave_running(True)
             criu.set_service_address(b"/tmp/criu_service.socket")
             criu.set_track_mem("WSL" not in os.uname().release)
-            criu.set_auto_dedup(
-                False
-            )  # Looks like there's a bug in CRIU on auto_dedup(True)
+            criu.set_auto_dedup(False)
 
         def make_dump(criu_folder: pathlib.Path) -> None:
             # Try to minimize memory footprint
@@ -279,9 +277,6 @@ if os.name == "posix":
             folder = criu_folder / f"{coredump_steps}"
             folder.mkdir(exist_ok=True, parents=True)
             with criu.set_images_dir(folder):
-                # Test: force dirty page so 0-sized dumps are invalid
-                # force_dirty = bytearray(4096)
-                # force_dirty[:] = bytes([coredump_steps % 256]) * 4096
                 if criu.dump() < 0:
                     raise OSError("CRIU dump failed")
                 print(
