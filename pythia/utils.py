@@ -14,7 +14,7 @@ class Function[F]:
         # Store the function as a staticmethod from the beginning.
         self.f: staticmethod = staticmethod(default)
 
-    def __get__(self, instance: Any, owner: type | None = None) -> F:
+    def __get__(self, instance, owner: type | None = None) -> F:
         # self: the Function descriptor instance (e.g., Cfg.annotator)
         # instance: the instance of the class that owns this descriptor (e.g., a Cfg instance), or None if accessed via the class
         # owner: the class that owns this descriptor (e.g., Cfg class)
