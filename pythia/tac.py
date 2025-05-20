@@ -274,7 +274,7 @@ class Raise:
 
 @dataclass(frozen=True)
 class Del:
-    variables: tuple[Var]
+    variables: tuple[Var, ...]
 
     def __str__(self) -> str:
         return f'DEL {", ".join(str(x) for x in self.variables)}'

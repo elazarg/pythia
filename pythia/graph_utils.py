@@ -103,20 +103,27 @@ class Cfg[T]:
         ),
         blocks: Optional[dict[Label, list[T]]] = None,
         add_sink: bool = True,
-        add_source=False,
+        add_source: bool = False,
     ) -> None:
         if isinstance(graph, nx.DiGraph):
+            assert blocks is None, blocks
             self.graph = graph
         else:
             self.graph = nx.DiGraph(graph)
 
-        if blocks is not None:
-            self.graph.add_nodes_from(blocks.keys())
-            nx.set_node_attributes(
-                self.graph,
-                name=BLOCK_NAME,
-                values={k: Block(block) for k, block in blocks.items()},
-            )
+            if blocks is not None:
+                self.graph.add_nodes_from(blocks.keys())
+                nx.set_node_attributes(
+                    self.graph,
+                    name=BLOCK_NAME,
+                    values={k: Block(block) for k, block in blocks.items()},
+                )
+            else:
+                nx.set_node_attributes(
+                    self.graph,
+                    name=BLOCK_NAME,
+                    values={k: Block([]) for k in self.labels},
+                )
 
         sinks = {label for label in self.labels if self.graph.out_degree(label) == 0}
         if add_sink:
@@ -150,7 +157,7 @@ class Cfg[T]:
 
     @property
     def entry(self) -> Block:
-        return self.graph.nodes[self.entry_label]
+        return self[self.entry_label]
 
     @property
     def nodes(self) -> NodeView:
@@ -276,9 +283,10 @@ def refine_to_chain(cfg: Cfg) -> Cfg:
         for i, block in enumerate(g.nodes[n][BLOCK_NAME])
     }
     res: nx.DiGraph = nx.compose_all(paths)
-    simplified_cfg = Cfg(res.edges(), blocks=blocks, add_sink=True, add_source=False)
-    simplified_cfg.annotator = cfg.annotator
-    return simplified_cfg
+    edges = {(a, b) for a, b in res.edges() if a != EXIT_LABEL and b != EXIT_LABEL}
+    refined_cfg = Cfg(edges, blocks=blocks, add_sink=True, add_source=False)
+    refined_cfg.annotator = cfg.annotator
+    return refined_cfg
 
 
 def node_data_map[
