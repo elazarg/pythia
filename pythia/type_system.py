@@ -594,6 +594,8 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             return TOP
         case (TypedDict(items1), TypedDict(items2)):  # type: ignore
             return typed_dict(items1 | items2)
+        case (Ref(), Ref()):
+            return BOTTOM
         case (Ref() as ref, Literal() as n) | (
             Literal() as n,
             Ref() as ref,
@@ -938,7 +940,7 @@ def access(t: TypeExpr, arg: TypeExpr) -> Overloaded | Module:
         case Union(items), arg:
             return join_all(access(item, arg) for item in items)
         case TypedDict(items), arg:
-            # intersect and not meet in order to differentiate between
+            # intersect and not meet to differentiate between
             # a non-existent attribute and an attribute with type TOP
             return overload([row.type for row in items if match_row(row, arg)])
         case Literal(ref=ref), arg:
