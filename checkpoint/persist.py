@@ -279,11 +279,6 @@ if os.name == "posix":
             with criu.set_images_dir(folder):
                 if criu.dump() < 0:
                     raise OSError("CRIU dump failed")
-                print(
-                    f"size after dump {coredump_steps} is ",
-                    os.stat(folder / "pages-1.img").st_blocks,
-                    file=sys.stderr,
-                )
             coredump_steps += 1
 
         def self_coredump(tag: str) -> None:
