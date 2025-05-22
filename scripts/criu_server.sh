@@ -5,4 +5,4 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-criu service --shell-job --address /tmp/criu_service.socket &
+criu service --shell-job --address /tmp/criu_service.socket
