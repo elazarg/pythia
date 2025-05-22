@@ -11,7 +11,7 @@ Assumes:
 
 import argparse, json, mmap, os, subprocess, sys
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Iterator
 
 PAGE = os.sysconf("SC_PAGE_SIZE")  # usually 4096
 
@@ -20,7 +20,7 @@ def pick_pagemap(dir_: Path) -> Path:
     """Return the pagemap that belongs to pages-1.img (pages_id == 1)."""
     for pm in dir_.glob("pagemap-*.img"):
         raw = subprocess.check_output(
-            ["python", "-m", "crit", "decode", "-i", str(pm), "--shallow"], text=True
+            ["python", "-m", "crit", "decode", "-i", str(pm)], text=True
         )
         first = json.loads(raw)["entries"][0]
         if first.get("pages_id") == 1:
@@ -28,7 +28,7 @@ def pick_pagemap(dir_: Path) -> Path:
     sys.exit(f"[ERR] {dir_}: no pagemap with pages_id==1 found")
 
 
-def decode_pagemap(pmap: Path):
+def decode_pagemap(pmap: Path) -> Iterator[tuple[int, int, bool]]:
     """
     Yield tuples (vaddr, nr_pages, in_parent_flag).
 
@@ -45,7 +45,7 @@ def decode_pagemap(pmap: Path):
         yield entry["vaddr"], entry["nr_pages"], bool(in_parent)
 
 
-def build_index(dump: Path) -> Tuple[Dict[int, int], mmap.mmap, object]:
+def build_index(dump: Path) -> tuple[dict[int, int], mmap.mmap, object]:
     """
     Build {virtual_addr -> offset_in_pages_file} for all pages stored
     in this dump (i.e. NOT in_parent).  Return (index, mmap, file_handle).
