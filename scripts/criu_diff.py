@@ -16,16 +16,16 @@ from typing import Dict, Tuple
 PAGE = os.sysconf("SC_PAGE_SIZE")  # usually 4096
 
 
-# ---------------------------------------------------------------------------
-
-
-def pick_one(dir_: Path, pattern: str, role: str) -> Path:
-    files = sorted(dir_.glob(pattern))
-    if not files:
-        sys.exit(f"[ERR] {dir_}: no {role} ({pattern}) found")
-    if len(files) > 1:  # keep the largest (root process)
-        files.sort(key=lambda p: p.stat().st_size, reverse=True)
-    return files[0]
+def pick_pagemap(dir_: Path) -> Path:
+    """Return the pagemap that belongs to pages-1.img (pages_id == 1)."""
+    for pm in dir_.glob("pagemap-*.img"):
+        raw = subprocess.check_output(
+            ["python", "-m", "crit", "decode", "-i", str(pm), "--shallow"], text=True
+        )
+        first = json.loads(raw)["entries"][0]
+        if first.get("pages_id") == 1:
+            return pm
+    sys.exit(f"[ERR] {dir_}: no pagemap with pages_id==1 found")
 
 
 def decode_pagemap(pmap: Path):
@@ -50,8 +50,8 @@ def build_index(dump: Path) -> Tuple[Dict[int, int], mmap.mmap, object]:
     Build {virtual_addr -> offset_in_pages_file} for all pages stored
     in this dump (i.e. NOT in_parent).  Return (index, mmap, file_handle).
     """
-    pages = pick_one(dump, "pages-*.img", "pages image")
-    pagemap = pick_one(dump, "pagemap-*.img", "pagemap image")
+    pages = dump / "pages-1.img"
+    pagemap = pick_pagemap(dump)
 
     print(f"[INFO] {dump.name:6}: {pages.name} + {pagemap.name}")
 
