@@ -20,11 +20,16 @@ apt install -y libaio-dev
 apt install -y libdrm-dev
 
 CRIU_VERSION=4.1
-wget https://github.com/checkpoint-restore/criu/archive/refs/tags/v${CRIU_VERSION}.tar.gz
-tar -zxf v${CRIU_VERSION}.tar.gz 
-cd criu-${CRIU_VERSION}/
+wget "https://github.com/checkpoint-restore/criu/archive/refs/tags/v${CRIU_VERSION}.tar.gz"
+tar -zxf "v${CRIU_VERSION}.tar.gz"
+cd "criu-${CRIU_VERSION}/"
 make
 
 apt install -y asciidoc xmlto 
 make install
 ldconfig
+
+python -m pip install pycriu
+python -m pip install google
+python -m pip install "protobuf<4"  # avoid compatibility issues
+python -m pip install "criu-${CRIU_VERSION}/crit"
