@@ -111,7 +111,10 @@ def diff_dumps(child_dir: Path) -> None:
             if d:
                 bytes_diff += d
                 pages_comp += 1
-        del child_pg, parent_pg
+        del (
+            child_pg,
+            parent_pg,
+        )  # memoryview objects hold references to the mmap object which should be closed
 
     print(f"bytes_diff={bytes_diff}   pages_compared={pages_comp}")
 
