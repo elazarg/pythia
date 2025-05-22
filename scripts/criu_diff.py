@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """
-criu_diff.py – byte-accurate RAM delta between two CRIU dump dirs
-  • works with --track-mem    (incremental pages-1.img + pagemap-*.img)
-  • assumes --auto-dedup was NOT used
-  • tolerant of CRIU's per-mm suffixes like pagemap-167470.img
+criu_diff.py  –  byte-accurate RAM delta between two CRIU dumps.
+
+Assumptions
+-----------
+• Dumps were created with --track-mem       (incremental).
+• --auto-dedup was NOT used, so the immediate parent still owns all pages.
+• Only the primary process address space is of interest (largest pagemap).
+
+Run:
+    python criu_diff.py CHILD_DIR             # parent taken from CHILD_DIR/parent
+    python criu_diff.py PARENT_DIR CHILD_DIR  # explicit pair
 """
 
 import argparse, json, mmap, os, subprocess, sys
@@ -12,43 +19,46 @@ from pathlib import Path
 PAGE = os.sysconf("SC_PAGE_SIZE")  # 4096 on x86/amd64
 
 
-# ---------- helpers ---------------------------------------------------------
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
 
 
-def choose_single(dir_: Path, glob_pat: str, what: str) -> Path:
-    """Return exactly one file matching the pattern or abort."""
-    matches = sorted(dir_.glob(glob_pat))
+def pick_one(dir_: Path, pattern: str, what: str) -> Path:
+    """Pick exactly one file matching pattern inside dir_ (largest if several)."""
+    matches = sorted(dir_.glob(pattern))
     if not matches:
-        sys.exit(f"[ERR] {dir_}: no {what} ({glob_pat}) found")
+        sys.exit(f"[ERR] {dir_}: no {what} ({pattern}) found")
     if len(matches) > 1:
-        # Heuristic: the root-process pagemap is almost always the biggest.
         matches.sort(key=lambda p: p.stat().st_size, reverse=True)
     return matches[0]
 
 
-def decode_pagemap(pagemap: Path):
-    """Run `crit decode` and yield (addr, pages, in_parent) dicts."""
+def decode_pagemap(path: Path):
+    """Iterate over (addr, pages, in_parent) entries from pagemap-*.img."""
     out = subprocess.check_output(
-        ["python", "-m", "crit", "decode", "-i", str(pagemap)],
+        ["python", "-m", "crit", "decode", "-i", str(path)],
         text=True,
     )
     root = json.loads(out)
-    for outer in root["entries"]:
-        yield next(iter(outer.values()))  # strip outer key
+    for wrapper in root["entries"]:
+        yield next(iter(wrapper.values()))  # strip outer key ("pagemap")
 
 
-def build_index(dump_dir: Path) -> tuple[dict[int, int], mmap.mmap]:
+def build_index(dump_dir: Path):
     """
-    Return (index, buf) where:
-        index : {virtual_addr -> offset_in_pages_file}
-        buf   : mmap of pages file (read-only)
+    Return (index, buf, file_obj) where
+        index : {vaddr → offset}
+        buf   : mmap object of pages file (read-only)
+        file_obj keeps the FD alive for the mmap lifetime.
     """
-    pages = choose_single(dump_dir, "pages-*.img", "pages image")
-    pagemap = choose_single(dump_dir, "pagemap-*.img", "pagemap image")
+    pages = pick_one(dump_dir, "pages-*.img", "pages image")
+    pagemap = pick_one(dump_dir, "pagemap-*.img", "pagemap image")
 
-    print(f"[INFO] {dump_dir.name}: using {pages.name}  +  {pagemap.name}")
+    print(f"[INFO] {dump_dir.name:7}: {pages.name}  +  {pagemap.name}")
 
-    buf = mmap.mmap(open(pages, "rb").fileno(), 0, access=mmap.ACCESS_READ)
+    f = open(pages, "rb")
+    buf = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
 
     idx, off = {}, 0
     for e in decode_pagemap(pagemap):
@@ -56,56 +66,72 @@ def build_index(dump_dir: Path) -> tuple[dict[int, int], mmap.mmap]:
             if not e.get("in_parent", False):
                 idx[e["addr"] + i * PAGE] = off
             off += PAGE
-    return idx, buf
+    return idx, buf, f
 
 
-def popcnt64(x: int) -> int:  # Python 3.8 + has int.bit_count()
-    return x.bit_count()
-
-
-def bytes_diff(a: memoryview, b: memoryview) -> int:
+def page_diff(a: memoryview, b: memoryview) -> int:
     """Return number of differing bytes between two 4 KiB pages."""
     diff_bits = 0
-    for o in range(0, PAGE, 8):
-        diff_bits += popcnt64(
-            int.from_bytes(a[o : o + 8], "little")
-            ^ int.from_bytes(b[o : o + 8], "little")
+    for o in range(0, PAGE, 8):  # 64-bit chunks
+        diff_bits += int.from_bytes(a[o : o + 8], "little") ^ int.from_bytes(
+            b[o : o + 8], "little"
         )
-    return diff_bits >> 3  # /8
+    # popcount via Python 3.8+ int.bit_count().  Each set bit ⇒ 1 byte diff?
+    # We need per-byte, not per-bit.  A simple, branch-free way:
+    return sum(a[i] != b[i] for i in range(PAGE))
+
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+
+
+def resolve_parent(child_dir: Path) -> Path:
+    link = child_dir / "parent"
+    if not link.exists():
+        sys.exit(f"[ERR] {child_dir}: no 'parent' symlink – need explicit dirs")
+    return (child_dir / link.readlink()).resolve()
 
 
 def main():
-    argp = argparse.ArgumentParser(description="Diff two CRIU RAM dumps")
-    argp.add_argument("parent", type=Path)
-    argp.add_argument("child", type=Path)
-    ns = argp.parse_args()
+    ap = argparse.ArgumentParser(description="Diff two CRIU RAM dumps")
+    ap.add_argument("paths", nargs="+", type=Path, help="CHILD or PARENT CHILD")
+    ns = ap.parse_args()
 
-    p_idx, p_buf = build_index(ns.parent.resolve())
-    c_idx, c_buf = build_index(ns.child.resolve())
+    if len(ns.paths) == 1:
+        child = ns.paths[0].resolve()
+        parent = resolve_parent(child)
+    elif len(ns.paths) == 2:
+        parent, child = (p.resolve() for p in ns.paths)
+    else:
+        ap.error("expect CHILD  or  PARENT CHILD")
 
-    zero_page = bytes(PAGE)
-    delta_bytes = 0
-    pages_compared = 0
+    p_idx, p_buf, p_file = build_index(parent)
+    c_idx, c_buf, c_file = build_index(child)
 
+    zero = bytes(PAGE)
+    bytes_diff = pages_comp = 0
+
+    # union of all addresses stored in either dump
     for addr in p_idx.keys() | c_idx.keys():
-        ap = (
+        pa = (
             memoryview(p_buf)[p_idx[addr] : p_idx[addr] + PAGE]
             if addr in p_idx
-            else zero_page
+            else zero
         )
-        ac = (
+        ca = (
             memoryview(c_buf)[c_idx[addr] : c_idx[addr] + PAGE]
             if addr in c_idx
-            else zero_page
+            else zero
         )
-        if ap is ac:  # same object when both zero_page
+        if pa is ca:  # both zero_page
             continue
-        delta = bytes_diff(ap, ac)
-        if delta:
-            delta_bytes += delta
-            pages_compared += 1
+        d = page_diff(pa, ca)
+        if d:
+            bytes_diff += d
+            pages_comp += 1
 
-    print(f"bytes_diff={delta_bytes}  pages_compared={pages_compared}")
+    print(f"bytes_diff={bytes_diff}   pages_compared={pages_comp}")
 
 
 if __name__ == "__main__":
