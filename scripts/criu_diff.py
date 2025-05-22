@@ -20,13 +20,6 @@ from pathlib import Path
 PAGE = os.sysconf("SC_PAGE_SIZE")  # 4096 on x86-64
 
 
-def _only(d: Path, glob: str, kind: str) -> Path:
-    try:
-        return next(d.glob(glob))
-    except StopIteration:  # pragma: no cover
-        sys.exit(f"[ERR] {d}: no {kind} ({glob}) found")
-
-
 def _pagemap_for_pages(dump: Path) -> Path:
     """
     Return the pagemap whose header record has  {"pages_id": 1},
@@ -64,7 +57,7 @@ def build_index(dump: Path):
     **only** for pages physically present in this dump
     (`flags & 1` == 0 in the pagemap).
     """
-    pages = _only(dump, "pages-*.img", "pages image")
+    pages = dump / "pages-1.img"
     pagemap = _pagemap_for_pages(dump)
 
     print(f"[INFO] {dump.name:<6}: {pages.name} + {pagemap.name}")
@@ -96,25 +89,23 @@ def diff_dumps(child_dir: Path) -> None:
     zero = bytes(PAGE)
     bytes_diff = pages_comp = 0
 
-    with build_index(parent_dir) as (p_idx, p_buf), build_index(child_dir) as (
-        c_idx,
-        c_buf,
-    ):
-        for addr, off_child in c_idx.items():  # only pages child wrote
-            child_pg = memoryview(c_buf)[off_child : off_child + PAGE]
-            parent_pg = (
-                memoryview(p_buf)[p_idx[addr] : p_idx[addr] + PAGE]
-                if addr in p_idx
-                else zero
-            )
-            d = _delta(child_pg, parent_pg)
-            if d:
-                bytes_diff += d
-                pages_comp += 1
-        del (
-            child_pg,
-            parent_pg,
-        )  # memoryview objects hold references to the mmap object which should be closed
+    with build_index(parent_dir) as (p_idx, p_buf):
+        with build_index(child_dir) as (c_idx, c_buf):
+            for addr, off_child in c_idx.items():  # only pages child wrote
+                child_pg = memoryview(c_buf)[off_child : off_child + PAGE]
+                parent_pg = (
+                    memoryview(p_buf)[p_idx[addr] : p_idx[addr] + PAGE]
+                    if addr in p_idx
+                    else zero
+                )
+                d = _delta(child_pg, parent_pg)
+                if d:
+                    bytes_diff += d
+                    pages_comp += 1
+            del (
+                child_pg,
+                parent_pg,
+            )  # memoryview objects hold references to the mmap object which should be closed
 
     print(f"bytes_diff={bytes_diff}   pages_compared={pages_comp}")
 
