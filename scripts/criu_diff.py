@@ -100,7 +100,6 @@ def diff_dumps(child_dir: Path) -> None:
         c_idx,
         c_buf,
     ):
-
         for addr, off_child in c_idx.items():  # only pages child wrote
             child_pg = memoryview(c_buf)[off_child : off_child + PAGE]
             parent_pg = (
@@ -112,6 +111,7 @@ def diff_dumps(child_dir: Path) -> None:
             if d:
                 bytes_diff += d
                 pages_comp += 1
+        del child_pg, parent_pg
 
     print(f"bytes_diff={bytes_diff}   pages_compared={pages_comp}")
 
