@@ -69,7 +69,7 @@ def _index(dump: Path):
     meta = {
         "pages_size": buf.size(),
         "pm_entries": sum(1 for _ in _iter_entries(pm)),
-        "stored": stored,
+        "stored_pages": stored,
         "phantom": phantom,
     }
     try:
@@ -112,9 +112,9 @@ def diff_one(child: Path) -> int:
                     f"identical={identical_pages:>6} "
                     f"diff_pages={pages_diff:>6} "
                     f"bytes_diff={bytes_diff:>10} | "
-                    f"pages.img={c_meta['pages_file_size'] // 1024:>7} KiB "
+                    f"pages.img={c_meta['pages_size'] // 1024:>7} KiB "
                     f"pm_entries={c_meta['pm_entries']:>6} "
-                    f"pm_pages={c_meta['pm_total_pages']:>6}"
+                    f"phantom={c_meta['phantom']:>6}"
                 )
             del p_buf, c_buf, p_idx, c_idx, p_meta, c_meta
             return bytes_diff
