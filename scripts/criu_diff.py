@@ -59,36 +59,32 @@ def _index(dump: Path):
     idx: dict[int, int] = {}
     off = stored = phantom = should_exist = 0
 
-    for addr, n, in_parent in _iter_entries(pm):
+    for vaddr, n, in_parent in _iter_entries(pm):
         for _ in range(n):
-            if not in_parent:
-                should_exist += 1  # <- every page CRIU says it wrote
-                if off + PAGE <= buf.size():
-                    idx[addr] = off
+            if not in_parent:  # CRIU says body is here
+                should_exist += 1
+                if off + PAGE <= buf.size():  # body really in pages-1.img
+                    idx[vaddr] = off
                     off += PAGE
                     stored += 1
-                else:  # missing body -> phantom page
+                else:  # body missing -> phantom
                     phantom += 1
-            addr += PAGE
+            vaddr += PAGE  # next virtual page
+
     assert stored + phantom == should_exist, (
-        f"{dump}: pagemap wants {should_exist} pages, "
+        f"{dump}: pagemap wants {should_exist} stored pages, "
         f"found bodies for {stored}, phantom={phantom}"
     )
+
     meta = {
         "pages_size": buf.size(),
-        "pm_entries": sum(1 for _ in _iter_entries(pm)),
         "stored_pages": stored,
         "phantom": phantom,
     }
-    expected_pages = sum(n for _, n, _ in _iter_entries(pm))
-    assert off // PAGE + phantom == expected_pages, (
-        f"{dump}: off/pages mismatch: pagemap claims {expected_pages} pages, "
-        f"stored={off//PAGE}, phantom={phantom}"
-    )
     try:
         yield idx, buf, meta
     finally:
-        pass  # leave mmap open; OS reclaims it at exit
+        pass  # leave mmap open; OS cleans up at process exit
 
 
 def _diff(a: memoryview, b: memoryview) -> int:
