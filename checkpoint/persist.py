@@ -271,6 +271,7 @@ if os.name == "posix":
             criu.set_service_address(b"/tmp/criu_service.socket")
             criu.set_track_mem("WSL" not in os.uname().release)
             criu.set_auto_dedup(False)
+            criu.set_ext_unix_sk(True)
 
         # ---------- daemon loop (runs in parent) ---------------------------
         def _daemon_loop(sock: socket.socket, tag: str, child_pid: int) -> None:
