@@ -57,22 +57,23 @@ def _index(dump: Path):
         buf = mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ)
 
     idx: dict[int, int] = {}
-    off = stored = phantom = 0
+    off = stored = phantom = should_exist = 0
 
     for addr, n, in_parent in _iter_entries(pm):
         for _ in range(n):
-            if not in_parent and off + PAGE <= buf.size():
-                idx[addr] = off
-                off += PAGE
-                stored += 1
-            elif not in_parent:
-                phantom += 1  # flagged dirty but body missing
-            assert off <= buf.size(), (
-                f"{dump}: pagemap offset {off} > pages file {buf.size()} "
-                f"(vaddr=0x{addr:x}, stored={not in_parent})"
-            )
+            if not in_parent:
+                should_exist += 1  # <- every page CRIU says it wrote
+                if off + PAGE <= buf.size():
+                    idx[addr] = off
+                    off += PAGE
+                    stored += 1
+                else:  # missing body -> phantom page
+                    phantom += 1
             addr += PAGE
-
+    assert stored + phantom == should_exist, (
+        f"{dump}: pagemap wants {should_exist} pages, "
+        f"found bodies for {stored}, phantom={phantom}"
+    )
     meta = {
         "pages_size": buf.size(),
         "pm_entries": sum(1 for _ in _iter_entries(pm)),
