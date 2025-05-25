@@ -59,9 +59,7 @@ def build_index(dump: Path):
     """
     pages = dump / "pages-1.img"
     pagemap = _pagemap_for_pages(dump)
-
-    print(f"[INFO] {dump.name:<6}: {pages.name} + {pagemap.name}")
-
+    # print(f"[INFO] {dump.name:<6}: {pages.name} + {pagemap.name}")
     with open(pages, "rb") as fh, mmap.mmap(
         fh.fileno(), 0, access=mmap.ACCESS_READ
     ) as buf:
