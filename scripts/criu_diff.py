@@ -67,10 +67,8 @@ def _index(dump: Path) -> Iterator[tuple[dict[int, int], mmap.mmap, dict[str, in
         for _ in range(n):
             if not in_parent:
                 idx[vaddr] = offset
-                stored_pages += 1
+                offset += PAGE  # advance only when the page is stored
             vaddr += PAGE
-            offset += PAGE
-
     meta = {
         "pages_file": pages.name,
         "pages_file_size": size_pages,
@@ -126,7 +124,6 @@ def diff_one(child: Path) -> None:
             del p_buf, c_buf, p_idx, c_idx, p_meta, c_meta
 
 
-# ───── iterate over a dumpset or single dir ────────────────────────────────
 def run(root: Path) -> None:
     root = root.resolve()
     if (root / "pages-1.img").exists():
