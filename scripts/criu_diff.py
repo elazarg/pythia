@@ -42,6 +42,9 @@ def _find_pagemap(dump: Path) -> Path:
 def _iter_entries(pm: Path):
     for rec in _crit_decode(pm)["entries"]:
         if "vaddr" in rec:  # skip header
+            assert (
+                rec["nr_pages"] >= 1
+            ), f"{pm}: record with non-positive nr_pages={rec['nr_pages']}"
             yield rec["vaddr"], rec["nr_pages"], bool(rec["flags"] & 1)
 
 
@@ -64,6 +67,10 @@ def _index(dump: Path):
                 stored += 1
             elif not in_parent:
                 phantom += 1  # flagged dirty but body missing
+            assert off <= buf.size(), (
+                f"{dump}: pagemap offset {off} > pages file {buf.size()} "
+                f"(vaddr=0x{addr:x}, stored={not in_parent})"
+            )
             addr += PAGE
 
     meta = {
@@ -72,6 +79,11 @@ def _index(dump: Path):
         "stored_pages": stored,
         "phantom": phantom,
     }
+    expected_pages = sum(n for _, n, _ in _iter_entries(pm))
+    assert off // PAGE + phantom == expected_pages, (
+        f"{dump}: off/pages mismatch: pagemap claims {expected_pages} pages, "
+        f"stored={off//PAGE}, phantom={phantom}"
+    )
     try:
         yield idx, buf, meta
     finally:
@@ -91,6 +103,11 @@ def diff_one(child: Path) -> int:
         with _index(child) as (c_idx, c_buf, c_meta):
             bytes_diff = pages_diff = 0
             for addr, off_c in c_idx.items():
+                missing = [a for a in c_idx if a not in p_idx and a not in (addr,)]
+                assert (
+                    not missing
+                ), f"{child}: {len(missing)} child pages had no parent nor zero-page fallback"
+
                 child_pg = memoryview(c_buf)[off_c : off_c + PAGE]
                 parent_pg = (
                     memoryview(p_buf)[p_idx[addr] : p_idx[addr] + PAGE]
@@ -139,6 +156,9 @@ def run(root: Path) -> None:
 
     for d in dumps[1:]:  # skip baseline 0
         bytes_diff = diff_one(d)
+        assert (
+            bytes_diff >= 0
+        ), f"{d}: diff_one returned negative bytes_diff={bytes_diff}"
         print(f"{d.name:>6}: {bytes_diff}")
 
 
