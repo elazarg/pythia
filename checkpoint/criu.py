@@ -1,5 +1,4 @@
 import contextlib
-from typing import Iterator
 from os import PathLike
 import os
 

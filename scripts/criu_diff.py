@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """
-criu_diff.py – calculate the exact number of bytes that differ between an
-incremental CRIU dump (*--track-mem*, **no --auto-dedup**) and its parent.
+criu_diff.py – byte-accurate delta reporter for a CRIU dumpset
+(with --track-mem, no --auto-dedup, single-process).
 
-Usage
------
-    python criu_diff.py /path/to/child_dump
+Run on a *parent directory* that contains numbered sub-dumps (0,1,2…)
+or on a single dump directory.
+
+Example
+-------
+    python criu_diff.py /path/to/dumpset
+    python criu_diff.py /path/to/dumpset/24
 """
+
+from __future__ import annotations
 
 import argparse
 import json
@@ -16,126 +22,136 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
-PAGE = os.sysconf("SC_PAGE_SIZE")  # 4096 on x86-64
+PAGE = os.sysconf("SC_PAGE_SIZE")
 
 
-def _pagemap_for_pages(dump: Path) -> Path:
-    """
-    Return the pagemap whose header record has {"pages_id": 1},
-    i.e. the map that belongs to *pages-1.img* in a single-process dump.
-    """
+def _crit_decode(path: Path) -> dict:
+    return json.loads(
+        subprocess.check_output(
+            ["python", "-m", "crit", "decode", "-i", path], text=True
+        )
+    )
+
+
+def _find_pagemap(dump: Path) -> Path:
     for pm in dump.glob("pagemap-*.img"):
-        hdr = json.loads(
-            subprocess.check_output(
-                ["python", "-m", "crit", "decode", "-i", pm], text=True
-            )
-        )["entries"][0]
-        if hdr.get("pages_id") == 1:
+        if _crit_decode(pm)["entries"][0].get("pages_id") == 1:
             return pm
-    sys.exit(f"[ERR] {dump}: no pagemap with pages_id == 1")
+    sys.exit(f"[ERR] {dump}: no pagemap with pages_id==1")
 
 
-def _decode(pm: Path):
-    """
-    Yield (vaddr, nr_pages, in_parent) per entry.
-    Bit 0 of *flags* == 1 => page identical to parent.
-    """
-    for rec in json.loads(
-        subprocess.check_output(["python", "-m", "crit", "decode", "-i", pm], text=True)
-    )["entries"]:
+def _iter_entries(pm: Path):
+    for rec in _crit_decode(pm)["entries"]:
         if "vaddr" in rec:  # skip header
             yield rec["vaddr"], rec["nr_pages"], bool(rec["flags"] & 1)
 
 
 @contextmanager
-def build_index(dump: Path):
-    """
-    Yields *(index, mmap_object)* and automatically closes resources.
-
-    *index* maps virtual address → offset inside *pages-1.img*,
-    **only** for pages physically present in this dump
-    (`flags & 1` == 0 in the pagemap).
-    """
+def _index(dump: Path) -> Iterator[tuple[dict[int, int], mmap.mmap, dict[str, int]]]:
     pages = dump / "pages-1.img"
-    pagemap = _pagemap_for_pages(dump)
-    # print(f"[INFO] {dump.name:<6}: {pages.name} + {pagemap.name}")
-    with open(pages, "rb") as fh, mmap.mmap(
-        fh.fileno(), 0, access=mmap.ACCESS_READ
-    ) as buf:
-        index: dict[int, int] = {}
-        offset = 0
-        for addr, n, in_parent in _decode(pagemap):
-            for _ in range(n):
-                if not in_parent:
-                    index[addr] = offset
-                addr += PAGE
-                offset += PAGE
-        yield index, buf
+    pm = _find_pagemap(dump)
+
+    size_pages = pages.stat().st_size
+    entries = _crit_decode(pm)["entries"]
+    total_pm_pages = sum(rec.get("nr_pages", 0) for rec in entries)
+
+    with open(pages, "rb") as fh:
+        buf = mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ)
+
+    idx: dict[int, int] = {}
+    offset = 0
+    stored_pages = 0
+    for vaddr, n, in_parent in _iter_entries(pm):
+        for _ in range(n):
+            if not in_parent:
+                idx[vaddr] = offset
+                stored_pages += 1
+            vaddr += PAGE
+            offset += PAGE
+
+    meta = {
+        "pages_file": pages.name,
+        "pages_file_size": size_pages,
+        "pagemap": pm.name,
+        "pm_entries": len(entries) - 1,  # minus header
+        "pm_total_pages": total_pm_pages,
+        "stored_pages": stored_pages,
+    }
+    try:
+        yield idx, buf, meta
+    finally:
+        pass  # don't close buf (avoid BufferError)
 
 
-def _delta(a: memoryview | bytes, b: memoryview | bytes) -> tuple[int, int]:
-    """Return the number of differing bytes between two equal-length buffers."""
-    return sum([x != y for x, y in zip(a, b)])
+def _diff(a: memoryview, b: memoryview) -> int:
+    return sum(x != y for x, y in zip(a, b))
 
 
-def diff_dumps(child_dir: Path) -> int:
-    child_dir = child_dir.resolve()
-    parent_dir = (child_dir / "parent").resolve(strict=True)
+def diff_one(child: Path) -> None:
+    parent = (child / "parent").resolve(strict=True)
 
     zero = bytes(PAGE)
-    bytes_diff = pages_comp = 0
 
-    with build_index(parent_dir) as (p_idx, p_buf):
-        with build_index(child_dir) as (c_idx, c_buf):
-            for addr, off_child in c_idx.items():  # only pages child wrote
-                child_pg = memoryview(c_buf)[off_child : off_child + PAGE]
+    with _index(parent) as (p_idx, p_buf, p_meta):
+        with _index(child) as (c_idx, c_buf, c_meta):
+            bytes_diff = pages_diff = 0
+            for addr, off_c in c_idx.items():
+                child_pg = memoryview(c_buf)[off_c : off_c + PAGE]
                 parent_pg = (
                     memoryview(p_buf)[p_idx[addr] : p_idx[addr] + PAGE]
                     if addr in p_idx
                     else zero
                 )
-                d = _delta(child_pg, parent_pg)
-                if d:
-                    bytes_diff += d
-                    pages_comp += 1
-            del (
-                child_pg,
-                parent_pg,
-            )  # memoryview objects hold references to the mmap object which should be closed
+                delta = _diff(child_pg, parent_pg)
+                if delta:
+                    bytes_diff += delta
+                    pages_diff += 1
 
-    return bytes_diff, pages_comp
+            identical_pages = c_meta["stored_pages"] - pages_diff
+
+            if not bytes_diff:
+                print(f"{child.name:>6}: ZERO diff")
+                print(
+                    f"{child.name:>6} | "
+                    f"dirty={c_meta['stored_pages']:>6} "
+                    f"identical={identical_pages:>6} "
+                    f"diff_pages={pages_diff:>6} "
+                    f"bytes_diff={bytes_diff:>10} | "
+                    f"pages.img={c_meta['pages_file_size'] // 1024:>7} KiB "
+                    f"pm_entries={c_meta['pm_entries']:>6} "
+                    f"pm_pages={c_meta['pm_total_pages']:>6}"
+                )
+            del p_buf, c_buf, p_idx, c_idx, p_meta, c_meta
 
 
-def all_diffs(dump_dir: Path) -> None:
-    if not dump_dir.is_dir():
-        sys.exit(f"[ERR] {dump_dir} is not a directory")
-    if (dump_dir / "pages-1.img").is_file():
-        folders = [dump_dir]
-    elif not all(f.name.isdigit() for f in dump_dir.iterdir()):
-        sys.exit(f"[ERR] {dump_dir} is not a valid CRIU dump directory")
-    else:
-        folders = sorted(dump_dir.iterdir(), key=lambda f: int(f.name))
-        if not folders:
-            sys.exit(f"[ERR] {dump_dir} is empty")
-    try:
-        assert (
-            folders[0].name == "0"
-        ), f"Expected first dump to be named '0', got {folders[0].name}"
-        del folders[0]  # remove the first dump
-        for folder in folders:
-            bytes_diff, pages_diff = diff_dumps(folder)
-            # print the bytes_diff first, with enough space for the largest number
-            print(f"{folder.name:>6}: {bytes_diff}, pages_diff={pages_diff:>4}")
-    except (subprocess.CalledProcessError, FileNotFoundError) as err:
-        sys.exit(f"[ERR] {err}")
+# ───── iterate over a dumpset or single dir ────────────────────────────────
+def run(root: Path) -> None:
+    root = root.resolve()
+    if (root / "pages-1.img").exists():
+        # single dump dir
+        diff_one(root)
+        return
+
+    dumps = sorted(
+        [d for d in root.iterdir() if d.name.isdigit()], key=lambda d: int(d.name)
+    )
+    if not dumps:
+        sys.exit(f"[ERR] {root}: no numbered dump subfolders")
+
+    if dumps[0].name != "0":
+        sys.exit(f"[ERR] expected first dump to be '0', found {dumps[0].name}")
+
+    for d in dumps[1:]:  # skip baseline 0
+        diff_one(d)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Diff CRIU RAM dumps")
-    parser.add_argument(
+    ap = argparse.ArgumentParser(description="Debuggable CRIU dump differ")
+    ap.add_argument(
         "dump_dir",
         type=Path,
-        help="directory of the newer (--track-mem) dump, or the parent directory of a single-process dumpset",
+        help="single dump dir OR parent directory of numbered dumps",
     )
-    all_diffs(parser.parse_args().dump_dir)
+    run(ap.parse_args().dump_dir)
