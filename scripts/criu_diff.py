@@ -11,9 +11,6 @@ Example
     python criu_diff.py /path/to/dumpset
     python criu_diff.py /path/to/dumpset/24
 """
-
-from __future__ import annotations
-
 import argparse
 import json
 import mmap
@@ -68,6 +65,10 @@ def _index(dump: Path) -> Iterator[tuple[dict[int, int], mmap.mmap, dict[str, in
             if not in_parent:
                 idx[vaddr] = offset
                 offset += PAGE  # advance only when the page is stored
+            assert offset <= buf.size(), (
+                f"pagemap claims more stored pages ({offset//PAGE}) "
+                f"than fit in {pages.name} ({buf.size()//PAGE})"
+            )
             vaddr += PAGE
     meta = {
         "pages_file": pages.name,
