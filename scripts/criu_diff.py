@@ -22,7 +22,7 @@ PAGE = os.sysconf("SC_PAGE_SIZE")  # 4096 on x86-64
 
 def _pagemap_for_pages(dump: Path) -> Path:
     """
-    Return the pagemap whose header record has  {"pages_id": 1},
+    Return the pagemap whose header record has {"pages_id": 1},
     i.e. the map that belongs to *pages-1.img* in a single-process dump.
     """
     for pm in dump.glob("pagemap-*.img"):
@@ -39,7 +39,7 @@ def _pagemap_for_pages(dump: Path) -> Path:
 def _decode(pm: Path):
     """
     Yield (vaddr, nr_pages, in_parent) per entry.
-    Bit 0 of *flags* == 1  ⇒  page identical to parent.
+    Bit 0 of *flags* == 1 => page identical to parent.
     """
     for rec in json.loads(
         subprocess.check_output(["python", "-m", "crit", "decode", "-i", pm], text=True)
@@ -63,7 +63,6 @@ def build_index(dump: Path):
     with open(pages, "rb") as fh, mmap.mmap(
         fh.fileno(), 0, access=mmap.ACCESS_READ
     ) as buf:
-
         index: dict[int, int] = {}
         offset = 0
         for addr, n, in_parent in _decode(pagemap):
@@ -75,9 +74,9 @@ def build_index(dump: Path):
         yield index, buf
 
 
-def _delta(a: memoryview | bytes, b: memoryview | bytes) -> int:
+def _delta(a: memoryview | bytes, b: memoryview | bytes) -> tuple[int, int]:
     """Return the number of differing bytes between two equal-length buffers."""
-    return sum(x != y for x, y in zip(a, b))
+    return sum([x != y for x, y in zip(a, b)])
 
 
 def diff_dumps(child_dir: Path) -> int:
@@ -105,10 +104,10 @@ def diff_dumps(child_dir: Path) -> int:
                 parent_pg,
             )  # memoryview objects hold references to the mmap object which should be closed
 
-    return bytes_diff
+    return bytes_diff, pages_comp
 
 
-def all_diffs(dump_dir: Path) -> int:
+def all_diffs(dump_dir: Path) -> None:
     if not dump_dir.is_dir():
         sys.exit(f"[ERR] {dump_dir} is not a directory")
     if (dump_dir / "pages-1.img").is_file():
@@ -125,8 +124,9 @@ def all_diffs(dump_dir: Path) -> int:
         ), f"Expected first dump to be named '0', got {folders[0].name}"
         del folders[0]  # remove the first dump
         for folder in folders:
-            bytes_diff = diff_dumps(folder)
-            print(f"{folder}: bytes_diff={bytes_diff}")
+            bytes_diff, pages_diff = diff_dumps(folder)
+            # print the bytes_diff first, with enough space for the largest number
+            print(f"{folder.name:>6}: {bytes_diff}, pages_diff={pages_diff:>4}")
     except (subprocess.CalledProcessError, FileNotFoundError) as err:
         sys.exit(f"[ERR] {err}")
 
@@ -138,5 +138,4 @@ if __name__ == "__main__":
         type=Path,
         help="directory of the newer (--track-mem) dump, or the parent directory of a single-process dumpset",
     )
-    dump_dir = parser.parse_args().dump_dir
-    all_diffs(dump_dir)
+    all_diffs(parser.parse_args().dump_dir)
