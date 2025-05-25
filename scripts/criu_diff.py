@@ -87,7 +87,7 @@ def _diff(a: memoryview, b: memoryview) -> int:
     return sum(x != y for x, y in zip(a, b))
 
 
-def diff_one(child: Path) -> None:
+def diff_one(child: Path) -> int:
     parent = (child / "parent").resolve(strict=True)
 
     zero = bytes(PAGE)
@@ -122,13 +122,15 @@ def diff_one(child: Path) -> None:
                     f"pm_pages={c_meta['pm_total_pages']:>6}"
                 )
             del p_buf, c_buf, p_idx, c_idx, p_meta, c_meta
+            return bytes_diff
 
 
 def run(root: Path) -> None:
     root = root.resolve()
     if (root / "pages-1.img").exists():
         # single dump dir
-        diff_one(root)
+        bytes_diff = diff_one(root)
+        print(f"{root.name:>6}: {bytes_diff}")
         return
 
     dumps = sorted(
@@ -141,7 +143,8 @@ def run(root: Path) -> None:
         sys.exit(f"[ERR] expected first dump to be '0', found {dumps[0].name}")
 
     for d in dumps[1:]:  # skip baseline 0
-        diff_one(d)
+        bytes_diff = diff_one(d)
+        print(f"{d.name:>6}: {bytes_diff}")
 
 
 if __name__ == "__main__":
