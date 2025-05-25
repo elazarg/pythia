@@ -82,7 +82,7 @@ def _delta(a: memoryview | bytes, b: memoryview | bytes) -> int:
     return sum(x != y for x, y in zip(a, b))
 
 
-def diff_dumps(child_dir: Path) -> None:
+def diff_dumps(child_dir: Path) -> int:
     child_dir = child_dir.resolve()
     parent_dir = (child_dir / "parent").resolve(strict=True)
 
@@ -107,16 +107,34 @@ def diff_dumps(child_dir: Path) -> None:
                 parent_pg,
             )  # memoryview objects hold references to the mmap object which should be closed
 
-    print(f"bytes_diff={bytes_diff}   pages_compared={pages_comp}")
+    return bytes_diff
+
+
+def all_diffs(dump_dir: Path) -> int:
+    if not dump_dir.is_dir():
+        sys.exit(f"[ERR] {dump_dir} is not a directory")
+    if (dump_dir / "pages-1.img").is_file():
+        folders = [dump_dir]
+    elif not all(f.name.isdigit() for f in dump_dir.iterdir()):
+        sys.exit(f"[ERR] {dump_dir} is not a valid CRIU dump directory")
+    else:
+        folders = sorted(dump_dir.iterdir(), key=lambda f: int(f.name))
+        if not folders:
+            sys.exit(f"[ERR] {dump_dir} is empty")
+    try:
+        for folder in folders:
+            bytes_diff = diff_dumps(folder)
+            print(f"{folder}: bytes_diff={bytes_diff}")
+    except (subprocess.CalledProcessError, FileNotFoundError) as err:
+        sys.exit(f"[ERR] {err}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Diff CRIU RAM dumps")
     parser.add_argument(
-        "child_dump", type=Path, help="directory of the newer (--track-mem) dump"
+        "dump_dir",
+        type=Path,
+        help="directory of the newer (--track-mem) dump, or the parent directory of a single-process dumpset",
     )
-    args = parser.parse_args()
-    try:
-        diff_dumps(args.child_dump)
-    except (subprocess.CalledProcessError, FileNotFoundError) as err:
-        sys.exit(f"[ERR] {err}")
+    dump_dir = parser.parse_args().dump_dir
+    all_diffs(dump_dir)

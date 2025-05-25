@@ -29,7 +29,7 @@ apt install -y asciidoc xmlto
 make install
 ldconfig
 
-python -m pip install pycriu
 python -m pip install google
 python -m pip install "protobuf<4"  # avoid compatibility issues
+python -m pip install "criu-${CRIU_VERSION}/lib"  # install pycriu
 python -m pip install "criu-${CRIU_VERSION}/crit"
