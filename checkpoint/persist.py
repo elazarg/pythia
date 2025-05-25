@@ -257,8 +257,7 @@ if os.name == "posix":
             global folder_prefix
             if criu.init_opts() < 0:
                 raise OSError("CRIU init failed")
-            if not CRIU_IMAGES.exists():
-                CRIU_IMAGES.mkdir(parents=True, exist_ok=True)
+            (CRIU_IMAGES / tag).mkdir(parents=True, exist_ok=True)
             folder_prefix = f"{CRIU_IMAGES}/{tag}/".encode()
             parent_dir = folder_prefix + str(0).encode()
             criu.set_images_dir(parent_dir)
@@ -271,7 +270,7 @@ if os.name == "posix":
             criu.set_pid(PID)
             if criu.dump() < 0:
                 raise OSError("CRIU dump failed")
-            criu.set_parent_images(folder_prefix + bytes(0))
+            criu.set_parent_images(parent_dir)
 
         def self_coredump(tag: str):
             global coredump_iterations, coredump_steps
