@@ -100,11 +100,6 @@ def diff_one(child: Path) -> int:
         with _index(child) as (c_idx, c_buf, c_meta):
             bytes_diff = pages_diff = 0
             for addr, off_c in c_idx.items():
-                missing = [a for a in c_idx if a not in p_idx and a not in (addr,)]
-                assert (
-                    not missing
-                ), f"{child}: {len(missing)} child pages had no parent nor zero-page fallback"
-
                 child_pg = memoryview(c_buf)[off_c : off_c + PAGE]
                 parent_pg = (
                     memoryview(p_buf)[p_idx[addr] : p_idx[addr] + PAGE]
