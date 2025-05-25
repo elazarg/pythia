@@ -122,6 +122,10 @@ def all_diffs(dump_dir: Path) -> int:
         if not folders:
             sys.exit(f"[ERR] {dump_dir} is empty")
     try:
+        assert (
+            folders[0].name == "0"
+        ), f"Expected first dump to be named '0', got {folders[0].name}"
+        del folders[0]  # remove the first dump
         for folder in folders:
             bytes_diff = diff_dumps(folder)
             print(f"{folder}: bytes_diff={bytes_diff}")
