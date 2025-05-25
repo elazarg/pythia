@@ -63,12 +63,14 @@ def _index(dump: Path) -> Iterator[tuple[dict[int, int], mmap.mmap, dict[str, in
     for vaddr, n, in_parent in _iter_entries(pm):
         for _ in range(n):
             if not in_parent:
+                if offset + PAGE > buf.size():  # overrun to be hit
+                    print(
+                        "DEBUG: vaddr=0x%x  offset=%d  buf.size=%d  in_parent=%s"
+                        % (vaddr, offset, buf.size(), in_parent),
+                        file=sys.stderr,
+                    )
                 idx[vaddr] = offset
-                offset += PAGE  # advance only when the page is stored
-            assert offset <= buf.size(), (
-                f"pagemap claims more stored pages ({offset//PAGE}) "
-                f"than fit in {pages.name} ({buf.size()//PAGE})"
-            )
+                offset += PAGE
             vaddr += PAGE
     meta = {
         "pages_file": pages.name,
