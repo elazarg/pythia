@@ -263,15 +263,20 @@ if os.name == "posix":
         def _criu_init_options(target_pid: int) -> None:
             if criu.init_opts() < 0:
                 raise OSError("CRIU init failed")
+
+            criu.set_ext_unix_sk(True)
+            with open("/sys/fs/cgroup/user.slice/helper/cgroup.procs", "w") as f:
+                f.write(str(os.getpid()))
+            criu.set_manage_cgroups(True)
+            criu.set_pid(target_pid)  # dump *the child*
+
             criu.set_log_file(b"criu.log")
             criu.set_log_level(4)
-            criu.set_pid(target_pid)  # dump *the child*
             criu.set_shell_job(True)
             criu.set_leave_running(True)
             criu.set_service_address(b"/tmp/criu_service.socket")
             criu.set_track_mem("WSL" not in os.uname().release)
             criu.set_auto_dedup(False)
-            criu.set_ext_unix_sk(True)
 
         # ---------- daemon loop (runs in parent) ---------------------------
         def _daemon_loop(sock: socket.socket, tag: str, child_pid: int) -> None:
