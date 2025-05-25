@@ -260,7 +260,7 @@ if os.name == "posix":
             if not CRIU_IMAGES.exists():
                 CRIU_IMAGES.mkdir(parents=True, exist_ok=True)
             folder_prefix = f"{CRIU_IMAGES}/{tag}/".encode()
-            parent_dir = folder_prefix + bytes(0)
+            parent_dir = folder_prefix + str(0).encode()
             criu.set_images_dir(parent_dir)
             criu.set_log_file(b"criu.log")
             criu.set_log_level(4)
@@ -278,7 +278,7 @@ if os.name == "posix":
             if coredump_iterations == 0:
                 _init_criu(tag)
             if (coredump_iterations % STEP_VALUE) in [0, 1]:
-                folder = folder_prefix + bytes(coredump_steps)
+                folder = folder_prefix + str(coredump_steps).encode()
                 os.mkdir(folder)
                 with criu.set_images_dir(folder):
                     if criu.dump() < 0:
