@@ -249,47 +249,72 @@ if os.name == "posix":
     except AttributeError:
         print("CRIU is not available", file=sys.stderr)
     else:
-        coredump_iterations = 0
-        coredump_steps = 0
-        pid = os.getpid()
+        import os, pathlib, socket, struct, sys
+
+        # ---------- globals ------------------------------------------------
+        coredump_iterations = 0  # counts *loops*
+        coredump_steps = 0  # counts *dumps*
+        STEP_VALUE = 10  # leave as before
         CRIU_IMAGES = pathlib.Path("criu_images").absolute()
 
-        def init_opts():
+        _sock: socket.socket | None = None  # child-side handle
+
+        # ---------- one-time CRIU init for the daemon ----------------------
+        def _criu_init_options(target_pid: int) -> None:
             if criu.init_opts() < 0:
                 raise OSError("CRIU init failed")
             criu.set_log_file(b"criu.log")
             criu.set_log_level(4)
-            criu.set_pid(pid)
+            criu.set_pid(target_pid)  # dump *the child*
             criu.set_shell_job(True)
             criu.set_leave_running(True)
             criu.set_service_address(b"/tmp/criu_service.socket")
             criu.set_track_mem("WSL" not in os.uname().release)
             criu.set_auto_dedup(False)
 
-        def make_dump(criu_folder: pathlib.Path) -> None:
-            # Try to minimize memory footprint
-            global coredump_steps
+        # ---------- daemon loop (runs in parent) ---------------------------
+        def _daemon_loop(sock: socket.socket, tag: str, child_pid: int) -> None:
+            sock.setblocking(True)
+            _criu_init_options(child_pid)
 
-            if coredump_steps > 0:
-                parent = f"../{coredump_steps-1}".encode()
-                criu.set_parent_images(parent)
-                del parent
-            folder = criu_folder / f"{coredump_steps}"
-            folder.mkdir(exist_ok=True, parents=True)
-            with criu.set_images_dir(folder):
-                if criu.dump() < 0:
-                    raise OSError("CRIU dump failed")
-            coredump_steps += 1
+            while True:
+                msg = sock.recv(8)  # 8-byte step number
+                if not msg:  # EOF => child exited
+                    break
+                step = struct.unpack("<Q", msg)[0]
 
+                folder = CRIU_IMAGES / tag / str(step)
+                folder.mkdir(parents=True, exist_ok=True)
+
+                if step:
+                    criu.set_parent_images(f"../{step-1}".encode())
+                with criu.set_images_dir(folder):
+                    ret = criu.dump()
+                    sock.send(struct.pack("<i", ret))  # 4-byte status
+            os._exit(0)
+
+        # ---------- public API --------------------------------------------
         def self_coredump(tag: str) -> None:
-            # Try to minimize memory footprint
-            global coredump_iterations
+            """
+            Forks a daemon on the first call, then blocks for each dump request.
+            """
+            global coredump_iterations, coredump_steps, _sock
 
-            if not coredump_iterations:
-                init_opts()
-                make_dump(CRIU_IMAGES / tag)
+            if _sock is None:  # first ever call -> fork
+                parent_sock, child_sock = socket.socketpair()
+                pid = os.fork()
+                if pid == 0:  # --- CHILD (ML loop) ---
+                    parent_sock.close()
+                    _sock = child_sock  # keep a handle for later
+                else:  # --- PARENT (daemon) ----
+                    child_sock.close()
+                    _daemon_loop(parent_sock, tag, pid)  # never returns
 
             coredump_iterations += 1
 
+            # -------------- CHILD continues below -------------------------
             if (coredump_iterations % STEP_VALUE) in [0, 1]:
-                make_dump(CRIU_IMAGES / tag)
+                _sock.send(struct.pack("<Q", coredump_steps))
+                if struct.unpack("<i", _sock.recv(4))[0] < 0:
+                    raise OSError("CRIU dump failed")
+                coredump_steps += 1
