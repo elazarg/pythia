@@ -46,44 +46,36 @@ def _iter_entries(pm: Path):
 
 
 @contextmanager
-def _index(dump: Path) -> Iterator[tuple[dict[int, int], mmap.mmap, dict[str, int]]]:
+def _index(dump: Path):
     pages = dump / "pages-1.img"
     pm = _find_pagemap(dump)
-
-    size_pages = pages.stat().st_size
-    entries = _crit_decode(pm)["entries"]
-    total_pm_pages = sum(rec.get("nr_pages", 0) for rec in entries)
 
     with open(pages, "rb") as fh:
         buf = mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ)
 
     idx: dict[int, int] = {}
-    offset = 0
-    stored_pages = 0
-    for vaddr, n, in_parent in _iter_entries(pm):
+    off = stored = phantom = 0
+
+    for addr, n, in_parent in _iter_entries(pm):
         for _ in range(n):
-            if not in_parent:
-                if offset + PAGE > buf.size():  # overrun to be hit
-                    print(
-                        "DEBUG: vaddr=0x%x  offset=%d  buf.size=%d  in_parent=%s"
-                        % (vaddr, offset, buf.size(), in_parent),
-                        file=sys.stderr,
-                    )
-                idx[vaddr] = offset
-                offset += PAGE
-            vaddr += PAGE
+            if not in_parent and off + PAGE <= buf.size():
+                idx[addr] = off
+                off += PAGE
+                stored += 1
+            elif not in_parent:
+                phantom += 1  # flagged dirty but body missing
+            addr += PAGE
+
     meta = {
-        "pages_file": pages.name,
-        "pages_file_size": size_pages,
-        "pagemap": pm.name,
-        "pm_entries": len(entries) - 1,  # minus header
-        "pm_total_pages": total_pm_pages,
-        "stored_pages": stored_pages,
+        "pages_size": buf.size(),
+        "pm_entries": sum(1 for _ in _iter_entries(pm)),
+        "stored": stored,
+        "phantom": phantom,
     }
     try:
         yield idx, buf, meta
     finally:
-        pass  # don't close buf (avoid BufferError)
+        pass  # leave mmap open; OS reclaims it at exit
 
 
 def _diff(a: memoryview, b: memoryview) -> int:
