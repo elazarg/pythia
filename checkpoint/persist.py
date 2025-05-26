@@ -10,6 +10,7 @@ import pathlib
 import hashlib
 import socket
 import struct
+from contextlib import contextmanager
 
 FUEL = "FUEL"
 STEP = "STEP"
@@ -253,15 +254,16 @@ if os.name == "posix":
         coredump_steps = 0
         folder_prefix: bytes
 
+        @contextmanager
+        def set_images_then_parent_images(dir: bytes) -> typing.Iterator[None]:
+            with criu.set_images_dir(dir):
+                yield
+            criu.set_parent_images(dir)
+
         def _init_criu(tag) -> None:
-            global folder_prefix
             if criu.init_opts() < 0:
                 raise OSError("CRIU init failed")
             (CRIU_IMAGES / tag).mkdir(parents=True, exist_ok=True)
-            folder_prefix = f"{CRIU_IMAGES}/{tag}/".encode()
-            parent_dir = folder_prefix + "0".encode()
-            pathlib.Path(parent_dir.decode("ascii")).mkdir(parents=True, exist_ok=True)
-            criu.set_images_dir(parent_dir)
             criu.set_log_file(b"criu.log")
             criu.set_log_level(4)
             criu.set_shell_job(True)
@@ -269,22 +271,26 @@ if os.name == "posix":
             criu.set_track_mem(True)
             criu.set_auto_dedup(False)
             criu.set_pid(PID)
-            if criu.dump() < 0:
-                raise OSError("CRIU dump failed")
-            criu.set_parent_images(parent_dir)
 
         def self_coredump(tag: str) -> None:
-            global coredump_iterations, coredump_steps
+            global coredump_iterations, coredump_steps, folder_prefix
             if coredump_iterations == 0:
                 _init_criu(tag)
+                folder_prefix = f"{CRIU_IMAGES}/{tag}/".encode("ascii")
+                parent_dir = folder_prefix + "0".encode("ascii")
+                pathlib.Path(parent_dir.decode("ascii")).mkdir(
+                    parents=True, exist_ok=True
+                )
+                with set_images_then_parent_images(parent_dir):
+                    if criu.dump() < 0:
+                        raise OSError("CRIU dump failed")
 
             coredump_iterations += 1
 
             if (coredump_iterations % STEP_VALUE) in [0, 1]:
-                folder = folder_prefix + str(coredump_steps).encode()
+                folder = folder_prefix + str(coredump_steps).encode("ascii")
                 os.mkdir(folder)
-                with criu.set_images_dir(folder):
+                with set_images_then_parent_images(folder):
                     if criu.dump() < 0:
                         raise OSError("CRIU dump failed")
-                criu.set_parent_images(folder)
                 coredump_steps += 1
