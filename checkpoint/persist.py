@@ -252,13 +252,17 @@ if os.name == "posix":
         CRIU_IMAGES = pathlib.Path("criu_images").absolute()
         coredump_iterations = 0
         coredump_steps = 0
-        folder_prefix: bytes
+        folder_prefix: str
 
-        def criu_dump_incremental(dir: bytes) -> None:
-            with criu.set_images_dir(dir):
+        def criu_dump_incremental() -> None:
+            global coredump_steps
+            folder = folder_prefix + str(coredump_steps)
+            pathlib.Path(folder).mkdir(parents=True, exist_ok=True)
+            with criu.set_images_dir(folder):
                 if criu.dump() < 0:
                     raise OSError("CRIU dump failed")
-            criu.set_parent_images(dir)
+            criu.set_parent_images(folder.encode("ascii"))
+            coredump_steps += 1
 
         def _init_criu(tag) -> None:
             if criu.init_opts() < 0:
@@ -274,20 +278,13 @@ if os.name == "posix":
             criu.set_pid(PID)
 
         def self_coredump(tag: str) -> None:
-            global coredump_iterations, coredump_steps, folder_prefix
+            global coredump_iterations, folder_prefix
             if coredump_iterations == 0:
                 _init_criu(tag)
-                folder_prefix = f"{CRIU_IMAGES}/{tag}/".encode("ascii")
-                parent_dir = folder_prefix + "0".encode("ascii")
-                pathlib.Path(parent_dir.decode("ascii")).mkdir(
-                    parents=True, exist_ok=True
-                )
-                criu_dump_incremental(parent_dir)
+                folder_prefix = f"{CRIU_IMAGES}/{tag}/"
+                criu_dump_incremental()
 
             coredump_iterations += 1
 
             if (coredump_iterations % STEP_VALUE) in (0, 1):
-                folder = folder_prefix + str(coredump_steps).encode("ascii")
-                os.mkdir(folder)
-                criu_dump_incremental(folder)
-                coredump_steps += 1
+                criu_dump_incremental()

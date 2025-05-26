@@ -1,6 +1,7 @@
 import contextlib
 from os import PathLike
 import os
+from typing import Iterator
 
 from checkpoint.ctypes_modern import Clibrary
 
@@ -32,15 +33,13 @@ def set_images_dir_fd(fd: int) -> None: ...
 
 
 @contextlib.contextmanager
-def set_images_dir(path: str | bytes | PathLike[str] | PathLike[bytes]) -> None:
-    try:
-        fd = os.open(path, os.O_DIRECTORY)
-    except OSError as e:
-        raise OSError(f"Failed to open criu_images directory: {e}")
-    else:
-        set_images_dir_fd(fd)
-        yield
-        os.close(fd)
+def set_images_dir(
+    path: str | bytes | PathLike[str] | PathLike[bytes],
+) -> Iterator[None]:
+    fd = os.open(path, os.O_DIRECTORY)
+    set_images_dir_fd(fd)
+    yield
+    os.close(fd)
 
 
 @lib.function
