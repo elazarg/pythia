@@ -260,6 +260,7 @@ if os.name == "posix":
             (CRIU_IMAGES / tag).mkdir(parents=True, exist_ok=True)
             folder_prefix = f"{CRIU_IMAGES}/{tag}/".encode()
             parent_dir = folder_prefix + "0".encode()
+            os.mkdir(parent_dir)
             criu.set_images_dir(parent_dir)
             criu.set_log_file(b"criu.log")
             criu.set_log_level(4)
