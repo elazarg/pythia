@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Iterator
 
 PAGE = os.sysconf("SC_PAGE_SIZE")
+ZERO_PAGE = bytes(PAGE)
 
 
 def _crit_decode(path: Path) -> dict:
@@ -39,15 +40,6 @@ def _find_pagemap(dump: Path) -> Path:
     sys.exit(f"[ERR] {dump}: no pagemap with pages_id==1")
 
 
-def _iter_entries(pm: Path):
-    for rec in _crit_decode(pm)["entries"]:
-        if "vaddr" in rec:  # skip header
-            assert (
-                rec["nr_pages"] >= 1
-            ), f"{pm}: record with non-positive nr_pages={rec['nr_pages']}"
-            yield rec["vaddr"], rec["nr_pages"], bool(rec["flags"] & 1)
-
-
 @contextmanager
 def _index(dump: Path):
     pages = dump / "pages-1.img"
@@ -57,24 +49,31 @@ def _index(dump: Path):
         buf = mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ)
 
     idx: dict[int, int] = {}
-    off = stored = phantom = should_exist = 0
+    offset = stored = phantom = 0
 
-    for vaddr, n, in_parent in _iter_entries(pm):
-        for _ in range(n):
-            if not in_parent:  # CRIU says body is here
-                should_exist += 1
-                if off + PAGE <= buf.size():  # body really in pages-1.img
-                    idx[vaddr] = off
-                    off += PAGE
-                    stored += 1
-                else:  # body missing -> phantom
-                    phantom += 1
+    for rec in _crit_decode(pm)["entries"]:
+        vaddr = rec.get("vaddr")
+        if vaddr is None:
+            # skip header
+            continue
+
+        if bool(rec["flags"] & 1):
+            # This page is identical to the parent page.
+            continue
+
+        number_of_pages = rec["nr_pages"]
+        assert (
+            number_of_pages >= 1
+        ), f"{pm}: record with non-positive nr_pages={rec['nr_pages']}"
+
+        for _ in range(number_of_pages):
+            if offset + PAGE <= buf.size():  # body really in pages-1.img
+                idx[vaddr] = offset
+                offset += PAGE
+                stored += 1
+            else:  # body missing -> phantom
+                phantom += 1
             vaddr += PAGE  # next virtual page
-
-    assert stored + phantom == should_exist, (
-        f"{dump}: pagemap wants {should_exist} stored pages, "
-        f"found bodies for {stored}, phantom={phantom}"
-    )
 
     meta = {
         "pages_size": buf.size(),
@@ -94,8 +93,6 @@ def _diff(a: memoryview, b: memoryview) -> int:
 def diff_one(child: Path) -> int:
     parent = (child / "parent").resolve(strict=True)
 
-    zero = bytes(PAGE)
-
     with _index(parent) as (p_idx, p_buf, p_meta):
         with _index(child) as (c_idx, c_buf, c_meta):
             bytes_diff = pages_diff = 0
@@ -104,7 +101,7 @@ def diff_one(child: Path) -> int:
                 parent_pg = (
                     memoryview(p_buf)[p_idx[addr] : p_idx[addr] + PAGE]
                     if addr in p_idx
-                    else zero
+                    else ZERO_PAGE
                 )
                 delta = _diff(child_pg, parent_pg)
                 if delta:
