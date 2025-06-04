@@ -22,7 +22,7 @@ def init_snapshotter(lib_path: str = "./snapshot.so") -> Iterator[Callable[[], N
     _lib = ctypes.CDLL(lib_path)
 
     # Setup signatures
-    _lib.snapshot_init.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_char_p]
+    _lib.snapshot_init.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
     _lib.snapshot_init.restype = None
     _lib.snapshot_capture.argtypes = [ctypes.c_void_p]
     _lib.snapshot_capture.restype = None
