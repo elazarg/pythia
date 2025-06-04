@@ -33,32 +33,33 @@ def run(g: dict[int, set[int]], root: int, max_only: bool = False) -> Counter[in
     """extracts maximal cliques from a graph"""
     root_to_leaf_path = [root]
     counter = Counter[int]()
-    for r in range(10**100):  # type: int
-        persist.self_coredump("pivoter")
-        if not root_to_leaf_path:
-            break
-        world = get_world(g, root_to_leaf_path)
-        if not max_only or not world:
-            counter[len(root_to_leaf_path)] += 1
-        if max(world, default=0) <= root_to_leaf_path[-1]:
-            parent = root_to_leaf_path.pop()
+    with persist.snapshotter() as self_coredump:
+        for r in range(10**100):  # type: int
+            self_coredump()
+            if not root_to_leaf_path:
+                break
             world = get_world(g, root_to_leaf_path)
-            while root_to_leaf_path and parent == max(world):
+            if not max_only or not world:
+                counter[len(root_to_leaf_path)] += 1
+            if max(world, default=0) <= root_to_leaf_path[-1]:
                 parent = root_to_leaf_path.pop()
                 world = get_world(g, root_to_leaf_path)
-            if parent != max(world):
-                for curr in sorted(world):
-                    if curr > parent:
-                        root_to_leaf_path.append(curr)
-                        break
+                while root_to_leaf_path and parent == max(world):
+                    parent = root_to_leaf_path.pop()
+                    world = get_world(g, root_to_leaf_path)
+                if parent != max(world):
+                    for curr in sorted(world):
+                        if curr > parent:
+                            root_to_leaf_path.append(curr)
+                            break
+                else:
+                    assert not root_to_leaf_path
             else:
-                assert not root_to_leaf_path
-        else:
-            for neighbour in sorted(world):
-                if neighbour > root_to_leaf_path[-1]:
-                    root_to_leaf_path.append(neighbour)
-                    break
-    return counter
+                for neighbour in sorted(world):
+                    if neighbour > root_to_leaf_path[-1]:
+                        root_to_leaf_path.append(neighbour)
+                        break
+        return counter
 
 
 def read_edge(pair: str) -> tuple[int, int]:

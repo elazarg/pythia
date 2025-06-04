@@ -20,50 +20,51 @@ def log(idx: int, k: int) -> None:
 def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     """select k features from features using target as the target variable"""
     S = np.array([], "int")
-    for idx in range(k):  # type: int
-        persist.self_coredump("omp")
-        log(idx, k)
-        dims = np.unique(S[S >= 0])
-        target = np.array(target).reshape(target.shape[0], -1)
-        X = features[:, dims]
-        if X.size == 0:
-            prediction = np.zeros(features.shape[0]).reshape(features.shape[0], -1)
-        else:
-            if X.ndim == 1:
-                X = X.reshape(X.shape[0], 1)
-            y = np.concatenate(target)
-            X = (X - X.mean()) / X.std()
-            X = np.c_[np.ones(X.shape[0]), X]
-            theta = np.zeros(X.shape[1])
-            for _ in range(10000):
-                error = np.dot(X, theta.T) - y
-                theta -= 0.1 * (1 / y.size) * np.dot(X.T, error)
-            prediction = np.zeros((len(X), 1))
-            for j in range(len(X)):
-                total = 0.0
-                xj = X[j, :]
-                for i in range(len(xj)):
-                    x = get_float(xj, i)
-                    t = get_float(theta, i)
-                    total += x * t
-                prediction[j] = total
-        grad = np.dot(features.T, target - prediction)
-        points = np.setdiff1d(np.array(range(len(grad))), S).astype("int")
-        if len(points) == 0:
-            break
-        a = points[0]
-        m = get_float(grad, a)
-        for i in range(len(points)):
-            p = points[i]
-            n = get_float(grad, p)
-            if n > m:
-                a = p
-                m = n
-        if m >= 0:
-            S = np.unique(append_int(S, a))
-        else:
-            break
-    return S
+    with persist.snapshotter() as self_coredump:
+        for idx in range(k):  # type: int
+            self_coredump()
+            log(idx, k)
+            dims = np.unique(S[S >= 0])
+            target = np.array(target).reshape(target.shape[0], -1)
+            X = features[:, dims]
+            if X.size == 0:
+                prediction = np.zeros(features.shape[0]).reshape(features.shape[0], -1)
+            else:
+                if X.ndim == 1:
+                    X = X.reshape(X.shape[0], 1)
+                y = np.concatenate(target)
+                X = (X - X.mean()) / X.std()
+                X = np.c_[np.ones(X.shape[0]), X]
+                theta = np.zeros(X.shape[1])
+                for _ in range(10000):
+                    error = np.dot(X, theta.T) - y
+                    theta -= 0.1 * (1 / y.size) * np.dot(X.T, error)
+                prediction = np.zeros((len(X), 1))
+                for j in range(len(X)):
+                    total = 0.0
+                    xj = X[j, :]
+                    for i in range(len(xj)):
+                        x = get_float(xj, i)
+                        t = get_float(theta, i)
+                        total += x * t
+                    prediction[j] = total
+            grad = np.dot(features.T, target - prediction)
+            points = np.setdiff1d(np.array(range(len(grad))), S).astype("int")
+            if len(points) == 0:
+                break
+            a = points[0]
+            m = get_float(grad, a)
+            for i in range(len(points)):
+                p = points[i]
+                n = get_float(grad, p)
+                if n > m:
+                    a = p
+                    m = n
+            if m >= 0:
+                S = np.unique(append_int(S, a))
+            else:
+                break
+        return S
 
 
 def main(dataset: str, k: int) -> None:

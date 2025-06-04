@@ -288,3 +288,56 @@ if os.name == "posix":
 
             if (coredump_iterations % STEP_VALUE) in (0, 1):
                 criu_dump_incremental()
+
+
+if True:
+    """
+    Minimal Python bindings for memory snapshot library.
+    Focus: zero overhead capture() and simplicity.
+    """
+
+    import ctypes
+    from contextlib import contextmanager
+    from functools import partial
+    from typing import Callable, Iterator
+
+    # Global state
+    _lib = None
+    _ctx = None
+
+    @contextmanager
+    def snapshotter(
+        output_dir: str = "/tmp",
+    ) -> Iterator[Callable[[], None]]:
+        """
+        Initialize snapshotter. Returns capture function for hot loop.
+
+        Returns:
+            capture: Function that returns number of bytes changed
+        """
+        global _lib, _ctx
+
+        # Load library from this file's directory
+        lib_path = pathlib.Path(__file__).parent / "snapshot.so"
+        _lib = ctypes.CDLL(str(lib_path))
+
+        # Setup signatures
+        _lib.snapshot_init.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_char_p]
+        _lib.snapshot_init.restype = ctypes.c_int
+        _lib.snapshot_capture.argtypes = [ctypes.c_void_p]
+        _lib.snapshot_capture.restype = ctypes.c_size_t
+        _lib.snapshot_cleanup.argtypes = [ctypes.c_void_p]
+        _lib.snapshot_cleanup.restype = None
+
+        # Initialize context
+        _ctx = ctypes.c_void_p()
+        result = _lib.snapshot_init(ctypes.byref(_ctx), output_dir.encode("utf-8"))
+        if result < 0:
+            raise RuntimeError("Failed to initialize")
+
+        # Return optimized capture function
+        yield partial(_lib.snapshot_capture, _ctx)
+
+        if _lib and _ctx:
+            _lib.snapshot_cleanup(_ctx)
+        _lib = _ctx = None
