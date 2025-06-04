@@ -301,10 +301,6 @@ if True:
     from functools import partial
     from typing import Callable, Iterator
 
-    # Global state
-    _lib = None
-    _ctx = None
-
     @contextmanager
     def snapshotter(
         output_dir: str = "/tmp",
@@ -313,12 +309,10 @@ if True:
         Initialize snapshotter. Returns capture function for hot loop.
 
         Returns:
-            capture: Function that returns number of bytes changed
+            capture: Function that returns the number of bytes changed
         """
-        global _lib, _ctx
-
-        # Load library from this file's directory
-        lib_path = pathlib.Path(__file__).parent / "snapshot.so"
+        # Load the library from this file's directory
+        lib_path = pathlib.Path(__file__).parent.parent / "scripts" / "snapshot.so"
         _lib = ctypes.CDLL(str(lib_path))
 
         # Setup signatures
@@ -340,4 +334,3 @@ if True:
 
         if _lib and _ctx:
             _lib.snapshot_cleanup(_ctx)
-        _lib = _ctx = None
