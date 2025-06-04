@@ -302,9 +302,7 @@ if True:
     from typing import Callable, Iterator
 
     @contextmanager
-    def snapshotter(
-        output_dir: str = "/tmp",
-    ) -> Iterator[Callable[[], None]]:
+    def snapshotter() -> Iterator[Callable[[], None]]:
         """
         Initialize snapshotter. Returns capture function for hot loop.
 
@@ -317,15 +315,15 @@ if True:
 
         # Setup signatures
         _lib.snapshot_init.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_char_p]
-        _lib.snapshot_init.restype = ctypes.c_int
+        _lib.snapshot_init.restype = None
         _lib.snapshot_capture.argtypes = [ctypes.c_void_p]
-        _lib.snapshot_capture.restype = ctypes.c_size_t
+        _lib.snapshot_capture.restype = None
         _lib.snapshot_cleanup.argtypes = [ctypes.c_void_p]
         _lib.snapshot_cleanup.restype = None
 
         # Initialize context
         _ctx = ctypes.c_void_p()
-        result = _lib.snapshot_init(ctypes.byref(_ctx), output_dir.encode("utf-8"))
+        result = _lib.snapshot_init(ctypes.byref(_ctx))
         if result < 0:
             raise RuntimeError("Failed to initialize")
 

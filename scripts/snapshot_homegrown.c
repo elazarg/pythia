@@ -92,7 +92,6 @@ typedef struct {
     int active_regions;        // Currently active regions
     int mem_fd;
     int iteration;
-    char output_dir[MAX_PATH_LEN];
     int initialized;
     size_t total_memory_allocated; // Track memory overhead
 
@@ -487,29 +486,22 @@ static void count_changed_bytes(memory_region_t* region) {
  * CORRECTNESS: Ensures deterministic memory layout before measurements begin.
  * All temporary buffers are pre-allocated in context structure.
  */
-int snapshot_init(snapshot_context_t** ctx_ptr, const char* output_dir) {
-    if (!ctx_ptr) return -1;
+void snapshot_init(snapshot_context_t** ctx_ptr) {
+    if (!ctx_ptr) exit(1);
 
     snapshot_context_t* ctx = malloc(sizeof(snapshot_context_t));
     if (!ctx) {
         fprintf(stderr, "Error: Failed to allocate snapshot context\n");
-        return -1;
+        exit(1);
     }
 
     memset(ctx, 0, sizeof(snapshot_context_t));
-
-    if (output_dir) {
-        strncpy(ctx->output_dir, output_dir, sizeof(ctx->output_dir) - 1);
-        mkdir(ctx->output_dir, 0755);
-    } else {
-        strcpy(ctx->output_dir, "/tmp");
-    }
 
     ctx->mem_fd = open("/proc/self/mem", O_RDONLY);
     if (ctx->mem_fd < 0) {
         fprintf(stderr, "Error: Cannot open /proc/self/mem: %s\n", strerror(errno));
         free(ctx);
-        return -1;
+        exit(1);
     }
 
     // Initial region discovery (this is the only time malloc happens for regions)
@@ -517,7 +509,7 @@ int snapshot_init(snapshot_context_t** ctx_ptr, const char* output_dir) {
     if (region_count < 0) {
         close(ctx->mem_fd);
         free(ctx);
-        return -1;
+        exit(1);
     }
 
     ctx->iteration = 0;
@@ -527,8 +519,6 @@ int snapshot_init(snapshot_context_t** ctx_ptr, const char* output_dir) {
 
     printf("Memory snapshot initialized: %d regions, %.2f MB overhead\n",
            region_count, ctx->total_memory_allocated / (1024.0 * 1024.0));
-
-    return 0;
 }
 
 /*
@@ -661,9 +651,7 @@ void snapshot_cleanup(snapshot_context_t* ctx) {
 int main() {
     snapshot_context_t* snapshotter;
 
-    if (snapshot_init(&snapshotter, "/tmp/test") < 0) {
-        return 1;
-    }
+    snapshot_init(&snapshotter);
 
     for (int i = 0; i < 5; i++) {
         // Simulate computation with varying allocation patterns
