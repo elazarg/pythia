@@ -301,6 +301,18 @@ if True:
     from functools import partial
     from typing import Callable, Iterator
 
+    # Load the library from this file's directory
+    lib_path = pathlib.Path(__file__).parent.parent / "scripts" / "snapshot.so"
+    _lib = ctypes.CDLL(str(lib_path))
+
+    # Setup signatures
+    _lib.snapshot_init.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
+    _lib.snapshot_init.restype = None
+    _lib.snapshot_capture.argtypes = [ctypes.c_void_p]
+    _lib.snapshot_capture.restype = None
+    _lib.snapshot_cleanup.argtypes = [ctypes.c_void_p]
+    _lib.snapshot_cleanup.restype = None
+
     @contextmanager
     def snapshotter() -> Iterator[Callable[[], None]]:
         """
@@ -309,26 +321,11 @@ if True:
         Returns:
             capture: Function that returns the number of bytes changed
         """
-        # Load the library from this file's directory
-        lib_path = pathlib.Path(__file__).parent.parent / "scripts" / "snapshot.so"
-        _lib = ctypes.CDLL(str(lib_path))
-
-        # Setup signatures
-        _lib.snapshot_init.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
-        _lib.snapshot_init.restype = None
-        _lib.snapshot_capture.argtypes = [ctypes.c_void_p]
-        _lib.snapshot_capture.restype = None
-        _lib.snapshot_cleanup.argtypes = [ctypes.c_void_p]
-        _lib.snapshot_cleanup.restype = None
-
         # Initialize context
         _ctx = ctypes.c_void_p()
-        result = _lib.snapshot_init(ctypes.byref(_ctx))
-        if result < 0:
-            raise RuntimeError("Failed to initialize")
+        _lib.snapshot_init(ctypes.byref(_ctx))
 
         # Return optimized capture function
         yield partial(_lib.snapshot_capture, _ctx)
 
-        if _lib and _ctx:
-            _lib.snapshot_cleanup(_ctx)
+        _lib.snapshot_cleanup(_ctx)
