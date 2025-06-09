@@ -138,13 +138,63 @@ static int should_include_region(const memory_region_t* region, const char* line
         return 0;
     }
 
-    // Skip extremely large regions (likely not program state)
-    if (region->size > 100 * 1024 * 1024) {
-        debug("Excluding huge region (%zu MB): %s\n", region->size / (1024*1024), line);
+    // Skip system regions that are definitely not program state
+    if (strstr(line, "[vdso]") || strstr(line, "[vsyscall]") || strstr(line, "[vvar]")) {
+        debug("Excluding system region: %s\n", line);
         return 0;
     }
 
-    debug("Including region: %s (size: %zu KB)\n", region->name, region->size / 1024);
+    // Always include heap and stack - core program state
+    if (strstr(line, "[heap]") || strstr(line, "[stack]")) {
+        debug("Including core region: %s (size: %zu KB)\n", region->name, region->size / 1024);
+        return 1;
+    }
+
+    // Include anonymous regions up to reasonable limits
+    if (strstr(region->name, "[anonymous]") || strstr(line, "00:00 0")) {
+        // For anonymous regions, be more generous with size limits
+        // Python can allocate very large memory arenas
+        if (region->size > 1024 * 1024 * 1024) {  // 1GB limit instead of 100MB
+            debug("Excluding huge anonymous region (%zu MB): %s\n",
+                  region->size / (1024*1024), line);
+            return 0;
+        }
+
+        debug("Including anonymous region: %s (size: %zu KB)\n",
+              region->name, region->size / 1024);
+        return 1;
+    }
+
+    // Include Python-related shared libraries
+    if (strstr(line, "python") || strstr(line, "libpython") ||
+        strstr(line, ".cpython-") || strstr(line, "site-packages")) {
+        debug("Including Python library: %s (size: %zu KB)\n",
+              region->name, region->size / 1024);
+        return 1;
+    }
+
+    // Include your snapshot library (useful for debugging)
+    if (strstr(line, "snapshot.so")) {
+        debug("Including snapshot library: %s (size: %zu KB)\n",
+              region->name, region->size / 1024);
+        return 1;
+    }
+
+    // Exclude other shared libraries - they're less likely to contain changing program state
+    if (strstr(line, "/lib/") || strstr(line, "/usr/lib/") || strstr(line, ".so")) {
+        debug("Excluding shared library: %s\n", line);
+        return 0;
+    }
+
+    // Skip tiny regions (likely not significant)
+    if (region->size < 4096) {
+        debug("Excluding tiny region (%zu bytes): %s\n", region->size, line);
+        return 0;
+    }
+
+    // Include other potentially interesting writable regions
+    debug("Including other writable region: %s (size: %zu KB)\n",
+          region->name, region->size / 1024);
     return 1;
 }
 
