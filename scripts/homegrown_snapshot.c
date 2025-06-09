@@ -36,7 +36,16 @@ static void debug(const char* fmt, ...) {
     // Initialize debug flag on first call
     if (debug_enabled == -1) {
         const char* env_debug = getenv("SNAPSHOT_DEBUG");
-        debug_enabled = (env_debug && *env_debug) ? 1 : 0;
+        if (env_debug) {
+            debug_enabled = (strcmp(env_debug, "0") != 0 &&
+                           strcmp(env_debug, "") != 0 &&
+                           strcmp(env_debug, "false") != 0 &&
+                           strcmp(env_debug, "FALSE") != 0 &&
+                           strcmp(env_debug, "NO") != 0 &&
+                           strcmp(env_debug, "no") != 0) ? 1 : 0;
+        } else {
+            debug_enabled = 0;  // Not set = disabled
+        }
     }
 
     if (!debug_enabled) {
@@ -48,8 +57,8 @@ static void debug(const char* fmt, ...) {
     fprintf(stderr, "DEBUG: ");
     vfprintf(stderr, fmt, args);
     va_end(args);
-    fflush(stderr);
 }
+
 
 /*
  * Memory region with stored content for byte-level comparison
