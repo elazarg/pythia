@@ -23,7 +23,7 @@ def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     with persist.snapshotter() as self_coredump:
         for idx in range(k):  # type: int
             self_coredump()
-            log(idx, k)
+            # log(idx, k)
             dims = np.unique(S[S >= 0])
             target = np.array(target).reshape(target.shape[0], -1)
             X = features[:, dims]
