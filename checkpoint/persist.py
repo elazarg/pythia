@@ -11,7 +11,7 @@ import hashlib
 import socket
 import struct
 
-import homegrown_snapshot
+from checkpoint import homegrown_snapshot
 
 snapshotter = homegrown_snapshot.snapshotter
 
