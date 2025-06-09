@@ -147,6 +147,7 @@ static int parse_maps_line(const char* line, memory_region_t* region) {
  *
  * CORRECTNESS: Identical filtering logic as before.
  * Added size limit to prevent excessive memory allocation for huge regions.
+ * Region filtering - includes Python shared libraries
  */
 static int should_include_region(const memory_region_t* region, const char* line) {
     // Must be writable (where state changes occur)
@@ -155,7 +156,7 @@ static int should_include_region(const memory_region_t* region, const char* line
     }
 
     // Skip tiny regions
-    if (region->size < 4096) {
+    if (region->size < 1024) {  // Reduced from 4096
         return 0;
     }
 
@@ -168,22 +169,9 @@ static int should_include_region(const memory_region_t* region, const char* line
     if (strstr(line, "[vdso]") || strstr(line, "[vsyscall]") || strstr(line, "[vvar]")) {
         return 0;
     }
-
-    // Include heap, stack, anonymous - core program state
-    if (strstr(line, "[heap]") || strstr(line, "[stack]") ||
-        strstr(region->name, "[anonymous]")) {
-        return 1;
-    }
-
-    // Skip shared libraries
-    if (strstr(line, "/lib/") || strstr(line, "/usr/lib/")) {
-        return 0;
-    }
-
     // Include other writable regions (mapped files, etc.)
     return 1;
 }
-
 /*
  * Print history buffer contents (when full or at cleanup)
  *
