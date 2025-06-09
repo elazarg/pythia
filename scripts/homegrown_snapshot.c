@@ -1,35 +1,11 @@
 /*
- * Memory Process Snapshotting Tool with Byte-Level Diff
+ * Memory Process Snapshotting Tool with Byte-Level Diff and Conditional Debug
  *
  * DESIGN FOR CHECKPOINTING RESEARCH:
  * - Provides byte-level change detection
  * - Stores previous memory content for detailed comparison
  * - Optimized for research accuracy over production performance
  * - Serves as baseline for comparing against Python checkpointing libraries
- *
- * CORRECTNESS GUARANTEES:
- * - Exact byte-level change detection (no hash approximations)
- * - Complete change coverage reporting including new regions
- * - ALL regions must be readable or measurement fails (no partial results)
- * - Deterministic discovery overhead (no malloc during region discovery)
- *
- * CORRECTNESS LIMITATIONS:
- * - Large memory overhead (stores 2x region content)
- * - Observer effect: significant heap usage affects measurements
- * - Single-threaded assumption at snapshot points
- * - Fixed limits on region count and discovery buffer sizes
- *
- * IMPLEMENTATION DECISIONS FOR CONSISTENT DISCOVERY OVERHEAD:
- * 1. Pre-allocated discovery buffers in context (no malloc during discovery)
- * 2. Fixed-size staging areas for parsing /proc/self/maps
- * 3. Buffer reuse for disappeared/resized regions
- * 4. All temporary allocations happen at init time only
- *
- * USAGE FOR CHECKPOINTING RESEARCH:
- * 1. Call snapshot_init() once before iterative computation
- * 2. Call snapshot_capture() at stable execution points
- * 3. Each capture re-discovers regions with zero allocation overhead
- * 4. Compare results with Python checkpointing library measurements
  */
 
 #include <stdio.h>
@@ -40,6 +16,7 @@
 #include <stdint.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <stdarg.h>
 
 #define MAX_REGIONS 2048
 #define READ_BUFFER_SIZE (64 * 1024)
@@ -48,13 +25,33 @@
 #define LINE_BUFFER_SIZE 1024          // Buffer for individual lines
 #define HISTORY_BUFFER_SIZE 50         // Number of snapshots to buffer before printing
 
+// Debug control - set via environment variable SNAPSHOT_DEBUG
+static int debug_enabled = -1;  // -1 = not initialized, 0 = disabled, 1 = enabled
+
+/*
+ * Conditional debug printing
+ * Only prints if SNAPSHOT_DEBUG environment variable is set
+ */
+static void debug(const char* fmt, ...) {
+    // Initialize debug flag on first call
+    if (debug_enabled == -1) {
+        const char* env_debug = getenv("SNAPSHOT_DEBUG");
+        debug_enabled = (env_debug && *env_debug) ? 1 : 0;
+    }
+
+    if (!debug_enabled) {
+        return;
+    }
+
+    va_list args;
+    va_start(args, fmt);
+    fprintf(stderr, "DEBUG: ");
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+}
+
 /*
  * Memory region with stored content for byte-level comparison
- *
- * DESIGN DECISION: Added 'active' flag and 'buffer_capacity' for buffer reuse.
- * CORRECTNESS: When regions disappear, we mark them inactive but keep buffers.
- * When new regions appear, we reuse existing buffers if size permits.
- * This ensures consistent memory allocation patterns across captures.
  */
 typedef struct {
     uintptr_t start;           // Virtual address start
@@ -76,14 +73,6 @@ typedef struct {
 
 /*
  * Snapshot context with content storage
- *
- * DESIGN DECISION: Added pre-allocated buffers for discovery process.
- * CORRECTNESS: All temporary allocations happen at init time.
- * During capture/discovery, we only use these pre-allocated buffers.
- * This ensures zero malloc overhead and consistent memory patterns.
- *
- * ADDED: History buffer for tracking changed bytes over time.
- * Prints results when buffer fills or at cleanup for analysis.
  */
 typedef struct {
     memory_region_t regions[MAX_REGIONS];
@@ -107,9 +96,6 @@ typedef struct {
 
 /*
  * Parse /proc/self/maps line with validation
- *
- * CORRECTNESS: Identical to previous version - no changes to parsing logic.
- * Uses pre-allocated staging buffer to avoid malloc during discovery.
  */
 static int parse_maps_line(const char* line, memory_region_t* region) {
     unsigned long start, end;
@@ -144,40 +130,26 @@ static int parse_maps_line(const char* line, memory_region_t* region) {
 
 /*
  * Conservative region filtering for checkpointing research
- *
- * CORRECTNESS: Identical filtering logic as before.
- * Added size limit to prevent excessive memory allocation for huge regions.
- * Region filtering - includes Python shared libraries
  */
 static int should_include_region(const memory_region_t* region, const char* line) {
     // Must be writable (where state changes occur)
     if (region->perms[1] != 'w') {
-        return 0;
-    }
-
-    // Skip tiny regions
-    if (region->size < 1024) {  // Reduced from 4096
+        debug("Excluding non-writable region: %s\n", line);
         return 0;
     }
 
     // Skip extremely large regions (likely not program state)
     if (region->size > 100 * 1024 * 1024) {
+        debug("Excluding huge region (%zu MB): %s\n", region->size / (1024*1024), line);
         return 0;
     }
 
-    // Skip system regions
-    if (strstr(line, "[vdso]") || strstr(line, "[vsyscall]") || strstr(line, "[vvar]")) {
-        return 0;
-    }
-    // Include other writable regions (mapped files, etc.)
+    debug("Including region: %s (size: %zu KB)\n", region->name, region->size / 1024);
     return 1;
 }
+
 /*
  * Print history buffer contents (when full or at cleanup)
- *
- * DESIGN DECISION: Print line-by-line format for easy parsing/analysis.
- * Each line shows: snapshot_number:changed_bytes
- * This format is easily consumable by analysis scripts.
  */
 static void print_history_buffer(snapshot_context_t* ctx) {
     if (ctx->history_count == 0) {
@@ -193,17 +165,17 @@ static void print_history_buffer(snapshot_context_t* ctx) {
 
     ctx->history_count = 0;  // Clear buffer after printing
 }
+
 /*
- * DESIGN DECISION: First try to find exact address match to preserve comparisons.
- * If no match, then find reusable slot with sufficient capacity.
- * CORRECTNESS: Address matching ensures we compare same memory across captures.
- * Buffer reuse only for genuinely new regions.
+ * Find region slot for reuse or exact matching
  */
 static memory_region_t* find_region_slot(snapshot_context_t* ctx, memory_region_t* new_region) {
     // First pass: look for exact address match (same region, preserve buffers)
     for (int i = 0; i < ctx->region_count; i++) {
         memory_region_t* region = &ctx->regions[i];
         if (region->start == new_region->start && region->end == new_region->end) {
+            debug("Found exact match for region 0x%lx-0x%lx (%s)\n",
+                  new_region->start, new_region->end, new_region->name);
             return region;  // Found same region, keep existing buffers
         }
     }
@@ -225,15 +197,19 @@ static memory_region_t* find_region_slot(snapshot_context_t* ctx, memory_region_
         }
     }
 
+    if (best_match) {
+        debug("Reusing buffer slot for region 0x%lx-0x%lx (%s), capacity %zu\n",
+              new_region->start, new_region->end, new_region->name, best_capacity);
+    } else {
+        debug("Need new slot for region 0x%lx-0x%lx (%s)\n",
+              new_region->start, new_region->end, new_region->name);
+    }
+
     return best_match;
 }
 
 /*
  * Allocate content buffers for a region
- *
- * DESIGN DECISION: Only called during init or when no reusable buffer exists.
- * CORRECTNESS: Updates total_memory_allocated counter for overhead tracking.
- * Sets buffer_capacity to actual allocated size for reuse calculations.
  */
 static int allocate_region_buffers(snapshot_context_t* ctx, memory_region_t* region) {
     region->previous_content = malloc(region->size);
@@ -245,35 +221,25 @@ static int allocate_region_buffers(snapshot_context_t* ctx, memory_region_t* reg
         region->previous_content = NULL;
         region->current_content = NULL;
         region->buffer_capacity = 0;
+        debug("Failed to allocate buffers for region %s (%zu bytes)\n",
+              region->name, region->size);
         return 0;
     }
 
     region->buffer_capacity = region->size;
     ctx->total_memory_allocated += 2 * region->size;
+    debug("Allocated buffers for region %s (%zu bytes)\n", region->name, region->size);
     return 1;
 }
 
 /*
  * Discover memory regions with zero malloc overhead
- *
- * DESIGN DECISION: Read entire /proc/self/maps into pre-allocated buffer.
- * Parse from memory without any malloc calls during discovery process.
- *
- * CORRECTNESS REASONING:
- * 1. Uses pre-allocated staging_regions[] for temporary parsing
- * 2. All file I/O uses pre-allocated maps_buffer[]
- * 3. No malloc/free calls during discovery phase
- * 4. Buffer reuse for disappeared regions minimizes new allocations
- * 5. Only new allocations are for genuinely new, large regions
- *
- * FOOTPRINT CONSISTENCY:
- * - Same read() call pattern every time
- * - Same parsing loop overhead
- * - Same memory access patterns
- * - Malloc only when reuse is impossible
  */
 static int discover_memory_regions(snapshot_context_t* ctx) {
+    debug("Starting region discovery (iteration %d)\n", ctx->iteration);
+
     // Mark all current regions as inactive (available for reuse)
+    int previously_active = ctx->active_regions;
     for (int i = 0; i < ctx->region_count; i++) {
         ctx->regions[i].active = 0;
     }
@@ -332,7 +298,11 @@ static int discover_memory_regions(snapshot_context_t* ctx) {
         line_start = line_end + 1;
     }
 
+    debug("Parsed %d candidate regions from /proc/self/maps\n", staging_count);
+
     // Now assign staging regions to actual slots, preserving existing regions
+    int exact_matches = 0, reused_slots = 0, new_allocations = 0;
+
     for (int i = 0; i < staging_count; i++) {
         memory_region_t* staged = &ctx->staging_regions[i];
 
@@ -351,7 +321,7 @@ static int discover_memory_regions(snapshot_context_t* ctx) {
             ctx->region_count++;
         }
 
-        // If this is the same region (address match), preserve buffers and content_valid
+        // Check if this is the same region (address match)
         int same_region = (region->start == staged->start && region->end == staged->end);
         void* prev_content = region->previous_content;
         void* curr_content = region->current_content;
@@ -367,12 +337,14 @@ static int discover_memory_regions(snapshot_context_t* ctx) {
             region->current_content = curr_content;
             region->buffer_capacity = prev_capacity;
             region->content_valid = was_valid;
+            exact_matches++;
         } else if (prev_content && prev_capacity >= staged->size) {
             // Different region - reuse buffers but reset validity
             region->previous_content = prev_content;
             region->current_content = curr_content;
             region->buffer_capacity = prev_capacity;
             region->content_valid = 0;  // New region, no valid previous content
+            reused_slots++;
         } else {
             // Need new allocation
             if (prev_content) {
@@ -387,6 +359,7 @@ static int discover_memory_regions(snapshot_context_t* ctx) {
                 return -1;  // Fail completely rather than provide inaccurate results
             }
             region->content_valid = 0;
+            new_allocations++;
         }
 
         region->active = 1;
@@ -394,25 +367,22 @@ static int discover_memory_regions(snapshot_context_t* ctx) {
         ctx->active_regions++;
     }
 
+    debug("Region assignment: %d exact matches, %d reused slots, %d new allocations\n",
+          exact_matches, reused_slots, new_allocations);
+    debug("Active regions: %d (was %d)\n", ctx->active_regions, previously_active);
+
     return ctx->active_regions;
 }
 
 /*
  * Read region content into buffer with robust error handling
- *
- * DESIGN DECISION: Use chunked reads for large regions (NumPy arrays, etc.)
- * CORRECTNESS: Large single pread() calls can fail due to:
- * - Signal interruption (EINTR)
- * - Memory pressure during multi-GB reads
- * - Kernel limits on single read size
- * - Memory protection changes during read
- *
- * Chunked approach ensures reliability for arbitrary Python workloads.
  */
 static int read_region_content(snapshot_context_t* ctx, memory_region_t* region, void* buffer) {
     size_t remaining = region->size;
     off_t offset = (off_t)region->start;
     char* dest = (char*)buffer;
+
+    debug("Reading region %s (0x%lx, %zu bytes)\n", region->name, region->start, region->size);
 
     while (remaining > 0) {
         size_t chunk_size = (remaining > READ_BUFFER_SIZE) ? READ_BUFFER_SIZE : remaining;
@@ -423,14 +393,18 @@ static int read_region_content(snapshot_context_t* ctx, memory_region_t* region,
             if (errno == EINTR) {
                 continue;  // Retry on signal interruption
             }
+            debug("Read failed for region %s: %s\n", region->name, strerror(errno));
             return 0;  // Other errors are fatal
         }
 
         if (bytes_read == 0) {
+            debug("Unexpected EOF for region %s\n", region->name);
             return 0;  // Unexpected EOF
         }
 
         if ((size_t)bytes_read < chunk_size && remaining > (size_t)bytes_read) {
+            debug("Short read for region %s: got %zd, expected %zu\n",
+                  region->name, bytes_read, chunk_size);
             return 0;  // Short read when more data expected
         }
 
@@ -447,8 +421,6 @@ static int read_region_content(snapshot_context_t* ctx, memory_region_t* region,
 
 /*
  * Count changed bytes between previous and current content
- *
- * CORRECTNESS: Identical to previous version - no changes to comparison logic.
  */
 static void count_changed_bytes(memory_region_t* region) {
     if (!region->content_valid) {
@@ -465,14 +437,12 @@ static void count_changed_bytes(memory_region_t* region) {
             region->changed_bytes++;
         }
     }
+
+    debug("Region %s: %zu bytes changed\n", region->name, region->changed_bytes);
 }
 
 /*
  * Initialize snapshot context for checkpointing research
- *
- * DESIGN DECISION: Allocate all discovery buffers at init time.
- * CORRECTNESS: Ensures deterministic memory layout before measurements begin.
- * All temporary buffers are pre-allocated in context structure.
  */
 void snapshot_init(snapshot_context_t** ctx_ptr) {
     if (!ctx_ptr) exit(1);
@@ -492,6 +462,8 @@ void snapshot_init(snapshot_context_t** ctx_ptr) {
         exit(1);
     }
 
+    debug("Snapshot context initialized, discovering initial regions\n");
+
     // Initial region discovery (this is the only time malloc happens for regions)
     int region_count = discover_memory_regions(ctx);
     if (region_count < 0) {
@@ -501,7 +473,7 @@ void snapshot_init(snapshot_context_t** ctx_ptr) {
     }
 
     ctx->iteration = 0;
-    ctx->history_count = 0;  // Initialize history buffer
+    ctx->history_count = 0;
     ctx->initialized = 0xDEADBEEF;
     *ctx_ptr = ctx;
 
@@ -511,13 +483,6 @@ void snapshot_init(snapshot_context_t** ctx_ptr) {
 
 /*
  * Capture snapshot with dynamic region discovery and return changed bytes
- *
- * DESIGN DECISION: Re-discover regions on each capture with zero malloc overhead.
- * CORRECTNESS: Ensures new Python heap allocations are detected and measured.
- * Uses pre-allocated buffers to maintain consistent discovery overhead.
- *
- * FIXED: Buffer swapping now happens BEFORE rediscovery to preserve content.
- * Region matching by address ensures we compare the same memory locations.
  */
 void snapshot_capture(snapshot_context_t* ctx) {
     if (!ctx || ctx->initialized != 0xDEADBEEF) {
@@ -525,9 +490,11 @@ void snapshot_capture(snapshot_context_t* ctx) {
         exit(1);
     }
 
+    debug("=== CAPTURE START (iteration %d) ===\n", ctx->iteration);
     size_t total_changed_bytes = 0;
 
     // FIRST: Swap buffers for existing regions (preserve previous content)
+    int swapped_count = 0;
     for (int i = 0; i < ctx->region_count; i++) {
         memory_region_t* region = &ctx->regions[i];
         if (region->active && region->content_valid) {
@@ -535,8 +502,11 @@ void snapshot_capture(snapshot_context_t* ctx) {
             void* temp = region->previous_content;
             region->previous_content = region->current_content;
             region->current_content = temp;
+            swapped_count++;
         }
     }
+
+    debug("Swapped buffers for %d regions\n", swapped_count);
 
     // SECOND: Re-discover regions (may find new ones, reuse buffers)
     int region_count = discover_memory_regions(ctx);
@@ -546,6 +516,7 @@ void snapshot_capture(snapshot_context_t* ctx) {
     }
 
     // THIRD: Read current content and compare
+    int regions_with_changes = 0;
     for (int i = 0; i < ctx->region_count; i++) {
         memory_region_t* region = &ctx->regions[i];
 
@@ -566,10 +537,16 @@ void snapshot_capture(snapshot_context_t* ctx) {
         if (ctx->iteration > 0 && region->content_valid) {
             count_changed_bytes(region);
             total_changed_bytes += region->changed_bytes;
+            if (region->changed_bytes > 0) {
+                regions_with_changes++;
+            }
         }
 
         region->content_valid = 1;
     }
+
+    debug("Iteration %d: %d regions with changes, %zu total bytes changed\n",
+          ctx->iteration, regions_with_changes, total_changed_bytes);
 
     // Add to history buffer
     ctx->history_buffer[ctx->history_count] = total_changed_bytes;
@@ -581,12 +558,11 @@ void snapshot_capture(snapshot_context_t* ctx) {
     }
 
     ctx->iteration++;
+    debug("=== CAPTURE END ===\n");
 }
 
 /*
  * Get total bytes changed from last capture
- *
- * CORRECTNESS: Only counts active regions to avoid stale data.
  */
 size_t snapshot_get_changed_bytes(snapshot_context_t* ctx) {
     if (!ctx || ctx->initialized != 0xDEADBEEF || ctx->iteration == 0) {
@@ -606,12 +582,11 @@ size_t snapshot_get_changed_bytes(snapshot_context_t* ctx) {
 
 /*
  * Cleanup with proper memory deallocation
- *
- * CORRECTNESS: Frees all allocated region buffers regardless of active status.
- * ADDED: Prints any remaining history buffer entries before cleanup.
  */
 void snapshot_cleanup(snapshot_context_t* ctx) {
     if (!ctx) return;
+
+    debug("Cleaning up snapshot context\n");
 
     // Print any remaining history entries
     print_history_buffer(ctx);
