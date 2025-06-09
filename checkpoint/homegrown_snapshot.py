@@ -6,7 +6,7 @@ Focus: zero overhead capture() and simplicity.
 import ctypes
 from contextlib import contextmanager
 from functools import partial
-from typing import Callable, Iterator
+from typing import Callable, Iterator, Optional
 import pathlib
 
 # Load the library from this file's directory
@@ -20,6 +20,11 @@ _lib.snapshot_capture.argtypes = [ctypes.c_void_p]
 _lib.snapshot_capture.restype = None
 _lib.snapshot_cleanup.argtypes = [ctypes.c_void_p]
 _lib.snapshot_cleanup.restype = None
+
+
+sanity_check_allocation: Optional[bytearray] = None
+SANITY_CHECK_INTERVAL = 20
+SANITY_CHECK_SIZE_BYTES = 1024
 
 
 def make_snapshotter(step: int = 1) -> Callable[[], None]:
@@ -54,9 +59,19 @@ def make_snapshotter(step: int = 1) -> Callable[[], None]:
 
             def capture() -> None:
                 nonlocal iterations
+                global sanity_check_allocation
                 iterations += 1
                 if (iterations % step) in (0, 1):
+                    if SANITY_CHECK_INTERVAL != 0:
+                        sanity_check_allocation = bytearray(SANITY_CHECK_SIZE_BYTES)
+                        assert SANITY_CHECK_INTERVAL != 256
+                        for i in range(SANITY_CHECK_SIZE_BYTES):
+                            sanity_check_allocation[i] = iterations % 256
+
                     _lib.snapshot_capture(_ctx)
+
+                    if SANITY_CHECK_INTERVAL != 0:
+                        sanity_check_allocation = None
 
             yield capture
 
