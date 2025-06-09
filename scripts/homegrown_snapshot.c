@@ -348,6 +348,12 @@ static int should_include_region(const chunked_region_t* region, const char* lin
         return 0;
     }
 
+    // Skip unreasonably large regions (likely virtual mappings)
+    if (region->size > (1ULL << 32)) {  // 4GB limit
+        debug("Excluding oversized region: %s (%zu MB)\n", region->name, region->size / (1024*1024));
+        return 0;
+    }
+
     debug("Including region: %s (size: %zu MB)\n", region->name, region->size / (1024*1024));
     return 1;
 }
