@@ -153,6 +153,7 @@ static int should_include_region(const memory_region_t* region, const char* line
         debug("Excluding system region: %s\n", line);
         return 0;
     }
+    return 1;
 
     // Always include heap and stack - core program state
     if (strstr(line, "[heap]") || strstr(line, "[stack]")) {
