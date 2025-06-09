@@ -154,7 +154,7 @@ static int should_include_region(const memory_region_t* region, const char* line
     if (strstr(region->name, "[anonymous]") || strstr(line, "00:00 0")) {
         // For anonymous regions, be more generous with size limits
         // Python can allocate very large memory arenas
-        if (region->size > 1024 * 1024 * 1024) {  // 1GB limit instead of 100MB
+        if (region->size > 2 * 1024 * 1024 * 1024) {  // 2GB limit instead of 100MB
             debug("Excluding huge anonymous region (%zu MB): %s\n",
                   region->size / (1024*1024), line);
             return 0;
