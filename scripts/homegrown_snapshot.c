@@ -3,13 +3,12 @@
  *
  * RESEARCH TOOL GOALS:
  * 1. Correctness: Track exactly the set of memory changes between captures (no more, no less)
- * 2. Minimal memory overhead: Constant overhead regardless of process memory size
- * 3. Simplicity: Straightforward implementation focused on accuracy over features
+ * 2. Complete coverage: Monitor ALL writable memory regions in their entirety
+ * 3. Simplicity: Straightforward implementation focused on accuracy over memory efficiency
  *
- * CRITICAL LIMITATION:
- * Large regions (>1MB) are only partially monitored from their start.
- * Changes beyond the monitored portion are COMPLETELY MISSED.
- * This tool may significantly underestimate total program memory activity.
+ * MEMORY OVERHEAD:
+ * Variable overhead proportional to total writable memory size (2x memory usage).
+ * Large processes may require significant memory for complete monitoring.
  */
 
 #include <stdio.h>
@@ -22,28 +21,23 @@
 #include <errno.h>
 #include <stdarg.h>
 
-#define MAX_REGIONS 2048
+#define MAX_REGIONS 131072
 #define READ_BUFFER_SIZE (64 * 1024)
 #define MAPS_BUFFER_SIZE (128 * 1024)
 #define LINE_BUFFER_SIZE 1024
 #define HISTORY_BUFFER_SIZE 50
 
 /*
- * Chunking parameters - chosen for balance of memory usage and coverage
+ * Chunking parameters
  *
  * DESIGN RATIONALE:
  * - 64KB chunks provide good granularity for detecting changes without excessive overhead
- * - 16 chunks per region limits memory to 2MB per region (16 * 64KB * 2 buffers)
- * - 1MB threshold: regions smaller than this get full coverage, larger get partial coverage
- *
- * 1MB LIMITATION RATIONALE:
- * - Many important regions (Python heap, large allocations) exceed 1MB
- * - This tool will miss changes in the unmoniored portions of such regions
- * - Trade-off: constant memory overhead vs complete coverage
+ * - No limit on chunks per region - complete coverage of all regions regardless of size
+ * - All writable memory is monitored to ensure no changes are missed
  */
 #define CHUNK_SIZE (64 * 1024)
-#define MAX_CHUNKS_PER_REGION 16
-#define SMALL_REGION_LIMIT (1024 * 1024)
+#define MAX_CHUNKS_PER_REGION 65536      // Supports regions up to 4GB (64KB * 65536)
+#define SMALL_REGION_LIMIT (1024 * 1024) // Kept for potential future optimizations
 
 // Forward declaration
 typedef struct chunked_snapshot_context_t chunked_snapshot_context_t;
@@ -96,9 +90,9 @@ typedef struct {
  * Memory region with chunked storage
  *
  * COVERAGE STRATEGY:
- * - Sequential chunks from region start (no gaps, no sampling)
- * - Large regions: monitor first portion only (no estimation of unmoniored areas)
- * - Small regions: attempt complete coverage within chunk limits
+ * - Sequential chunks from region start to end (no gaps)
+ * - Complete coverage of all regions regardless of size
+ * - All changes in monitored regions are detected
  */
 typedef struct {
     uintptr_t start;
@@ -109,8 +103,8 @@ typedef struct {
 
     memory_chunk_t chunks[MAX_CHUNKS_PER_REGION];
     int chunk_count;           // Number of allocated chunks
-    size_t covered_bytes;      // Total bytes covered by chunks
-    int fully_covered;         // 1 if entire region monitored, 0 if partial
+    size_t covered_bytes;      // Total bytes covered by chunks (equals region size)
+    int fully_covered;         // Always 1 - all regions fully covered
 
     int content_valid;         // 1 if region has valid comparison data
     int active;                // 1 if region exists in current memory map
@@ -139,34 +133,26 @@ struct chunked_snapshot_context_t {
  * Calculate chunk allocation strategy for a region
  *
  * ALLOCATION LOGIC:
- * - Small regions (≤1MB): attempt full coverage with available chunks
- * - Large regions (>1MB): use maximum chunks to cover beginning portion
- * - Never attempt statistical estimation - report only measured changes
- *
- * ASSUMPTION: Changes near region start are representative enough for research purposes
- * WARNING: For large regions, this completely ignores changes beyond the first 1MB
+ * - All regions get complete coverage regardless of size
+ * - Calculate exact number of chunks needed to cover entire region
+ * - No artificial limits - monitor everything
  */
 static void calculate_chunk_allocation(chunked_region_t* region) {
-    if (region->size <= SMALL_REGION_LIMIT) {
-        // Small region: calculate chunks needed for full coverage
-        size_t needed_chunks = (region->size + CHUNK_SIZE - 1) / CHUNK_SIZE;
-        region->chunk_count = (needed_chunks <= MAX_CHUNKS_PER_REGION) ?
-                             (int)needed_chunks : MAX_CHUNKS_PER_REGION;
-        region->fully_covered = (needed_chunks <= MAX_CHUNKS_PER_REGION);
-    } else {
-        // Large region: use maximum available chunks for partial coverage
-        region->chunk_count = MAX_CHUNKS_PER_REGION;
-        region->fully_covered = 0;
+    // Calculate chunks needed for complete coverage
+    size_t needed_chunks = (region->size + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+    if (needed_chunks > MAX_CHUNKS_PER_REGION) {
+        fprintf(stderr, "Error: Region %s (%zu MB) exceeds maximum supported size\n",
+                region->name, region->size / (1024*1024));
+        exit(1);
     }
 
-    // Calculate actual byte coverage (may be less than chunk_count * CHUNK_SIZE for small regions)
-    size_t max_coverage = (size_t)region->chunk_count * CHUNK_SIZE;
-    region->covered_bytes = (max_coverage < region->size) ? max_coverage : region->size;
+    region->chunk_count = (int)needed_chunks;
+    region->fully_covered = 1;  // Always full coverage
+    region->covered_bytes = region->size;  // Cover entire region
 
-    debug("Region %s (%zu MB): %d chunks, covers %zu KB (%s)\n",
-          region->name, region->size / (1024*1024),
-          region->chunk_count, region->covered_bytes / 1024,
-          region->fully_covered ? "full" : "partial");
+    debug("Region %s (%zu MB): %d chunks for complete coverage\n",
+          region->name, region->size / (1024*1024), region->chunk_count);
 }
 
 /*
@@ -684,14 +670,14 @@ int snapshot_init(chunked_snapshot_context_t** ctx_ptr) {
  * OUTPUT FORMAT: Prints exact byte count of changes in monitored regions only
  *
  * CAPTURE SEQUENCE:
- * 1. Swap chunk buffers (current becomes previous)
- * 2. Re-discover regions (handles dynamic memory layout changes)
- * 3. Read current chunk data from process memory
- * 4. Compare with previous data and count changes
+ * 1. Re-discover regions (handles dynamic memory layout changes)
+ * 2. Read current chunk data from process memory
+ * 3. Compare with previous data and count changes (if previous data exists)
+ * 4. Swap buffers (current becomes previous for next iteration)
  * 5. Output total changed bytes to stdout
  *
- * DESIGN TRADE-OFF: Re-discovery on each capture handles dynamic memory layout
- * but adds overhead. Alternative would be to assume static layout for performance.
+ * CORRECTNESS: Ensures every memory change between captures is detected by
+ * reading current state before comparing and preserving data for next comparison
  */
 void snapshot_capture(chunked_snapshot_context_t* ctx) {
     if (!ctx || ctx->initialized != 0xDEADBEEF) {
@@ -700,21 +686,6 @@ void snapshot_capture(chunked_snapshot_context_t* ctx) {
     }
 
     debug("=== CAPTURE START (iteration %d) ===\n", ctx->iteration);
-
-    // Swap chunk buffers to preserve previous snapshot data
-    for (int i = 0; i < ctx->region_count; i++) {
-        chunked_region_t* region = &ctx->regions[i];
-        if (region->active) {
-            for (int j = 0; j < region->chunk_count; j++) {
-                memory_chunk_t* chunk = &region->chunks[j];
-                if (chunk->valid) {
-                    void* temp = chunk->previous_data;
-                    chunk->previous_data = chunk->current_data;
-                    chunk->current_data = temp;
-                }
-            }
-        }
-    }
 
     // Re-discover regions to handle dynamic memory layout changes
     if (discover_regions(ctx) < 0) {
@@ -735,19 +706,24 @@ void snapshot_capture(chunked_snapshot_context_t* ctx) {
         for (int j = 0; j < region->chunk_count; j++) {
             memory_chunk_t* chunk = &region->chunks[j];
 
-            // Read current memory content
+            // Read current memory content into current_data
             if (!read_chunk_content(ctx, region, chunk, chunk->current_data)) {
                 debug("Failed to read chunk %d from region %s\n", j, region->name);
                 continue;  // Skip failed chunks but continue with region
             }
 
-            // Compare with previous data (skip first iteration)
+            // Compare with previous data (skip first iteration when no previous data exists)
             if (ctx->iteration > 0 && chunk->valid) {
                 count_chunk_changes(chunk);
                 region->total_changed_bytes += chunk->changed_bytes;
             }
 
-            chunk->valid = 1;
+            // Now swap buffers so current becomes previous for next iteration
+            void* temp = chunk->previous_data;
+            chunk->previous_data = chunk->current_data;
+            chunk->current_data = temp;
+
+            chunk->valid = 1;  // Mark as having valid previous data for next comparison
         }
 
         // Report changes for this region
