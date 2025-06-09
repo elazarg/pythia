@@ -22,19 +22,44 @@ _lib.snapshot_cleanup.argtypes = [ctypes.c_void_p]
 _lib.snapshot_cleanup.restype = None
 
 
-@contextmanager
-def snapshotter() -> Iterator[Callable[[], None]]:
-    """
-    Initialize snapshotter. Returns capture function for hot loop.
+def make_snapshotter(step: int = 1) -> Callable[[], None]:
+    if step == 1:
 
-    Returns:
-        capture: Function that returns the number of bytes changed
-    """
-    # Initialize context
-    _ctx = ctypes.c_void_p()
-    _lib.snapshot_init(ctypes.byref(_ctx))
+        @contextmanager
+        def snapshotter() -> Iterator[Callable[[], None]]:
+            """
+            Initialize snapshotter. Returns capture function for hot loop.
 
-    # Return optimized capture function
-    yield partial(_lib.snapshot_capture, _ctx)
+            Returns:
+                capture: Function that returns the number of bytes changed
+            """
+            # Initialize context
+            _ctx = ctypes.c_void_p()
+            _lib.snapshot_init(ctypes.byref(_ctx))
 
-    _lib.snapshot_cleanup(_ctx)
+            # Return optimized capture function
+            yield partial(_lib.snapshot_capture, _ctx)
+
+            _lib.snapshot_cleanup(_ctx)
+
+        return snapshotter
+    else:
+        iterations = 0
+
+        @contextmanager
+        def _snapshotter() -> Iterator[Callable[[], None]]:
+            # Initialize context
+            _ctx = ctypes.c_void_p()
+            _lib.snapshot_init(ctypes.byref(_ctx))
+
+            def capture() -> None:
+                nonlocal iterations
+                iterations += 1
+                if (iterations % step) in (0, 1):
+                    _lib.snapshot_capture(_ctx)
+
+            yield capture
+
+            _lib.snapshot_cleanup(_ctx)
+
+        return _snapshotter

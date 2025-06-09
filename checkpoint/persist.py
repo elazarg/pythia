@@ -13,8 +13,6 @@ import struct
 
 from checkpoint import homegrown_snapshot
 
-snapshotter = homegrown_snapshot.snapshotter
-
 FUEL = "FUEL"
 STEP = "STEP"
 
@@ -25,6 +23,17 @@ def read_fuel():
 
 def read_step():
     return int(os.environ.get(STEP, 1))
+
+
+PID = os.getpid()
+STEP_VALUE = read_step()
+
+
+snapshotter = homegrown_snapshot.make_snapshotter(STEP_VALUE)
+
+
+def sigint() -> None:
+    os.kill(PID, signal.SIGINT)
 
 
 def run_instrumented_file(
@@ -236,14 +245,6 @@ def make_results_folder(tag: str) -> pathlib.Path:
     results_folder = cwd / "results" / tag
     results_folder.mkdir(exist_ok=True, parents=True)
     return results_folder
-
-
-PID = os.getpid()
-STEP_VALUE = read_step()
-
-
-def sigint() -> None:
-    os.kill(PID, signal.SIGINT)
 
 
 if os.name == "posix":
