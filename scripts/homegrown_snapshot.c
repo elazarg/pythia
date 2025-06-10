@@ -1,4 +1,13 @@
 /*
+ * Capture complete memory snapshot to numbered subdirectory
+ *
+ * SNAPSHOT PROCESS:
+ * 1. Scan /proc/self/maps for current writable regions
+ * 2. Create subdirectory: base_dir/<counter>/
+ * 3. Create separate file per region: region_<start_addr>.bin
+ * 4. Create regions.txt: human-readable region metadata
+ * 5. Print subdirectory path to stdout for external processing
+ * 6. Increment/*
  * Memory Process Snapshotting Tool with Sparse File Output
  *
  * PURPOSE:
@@ -212,6 +221,10 @@ static void discover_regions() {
  *
  * ERROR HANDLING:
  * Exits immediately on read/write/seek failures.
+ *
+ * FILESYSTEM LIMITS:
+ * Some filesystems can't handle seeks to very high addresses.
+ * We validate the seek operation before attempting writes.
  */
 static void copy_region_to_file(int sparse_fd, int region_idx) {
     uintptr_t start = ctx.regions[region_idx].start;
@@ -220,9 +233,37 @@ static void copy_region_to_file(int sparse_fd, int region_idx) {
     debug("Copying region %s (0x%lx, %zu bytes)\n",
           ctx.regions[region_idx].name, start, size);
 
-    // Seek to memory address in sparse file
-    if (lseek(sparse_fd, start, SEEK_SET) == -1) {
-        fprintf(stderr, "Error: Cannot seek to 0x%lx: %s\n", start, strerror(errno));
+    // Check system limits
+    debug("System info - address: 0x%lx (%lu), size: %zu\n", start, start, size);
+
+    // Check if we can seek to this address
+    off_t seek_result = lseek(sparse_fd, start, SEEK_SET);
+    if (seek_result == -1) {
+        fprintf(stderr, "Error: Cannot seek to 0x%lx (%lu bytes): %s\n",
+                start, start, strerror(errno));
+
+        // Provide diagnostic info
+        struct stat st;
+        if (fstat(sparse_fd, &st) == 0) {
+            fprintf(stderr, "Current file size: %ld bytes\n", st.st_size);
+        }
+
+        // Check if it's a file size limit issue
+        if (errno == EINVAL) {
+            fprintf(stderr, "\nDiagnostic info:\n");
+            fprintf(stderr, "- Memory address: 0x%lx (%lu bytes = %.1f TB)\n",
+                    start, start, start / (1024.0 * 1024.0 * 1024.0 * 1024.0));
+            fprintf(stderr, "- This may exceed filesystem or kernel limits\n");
+            fprintf(stderr, "- Consider using separate files per region instead of sparse files\n");
+        }
+
+        exit(1);
+    }
+
+    // Verify we actually seeked to the right position
+    if ((uintptr_t)seek_result != start) {
+        fprintf(stderr, "Error: Seek to 0x%lx returned 0x%lx (filesystem doesn't support large offsets)\n",
+                start, (uintptr_t)seek_result);
         exit(1);
     }
 
@@ -240,8 +281,15 @@ static void copy_region_to_file(int sparse_fd, int region_idx) {
             exit(1);
         }
 
-        if (write(sparse_fd, ctx.read_buffer, bytes_read) != bytes_read) {
-            fprintf(stderr, "Error: Cannot write to sparse file: %s\n", strerror(errno));
+        ssize_t bytes_written = write(sparse_fd, ctx.read_buffer, bytes_read);
+        if (bytes_written != bytes_read) {
+            fprintf(stderr, "Error: Cannot write to sparse file at offset 0x%lx: %s\n",
+                    current_addr, strerror(errno));
+            fprintf(stderr, "Attempted to write %zd bytes, wrote %zd bytes\n",
+                    bytes_read, bytes_written);
+            if (errno == EFBIG) {
+                fprintf(stderr, "File too large for filesystem. Try ext4, xfs, or btrfs.\n");
+            }
             exit(1);
         }
 
@@ -397,7 +445,7 @@ void snapshot_cleanup() {
     debug("Cleanup complete\n");
 }
 
-#ifdef TEST_MAIN
+#ifdef TEST_SNAPSHOT
 int main() {
     snapshot_init("./test_snapshots");
 
