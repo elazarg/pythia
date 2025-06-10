@@ -207,67 +207,35 @@ static void discover_regions() {
 }
 
 /*
- * Copy memory region to sparse file at corresponding address offset
+ * Copy memory region to separate file named by address
  *
- * SPARSE FILE MAPPING:
- * - Seeks to region->start address in the file
- * - Reads from /proc/self/mem at that address
- * - Writes directly to file at that offset
- * - Result: file_offset = memory_address
+ * SEPARATE FILE APPROACH:
+ * - Each region gets its own file: region_<start_addr>.bin
+ * - File contains raw memory bytes starting from offset 0
+ * - External tools use regions.txt to map files to addresses
+ * - Avoids filesystem limits with large sparse file offsets
  *
- * CHUNKED READING:
- * Large regions (e.g., 393GB heap) are read in 1MB chunks
- * to avoid excessive memory usage in the tool itself.
- *
- * ERROR HANDLING:
- * Exits immediately on read/write/seek failures.
- *
- * FILESYSTEM LIMITS:
- * Some filesystems can't handle seeks to very high addresses.
- * We validate the seek operation before attempting writes.
+ * FILENAME FORMAT: "region_<hex_address>.bin"
+ * Example: "region_55ecaecc4000.bin" for address 0x55ecaecc4000
  */
-static void copy_region_to_file(int sparse_fd, int region_idx) {
+static void copy_region_to_separate_file(const char* snapshot_dir, int region_idx) {
     uintptr_t start = ctx.regions[region_idx].start;
     size_t size = ctx.regions[region_idx].size;
 
-    debug("Copying region %s (0x%lx, %zu bytes)\n",
+    debug("Copying region %s (0x%lx, %zu bytes) to separate file\n",
           ctx.regions[region_idx].name, start, size);
 
-    // Check system limits
-    debug("System info - address: 0x%lx (%lu), size: %zu\n", start, start, size);
+    // Create filename based on start address
+    char region_file[600];
+    snprintf(region_file, sizeof(region_file), "%s/region_%lx.bin", snapshot_dir, start);
 
-    // Check if we can seek to this address
-    off_t seek_result = lseek(sparse_fd, start, SEEK_SET);
-    if (seek_result == -1) {
-        fprintf(stderr, "Error: Cannot seek to 0x%lx (%lu bytes): %s\n",
-                start, start, strerror(errno));
-
-        // Provide diagnostic info
-        struct stat st;
-        if (fstat(sparse_fd, &st) == 0) {
-            fprintf(stderr, "Current file size: %ld bytes\n", st.st_size);
-        }
-
-        // Check if it's a file size limit issue
-        if (errno == EINVAL) {
-            fprintf(stderr, "\nDiagnostic info:\n");
-            fprintf(stderr, "- Memory address: 0x%lx (%lu bytes = %.1f TB)\n",
-                    start, start, start / (1024.0 * 1024.0 * 1024.0 * 1024.0));
-            fprintf(stderr, "- This may exceed filesystem or kernel limits\n");
-            fprintf(stderr, "- Consider using separate files per region instead of sparse files\n");
-        }
-
+    int region_fd = open(region_file, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    if (region_fd < 0) {
+        fprintf(stderr, "Error: Cannot create region file %s: %s\n", region_file, strerror(errno));
         exit(1);
     }
 
-    // Verify we actually seeked to the right position
-    if ((uintptr_t)seek_result != start) {
-        fprintf(stderr, "Error: Seek to 0x%lx returned 0x%lx (filesystem doesn't support large offsets)\n",
-                start, (uintptr_t)seek_result);
-        exit(1);
-    }
-
-    // Copy in chunks
+    // Copy region data starting from file offset 0
     size_t bytes_remaining = size;
     uintptr_t current_addr = start;
 
@@ -278,44 +246,44 @@ static void copy_region_to_file(int sparse_fd, int region_idx) {
         if (bytes_read <= 0) {
             if (errno == EINTR) continue;
             fprintf(stderr, "Error: Cannot read memory at 0x%lx: %s\n", current_addr, strerror(errno));
+            close(region_fd);
             exit(1);
         }
 
-        ssize_t bytes_written = write(sparse_fd, ctx.read_buffer, bytes_read);
+        ssize_t bytes_written = write(region_fd, ctx.read_buffer, bytes_read);
         if (bytes_written != bytes_read) {
-            fprintf(stderr, "Error: Cannot write to sparse file at offset 0x%lx: %s\n",
-                    current_addr, strerror(errno));
-            fprintf(stderr, "Attempted to write %zd bytes, wrote %zd bytes\n",
-                    bytes_read, bytes_written);
-            if (errno == EFBIG) {
-                fprintf(stderr, "File too large for filesystem. Try ext4, xfs, or btrfs.\n");
-            }
+            fprintf(stderr, "Error: Cannot write to region file %s: %s\n", region_file, strerror(errno));
+            close(region_fd);
             exit(1);
         }
 
         current_addr += bytes_read;
         bytes_remaining -= bytes_read;
     }
+
+    close(region_fd);
+    debug("Successfully wrote %zu bytes to %s\n", size, region_file);
 }
 
 /*
  * Write region metadata to regions.txt file
  *
- * FORMAT: "start_addr end_addr size permissions name"
- * Example: "0x00007fff12340000 0x00007fff12350000 65536 rw-p [stack]"
+ * FORMAT: "start_addr end_addr size permissions name filename"
+ * Example: "0x00007fff12340000 0x00007fff12350000 65536 rw-p [stack] region_7fff12340000.bin"
  *
  * PURPOSE:
- * Allows external analysis tools to understand memory layout
- * without parsing the sparse file structure.
+ * Maps region filenames to memory addresses and provides metadata.
+ * External tools use this to understand which file contains which memory region.
  */
 static void write_region_info(int info_fd, int region_idx) {
-    char line[256];
-    int len = snprintf(line, sizeof(line), "0x%016lx 0x%016lx %zu %s %s\n",
+    char line[384];
+    int len = snprintf(line, sizeof(line), "0x%016lx 0x%016lx %zu %s %s region_%lx.bin\n",
                       ctx.regions[region_idx].start,
                       ctx.regions[region_idx].end,
                       ctx.regions[region_idx].size,
                       ctx.regions[region_idx].perms,
-                      ctx.regions[region_idx].name);
+                      ctx.regions[region_idx].name,
+                      ctx.regions[region_idx].start);
 
     write(info_fd, line, len);
 }
@@ -367,14 +335,14 @@ void snapshot_init(const char* base_dir) {
  * SNAPSHOT PROCESS:
  * 1. Scan /proc/self/maps for current writable regions
  * 2. Create subdirectory: base_dir/<counter>/
- * 3. Create memory.sparse: raw memory dump with address mapping
+ * 3. Create separate file per region: region_<start_addr>.bin
  * 4. Create regions.txt: human-readable region metadata
  * 5. Print subdirectory path to stdout for external processing
  * 6. Increment counter for next snapshot
  *
  * OUTPUT FILES:
- * - memory.sparse: Sparse file where seek(addr) reads memory at addr
- * - regions.txt: Text file listing all regions with addresses/sizes
+ * - region_<addr>.bin: Raw memory dump of each region (starts at file offset 0)
+ * - regions.txt: Maps filenames to memory addresses and metadata
  *
  * EXTERNAL INTERFACE:
  * Prints subdirectory path (e.g., "./snapshots/0") to stdout.
@@ -383,6 +351,10 @@ void snapshot_init(const char* base_dir) {
  * ATOMICITY:
  * Memory regions are discovered fresh each time to handle
  * dynamic allocation (malloc/free) between snapshots.
+ *
+ * SEPARATE FILES APPROACH:
+ * Avoids filesystem limits with large sparse file offsets.
+ * Each region becomes a regular file containing raw memory bytes.
  */
 void snapshot_capture() {
     debug("=== Snapshot %d ===\n", ctx.snapshot_counter);
@@ -398,28 +370,24 @@ void snapshot_capture() {
         exit(1);
     }
 
-    // Create files
-    char memory_file[512], regions_file[512];
-    snprintf(memory_file, sizeof(memory_file), "%s/memory.sparse", snapshot_dir);
+    // Create regions info file
+    char regions_file[512];
     snprintf(regions_file, sizeof(regions_file), "%s/regions.txt", snapshot_dir);
 
-    int sparse_fd = open(memory_file, O_CREAT | O_WRONLY | O_TRUNC, 0644);
     int info_fd = open(regions_file, O_CREAT | O_WRONLY | O_TRUNC, 0644);
-
-    if (sparse_fd < 0 || info_fd < 0) {
-        fprintf(stderr, "Error: Cannot create snapshot files in %s\n", snapshot_dir);
+    if (info_fd < 0) {
+        fprintf(stderr, "Error: Cannot create regions file %s: %s\n", regions_file, strerror(errno));
         exit(1);
     }
 
-    // Dump all regions
+    // Dump all regions to separate files
     size_t total_bytes = 0;
     for (int i = 0; i < ctx.region_count; i++) {
         write_region_info(info_fd, i);
-        copy_region_to_file(sparse_fd, i);
+        copy_region_to_separate_file(snapshot_dir, i);
         total_bytes += ctx.regions[i].size;
     }
 
-    close(sparse_fd);
     close(info_fd);
 
     debug("Captured %d regions, %zu MB total\n", ctx.region_count, total_bytes / (1024*1024));
