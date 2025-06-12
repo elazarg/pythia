@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+rm -rf "homegrown_images/$1/"
+
 python3 instrument.py --kind=proc --step="${2:-1}" --no-generate "experiment/$1/main.py" $(head -1 experiment/$1/args.txt)
 
 for f in homegrown_images/"$1"/*/parent; do scripts/homegrown_diff "$(dirname "$f")"; done
