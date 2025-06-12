@@ -579,7 +579,7 @@ def listcomp():
     print(z)
 
 
-def do_work(featuers, target, model, k):
+def do_work(features, target, model, k):
     """
     The SDS algorithm, as in "Submodular Dictionary Selection for Sparse Representation", Krause and Cevher, ICML '10
 

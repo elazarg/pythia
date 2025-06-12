@@ -11,7 +11,6 @@ import hashlib
 import socket
 import struct
 
-from checkpoint import homegrown_snapshot
 
 FUEL = "FUEL"
 STEP = "STEP"
@@ -29,7 +28,16 @@ PID = os.getpid()
 STEP_VALUE = read_step()
 
 
-snapshotter = homegrown_snapshot.make_snapshotter(STEP_VALUE)
+if os.name == "posix":
+    from checkpoint import homegrown_snapshot
+
+    snapshotter = homegrown_snapshot.make_snapshotter(STEP_VALUE)
+else:
+
+    def homegrown_snapshot(*args, **kwargs):
+        raise NotImplementedError(
+            "Homegrown snapshot is not available on this platform"
+        )
 
 
 def sigint() -> None:

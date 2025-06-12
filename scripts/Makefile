@@ -15,12 +15,15 @@ snapshot.so: homegrown_snapshot.c
 	# Create shared library for Python
 	gcc -shared -fPIC -O2 -fno-stack-protector -fno-ident -fmerge-all-constants -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-exceptions -o snapshot.so homegrown_snapshot.c
 
+homegrown_diff: homegrown_diff.c
+	gcc -o homegrown_diff homegrown_diff.c
+
 homegrown_debug: homegrown_snapshot.c
 	# Debug version with extra checks
 	gcc -DTEST_SNAPSHOT -g -DDEBUG -o debug_snapshot homegrown_snapshot.c
 
 test_snapshot: homegrown_snapshot.c
-	gcc -DTEST_SNAPSHOT -O2 -fno-stack-protector -fno-ident -fmerge-all-constants -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-exceptions -o test_snapshot homegrown_snapshot.c
+	gcc -DTEST_SNAPSHOT -g3 -O0 -o test_snapshot homegrown_snapshot.c
 
 clean:
 	rm -f snapshot.so debug_snapshot test_snapshot

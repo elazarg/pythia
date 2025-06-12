@@ -202,12 +202,6 @@ class Map[K, T]:
             result[k] = self[k].join(other[k])
         return result
 
-    def __or__(self, other: Map[K, T]) -> Map[K, T]:
-        result: Map[K, T] = Map(self.default)
-        for k in {*other.keys(), *self.keys()}:
-            self[k] = self[k] | other[k]
-        return result
-
     def is_less_than(self, other: Map[K, T]) -> bool:
         return all(v.is_less_than(other[k]) for k, v in self.items())
 

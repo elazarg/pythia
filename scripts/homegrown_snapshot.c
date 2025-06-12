@@ -67,7 +67,7 @@
 #define READ_BUFFER_SIZE (1024 * 1024)  // 1MB read buffer
 
 // Global context - research tool simplicity
-static struct {
+struct {
     char base_dir[256];
     int snapshot_counter;
     int mem_fd;
@@ -285,7 +285,12 @@ static void write_region_info(int info_fd, int region_idx) {
                       ctx.regions[region_idx].name,
                       ctx.regions[region_idx].start);
 
-    write(info_fd, line, len);
+    size_t bytes_written = write(info_fd, line, len);
+    if (bytes_written != len) {
+        fprintf(stderr, "Error: Cannot write region info: %s\n", strerror(errno));
+        close(info_fd);
+        exit(1);
+    }
 }
 
 /*
@@ -327,6 +332,36 @@ void snapshot_init(const char* base_dir) {
 
     ctx.snapshot_counter = 0;
     debug("Snapshot initialized: %s\n", ctx.base_dir);
+}
+
+/*
+* Create parent symlink in snapshot directory
+*
+* Creates: snapshot_dir/parent -> ../parent_number/
+* Example: snapshots/5/parent -> ../4/
+*/
+static void create_parent_link(const char* snapshot_dir, int snapshot_number) {
+   if (snapshot_number <= 0) {
+       debug("No parent link needed for snapshot %d\n", snapshot_number);
+       return;  // First snapshot has no parent
+   }
+
+   char parent_link[512];
+   char parent_target[64];
+
+   // Create symlink path: snapshot_dir/parent
+   snprintf(parent_link, sizeof(parent_link), "%s/parent", snapshot_dir);
+
+   // Create relative target: ../N-1/
+   snprintf(parent_target, sizeof(parent_target), "../%d/", snapshot_number - 1);
+
+   if (symlink(parent_target, parent_link) != 0) {
+       fprintf(stderr, "Error: Cannot create parent link %s -> %s: %s\n",
+               parent_link, parent_target, strerror(errno));
+       exit(1);
+   }
+
+   debug("Created parent link: %s -> %s\n", parent_link, parent_target);
 }
 
 /*
@@ -379,6 +414,7 @@ void snapshot_capture() {
         fprintf(stderr, "Error: Cannot create regions file %s: %s\n", regions_file, strerror(errno));
         exit(1);
     }
+    create_parent_link(snapshot_dir, ctx.snapshot_counter);
 
     // Dump all regions to separate files
     size_t total_bytes = 0;
@@ -416,18 +452,12 @@ void snapshot_cleanup() {
 #ifdef TEST_SNAPSHOT
 int main() {
     snapshot_init("./test_snapshots");
-
-    printf("# Testing snapshot tool\n");
+    void* temp = malloc(4096);
 
     for (int i = 0; i < 3; i++) {
-        size_t alloc_size = 1024 * 1024 * (i + 1);
-        void* temp = malloc(alloc_size);
-        memset(temp, i + 42, alloc_size);
+        memset(temp, i + 42, 4096);
 
-        printf("# Iteration %d (allocated %zu MB)\n", i + 1, alloc_size / (1024 * 1024));
         snapshot_capture();
-
-        free(temp);
     }
 
     snapshot_cleanup();
