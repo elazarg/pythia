@@ -44,7 +44,9 @@ if os.name == "posix":
             Returns:
                 capture: Function that returns the number of bytes changed
             """
-            path = str(pathlib.Path("results") / tag).encode("ascii")
+            path = pathlib.Path("homegrown_images") / tag
+            path.mkdir(parents=True, exist_ok=True)
+            path = str(path).encode("ascii")
             # Initialize context
             _lib.snapshot_init(path)
 
