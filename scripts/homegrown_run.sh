@@ -20,11 +20,13 @@ mkdir -p "results/$1"
 # Find next incremental number
 i=0
 while [ -f "results/$1/homegrown_$i.txt" ]; do
-   ((i++))
+    i=$((i+1))
 done
+
+echo "Creating homegrown_$i.txt"
 
 # Concatenate diffsize.txt files in numerical order
 for dir in "${dirs[@]}"; do
-  cat "${dir%/}/diffsize.txt"
-  rm "${dir%/}/"*.bin
+   cat "${dir%/}/diffsize.txt"
+   rm "${dir%/}/"*.bin
 done > "results/$1/homegrown_$i.txt"
