@@ -5,7 +5,7 @@ rm -rf "homegrown_images/$1/"
 
 python3 instrument.py --kind=proc --step="${2:-1}" --no-generate "experiment/$1/main.py" $(head -1 experiment/$1/args.txt)
 
-dirs=($(ls -d homegrown_images/"$1"/*/ | sort -V))
+dirs=($(ls -d homegrown_images/"$1"/*/ | sort -V | grep -v "/0/"))
 
 # Process in order
 for dir in "${dirs[@]}"; do
