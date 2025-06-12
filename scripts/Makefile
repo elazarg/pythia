@@ -16,7 +16,7 @@ snapshot.so: homegrown_snapshot.c
 	gcc -shared -fPIC -O2 -fno-stack-protector -fno-ident -fmerge-all-constants -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-exceptions -o snapshot.so homegrown_snapshot.c
 
 homegrown_diff: homegrown_diff.c
-	gcc -o homegrown_diff homegrown_diff.c
+	gcc O2 -o homegrown_diff homegrown_diff.c
 
 homegrown_debug: homegrown_snapshot.c
 	# Debug version with extra checks
