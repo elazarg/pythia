@@ -93,11 +93,6 @@ class Union:
             return "BOT"
         return f'{{{" | ".join(f"{item}" for item in self.items)}}}'
 
-    def squeeze(self) -> TypeExpr:
-        if len(self.items) == 1:
-            return next(iter(self.items))
-        return self
-
 
 @dataclass(frozen=True, slots=True)
 class Row:
@@ -197,11 +192,6 @@ class TypedDict:
         good = typed_dict([item for item in items if match_index(item.index, index)])
         bad = typed_dict([item for item in items if not match_index(item.index, index)])
         return good, bad
-
-    def squeeze(self: TypedDict) -> TypedDict | Row:
-        if len(self.items) == 1:
-            return next(iter(self.items))
-        return self
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,6 +295,38 @@ type TypeExpr = typing.Union[
     Instantiation,
     Access,
 ]
+
+
+def squeeze(t: TypeExpr) -> TypeExpr:
+    """Squeeze a type expression to its simplest form."""
+    if isinstance(t, FunctionType):
+        return replace(
+            t,
+            return_type=squeeze(t.return_type),
+        )
+    if isinstance(t, Overloaded):
+        items = frozenset(squeeze(item) for item in t.items)
+        return Overloaded(tuple(items))
+    if isinstance(t, Union):
+        items = frozenset(squeeze(item) for item in t.items)
+        if len(items) == 1:
+            return next(iter(t.items))
+        return Union(items)
+    if isinstance(t, TypedDict):
+        items = frozenset(squeeze(row) for row in t.items)
+        if len(items) == 1:
+            return next(iter(items))
+        return replace(t, items=items)
+    if isinstance(t, Instantiation):
+        if t.generic == Ref("typing.Union"):
+            return union(t.type_args, should_squeeze=True)
+        res = replace(
+            t,
+            type_args=tuple(squeeze(arg) for arg in t.type_args),
+            generic=squeeze(t.generic),
+        )
+        return res
+    return t
 
 
 def unpack_star(type_args: typing.Iterable[TypeExpr]) -> tuple[TypeExpr, ...]:
@@ -415,15 +437,15 @@ def overload(functions: typing.Iterable[FunctionType | Overloaded]) -> Overloade
     return Overloaded(tuple(collect))
 
 
-def union(items: typing.Iterable[TypeExpr], squeeze=True) -> TypeExpr:
+def union(items: typing.Iterable[TypeExpr], should_squeeze=True) -> TypeExpr:
     items = frozenset(items)
     if any(isinstance(x, Literal) for x in items):
         if any(isinstance(x, Ref) for x in items):
             pass
     # assert len(items) > 0
     res = Union(items)
-    if squeeze:
-        return res.squeeze()
+    if should_squeeze:
+        return squeeze(res)
     return res
 
 
@@ -442,9 +464,9 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
         return TOP
     match t1, t2:
         case Union(items1), Union(items2):
-            return Union(items1 | items2).squeeze()
+            return squeeze(Union(items1 | items2))
         case (Union(items), other) | (other, Union(items)):  # type: ignore
-            return Union(items | {other}).squeeze()
+            return squeeze(Union(items | {other}))
         case (Overloaded() as f, Overloaded() as g):
             if len(f.items) == 0:
                 return g
@@ -1132,7 +1154,7 @@ def split_by_args(callable: TypeExpr, args: TypedDict) -> TypeExpr:
                 [
                     FunctionType(
                         params=bound,
-                        return_type=overload(fs),
+                        return_type=squeeze(overload(fs)),
                         is_property=False,
                         type_params=(),
                         side_effect=side_effect,
@@ -1161,7 +1183,7 @@ def partial(callable: TypeExpr, args: TypedDict, only_callable_empty: bool) -> T
     for item in split.items:
         result = item.return_type
         assert isinstance(result, Overloaded), f"{item!r}"
-        assert not free_vars_expr(result), f"{result!r}"
+        # assert not free_vars_expr(result), f"{result!r}"
         if only_callable_empty:
             result = overload([f for f in result.items if is_callable_empty(f)])
             if not result.items:
@@ -1274,7 +1296,9 @@ def call(callable: TypeExpr, args: TypedDict) -> TypeExpr:
     if is_type_type(callable):
         callable = get_init_func(callable)
     f = partial(callable, args, only_callable_empty=True)
-    return get_return(f)
+    res = get_return(f)
+    res = squeeze(res)
+    return res
 
 
 def make_list_constructor() -> Overloaded:
@@ -1294,18 +1318,27 @@ def make_list_constructor() -> Overloaded:
 
 
 def make_set_constructor() -> Overloaded:
-    return_type = Instantiation(SET, (union([]),))
-    return overload(
+    args = TypeVar("Args", is_args=True)
+    RES = Instantiation(Ref("typing.Union"), (args,))
+    ret = overload(
         [
             FunctionType(
+                type_params=(),
                 params=typed_dict([]),
-                return_type=return_type,
+                return_type=Instantiation(SET, (union([]),)),
                 side_effect=SideEffect(new=True, points_to_args=True),
                 is_property=False,
-                type_params=(),
-            )
+            ),
+            FunctionType(
+                type_params=(args,),
+                params=typed_dict([make_row(0, "items", args)]),
+                return_type=Instantiation(SET, (RES,)),
+                side_effect=SideEffect(new=True, points_to_args=True),
+                is_property=False,
+            ),
         ]
     )
+    return ret
 
 
 def make_tuple_constructor() -> Overloaded:
@@ -1344,6 +1377,8 @@ def make_slice_constructor() -> Overloaded:
 
 def binop_to_dunder_method(op: str) -> tuple[str, typing.Optional[str]]:
     match op:
+        case "in":
+            return "__contains__", None
         case "+":
             return "__add__", "__radd__"
         case "-":

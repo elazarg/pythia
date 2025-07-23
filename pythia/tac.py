@@ -597,11 +597,17 @@ def make_tac_no_dels(
         case ["BINARY", "OP"] | ["COMPARE", "OP"] | ["IS", "OP"] | ["CONTAINS", "OP"]:
             left = stackvar(stack_depth - 1)
             right = stackvar(stack_depth)
+            if opname == "CONTAINS_OP":
+                return [Assign(lhs, Binary(left, "in", right, inplace=False))]
             res = []
             if argrepr.startswith("bool("):
                 argrepr = argrepr[5:-1]
                 res = [Assign(lhs, Unary(UnOp.BOOL, lhs))]
-            if argrepr != "!=" and argrepr[-1] == "=" and argrepr[0] != "=":
+            if (
+                argrepr != "!="
+                and argrepr.endswith("=")
+                and not argrepr.startswith("=")
+            ):
                 return [
                     Assign(lhs, Binary(left, argrepr[:-1], right, inplace=True))
                 ] + res

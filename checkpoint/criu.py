@@ -5,30 +5,30 @@ from typing import Iterator
 
 from checkpoint.ctypes_modern import Clibrary
 
-lib = Clibrary("criu", "criu_")
+criu = Clibrary("criu", "criu_")
 
 
-@lib.function
+@criu.function
 def init_opts() -> int: ...
 
 
-@lib.function
+@criu.function
 def check() -> int: ...
 
 
-@lib.function
+@criu.function
 def dump() -> int: ...
 
 
-@lib.function
+@criu.function
 def restore() -> int: ...
 
 
-@lib.function
+@criu.function
 def restore_child() -> int: ...
 
 
-@lib.function
+@criu.function
 def set_images_dir_fd(fd: int) -> None: ...
 
 
@@ -42,65 +42,65 @@ def set_images_dir(
     os.close(fd)
 
 
-@lib.function
+@criu.function
 def set_log_file(log_file: bytes) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_log_level(log_level: int) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_pid(pid: int) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_leave_running(leave_running: bool) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_service_address(address: bytes) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_track_mem(track_mem: bool) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_parent_images(path: bytes) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_ext_unix_sk(ext_unix_sk: bool) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_tcp_established(tcp_established: bool) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_evasive_devices(evasive_devices: bool) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_shell_job(shell_job: bool) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_file_locks(file_locks: bool) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_log_level(log_level: int) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_log_file(log_file: bytes) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_auto_dedup(auto_dedup: bool) -> None: ...
 
 
-@lib.function
+@criu.function
 def set_manage_cgroups(manage: bool) -> None: ...
