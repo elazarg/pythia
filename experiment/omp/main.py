@@ -8,7 +8,7 @@ def append_int(a: np.ndarray, n: int) -> np.ndarray:
     return np.append(a, n)
 
 
-def get_float(array: np.ndarray, idx: int) -> float:
+def get_float(array: np.ndarray, idx) -> float:
     res = array[idx]
     # assert isinstance(res, float)
     return res
@@ -23,19 +23,19 @@ def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     n_samples, n_features = features.shape
 
     # Pre-allocate arrays with known maximum sizes
-    S = np.full(k, -1, dtype=int)  # Selected features, -1 indicates empty
+    S = np.full(k, -1, int)  # Selected features, -1 indicates empty
     selected_count = 0
 
     # Pre-allocate working arrays to avoid repeated allocation
     prediction = np.zeros((n_samples, 1))
-    available_mask = np.ones(n_features, dtype=bool)
+    available_mask = np.ones(n_features, bool)
 
     # Pre-allocate for linear regression
     max_X_cols = min(k, n_features) + 1  # +1 for bias term
     X_allocated = np.zeros((n_samples, max_X_cols))
     theta = np.zeros(max_X_cols)
 
-    for idx in range(k):
+    for idx in range(k):  # type: int
         log(idx, k)
 
         # Prepare feature matrix using selected features
@@ -87,7 +87,7 @@ def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
             for j in range(n_samples):
                 total = 0.0
                 for i in range(n_cols):
-                    total += X[j, i] * theta_view[i]
+                    total += get_float(X, [j, i]) * get_float(theta_view, i)
                 prediction[j, 0] = total
 
         # Calculate gradient for feature selection

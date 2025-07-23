@@ -209,7 +209,6 @@ class dict[K, V]:
         result += self
 
     def __contains__(self, object) -> bool: ...
-
     def __getitem__(self: dict[K, V], key: K) -> V: ...
     @update(dict[K | K1, V | V1], 2)
     def __setitem__[K1, V1](self: dict[K, V], key: K1, value: V1) -> None: ...
@@ -268,6 +267,9 @@ def round(x: float) -> int:
     pass
 
 def min[T](x: T, y: T) -> T:
+    pass
+
+def min[T](xs: Iterable[T]) -> T:
     pass
 
 def max[T](x: T, y: T) -> T:

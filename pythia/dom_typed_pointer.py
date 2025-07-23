@@ -957,9 +957,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         if isinstance(ins, tac.For):
             ins = ins.as_call()
 
-        # print(f"Transfer {ins} at {location}")
-        # print_debug(ins, tp)
-        # print(f"Prev: {tp}")
+        print(f"Transfer {ins} at {location}")
+        print_debug(ins, tp)
+        print(f"Prev: {tp}")
 
         # FIX: this removes pointers and make it "bottom" instead of "top"
         for var in tac.gens(ins):
@@ -971,6 +971,8 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 (pointed, types, new_dirty) = self.expr(
                     prev_tp, expr, LocationObject(location), tp
                 )
+                if types == ts.BOTTOM:
+                    pass
                 if or_null and len(pointed.as_set()) == 0:
                     t = ts.literal(ts.NULL)
                     (pointed, types, new_dirty) = (immutable(t), t, make_dirty())
@@ -979,10 +981,10 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Return(var):
                 val = tp.pointers[LOCALS, var]
                 tp.pointers[LOCALS, tac.Var("return")] = val
-        #
-        # print_debug(ins, tp)
-        # print(f"Post: {tp}")
-        # print()
+
+        print_debug(ins, tp)
+        print(f"Post: {tp}")
+        print()
 
         # tp.normalize_types()
         tp.collect_garbage(self.liveness[location])
