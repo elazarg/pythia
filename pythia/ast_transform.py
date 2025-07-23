@@ -242,18 +242,29 @@ def make_for_tcp(tag: str, filename: pathlib.Path) -> Maker:
 def make_coredump(tag: str, filename: pathlib.Path) -> Maker:
     def maker(for_loop: ast.For) -> ast.For:
         parse_expression = Parser(filename).parse_expression
-        return ast.For(
-            target=for_loop.target,
-            iter=for_loop.iter,
-            body=[
-                ast.Expr(parse_expression(f'persist.self_coredump("{tag}")')),
-                *for_loop.body,
+        res = ast.With(
+            items=[
+                ast.withitem(
+                    context_expr=parse_expression("persist.snapshotter()"),
+                    optional_vars=ast.Name(id="self_coredump", ctx=ast.Store()),
+                )
             ],
-            orelse=for_loop.orelse,
-            type_comment=for_loop.type_comment,
-            lineno=for_loop.lineno,
-            col_offset=for_loop.col_offset,
+            body=[
+                ast.For(
+                    target=for_loop.target,
+                    iter=for_loop.iter,
+                    body=[
+                        ast.Expr(parse_expression(f'self_coredump("{tag}")')),
+                        *for_loop.body,
+                    ],
+                    orelse=for_loop.orelse,
+                    type_comment=for_loop.type_comment,
+                    lineno=for_loop.lineno,
+                    col_offset=for_loop.col_offset,
+                ),
+            ],
         )
+        return res
 
     return maker
 

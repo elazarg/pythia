@@ -8,7 +8,7 @@ def append_int(a: np.ndarray, n: int) -> np.ndarray:
     return np.append(a, n)
 
 
-def get_float(array: np.ndarray, idx) -> float:
+def get_float(array: np.ndarray, idx: int) -> float:
     res = array[idx]
     # assert isinstance(res, float)
     return res
@@ -19,105 +19,66 @@ def log(idx: int, k: int) -> None:
 
 
 def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
-    """Select k features from features using target as the target variable with predictable memory usage"""
-    n_samples, n_features = features.shape
-
-    # Pre-allocate arrays with known maximum sizes
-    S = np.full(k, -1, int)  # Selected features, -1 indicates empty
-    selected_count = 0
-
-    # Pre-allocate working arrays to avoid repeated allocation
-    prediction = np.zeros((n_samples, 1))
-    available_mask = np.ones(n_features, bool)
-
-    # Pre-allocate for linear regression
-    max_X_cols = min(k, n_features) + 1  # +1 for bias term
-    X_allocated = np.zeros((n_samples, max_X_cols))
-    theta = np.zeros(max_X_cols)
+    """select k features from features using target as the target variable"""
+    # define new solution
+    # features: n x m
+    # target: n x 1
+    S = np.array([], "int")
 
     for idx in range(k):  # type: int
         log(idx, k)
-
-        # Prepare feature matrix using selected features
-        prediction.fill(0.0)
-        if selected_count != 0:
-            # Extract selected features into pre-allocated array
-            selected_features = S[:selected_count]
-            X_data = features[:, selected_features]
-
-            # Standardize features
-            if X_data.ndim == 1:
-                X_data = X_data.reshape(-1, 1)
-
-            X_mean = np.mean(X_data, axis=0)
-            X_std = np.std(X_data, axis=0)
-
-            # Handle zero standard deviation
-            X_std = np.where(X_std == 0, 1, X_std)
-
-            X_standardized = (X_data - X_mean) / X_std
-
-            # Add bias term to pre-allocated array
-            n_cols = X_standardized.shape[1] + 1
-            X_allocated[:, 0] = 1.0  # bias term
-            X_allocated[:, 1:n_cols] = X_standardized
-
-            # Use view of the allocated array
-            X = X_allocated[:, :n_cols]
-
-            # Flatten target for training
-            y = target.flatten()
-
-            # Reset theta for current number of features
-            theta[:n_cols] = 0.0
-            theta_view = theta[:n_cols]
-
-            # Gradient descent
-            learning_rate = 0.1 / len(y)
+        # define and train model
+        # preprocess features and target
+        dims = np.unique(S[S >= 0])
+        target = np.array(target).reshape(target.shape[0], -1)
+        X = features[:, dims]  # shape: n x |dims|
+        if X.size == 0:
+            prediction = np.zeros(features.shape[0]).reshape(features.shape[0], -1)
+        else:
+            # define sparse features
+            if X.ndim == 1:
+                X = X.reshape(X.shape[0], 1)
+            y = np.concatenate(target)
+            X = (X - X.mean()) / X.std()
+            X = np.c_[np.ones(X.shape[0]), X]
+            theta = np.zeros(X.shape[1])
             for _ in range(10000):
-                predictions = np.dot(X, theta_view)
-                error = predictions - y
-                gradient = np.dot(X.T, error)
-                theta_view -= learning_rate * gradient
-
-            # Make predictions using manual dot product (matching original logic)
-            for j in range(n_samples):
+                error = np.dot(X, theta.T) - y
+                theta -= 0.1 * (1 / y.size) * np.dot(X.T, error)
+            prediction = np.zeros((len(X), 1))
+            for j in range(len(X)):
                 total = 0.0
-                for i in range(n_cols):
-                    total += get_float(X, [j, i]) * get_float(theta_view, i)
-                prediction[j, 0] = total
+                xj = X[j, :]
+                for i in range(len(xj)):
+                    x = get_float(xj, i)
+                    t = get_float(theta, i)
+                    total += x * t
+                prediction[j] = total
+        grad = np.dot(features.T, target - prediction)
 
-        # Calculate gradient for feature selection
-        residual = target - prediction
-        grad = np.dot(features.T, residual).flatten()
+        # define vals
+        points = np.setdiff1d(np.array(range(len(grad))), S).astype("int")
 
-        # Update available features mask
-        if selected_count > 0:
-            available_mask[S[:selected_count]] = False
-
-        # Find available feature indices
-        available_indices = np.where(available_mask)[0]
-
-        # Break if no more features available
-        if len(available_indices) == 0:
+        # get feasible points
+        # break if points are no longer feasible
+        if len(points) == 0:
             break
 
-        # Find best feature among available ones
-        available_grad_values = grad[available_indices]
-        best_relative_idx = np.argmax(available_grad_values)
-        best_feature_idx = available_indices[best_relative_idx]
-        best_grad_value = available_grad_values[best_relative_idx]
+        # otherwise add maximum point to current solution
+        a = points[0]
+        m = get_float(grad, a)
+        for i in range(len(points)):
+            p = points[i]
+            n = get_float(grad, p)
+            if n > m:
+                a = p
+                m = n
 
-        # Add feature if gradient is positive
-        if best_grad_value >= 0:
-            S[selected_count] = best_feature_idx
-            available_mask[best_feature_idx] = False
-            selected_count += 1
+        if m >= 0:
+            S = np.unique(append_int(S, a))
         else:
             break
-
-    # Return only the selected features (remove unused slots)
-    return S[:selected_count]
+    return S
 
 
 def main(dataset: str, k: int) -> None:

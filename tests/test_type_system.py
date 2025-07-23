@@ -296,7 +296,7 @@ def test_getitem_numpy():
     assert x == ts.BOTTOM
 
     x = ts.subscr_get_property(ARRAY, ts.literal(0))
-    assert x == FLOAT
+    assert x == ARRAY
 
     x = ts.subscr_get_property(ARRAY, ARRAY)
     assert x == ARRAY

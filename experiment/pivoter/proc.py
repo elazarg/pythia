@@ -33,9 +33,9 @@ def run(g: dict[int, set[int]], root: int, max_only: bool = False) -> Counter[in
     """extracts maximal cliques from a graph"""
     root_to_leaf_path = [root]
     counter = Counter[int]()
-    with persist.snapshotter("pivoter") as self_coredump:
+    with persist.snapshotter() as self_coredump:
         for r in range(10**100):  # type: int
-            self_coredump()
+            self_coredump("pivoter")
             if not root_to_leaf_path:
                 break
             world = get_world(g, root_to_leaf_path)
@@ -59,7 +59,7 @@ def run(g: dict[int, set[int]], root: int, max_only: bool = False) -> Counter[in
                     if neighbour > root_to_leaf_path[-1]:
                         root_to_leaf_path.append(neighbour)
                         break
-        return counter
+    return counter
 
 
 def read_edge(pair: str) -> tuple[int, int]:

@@ -20,9 +20,8 @@ def log(idx: int, k: int) -> None:
 def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     """select k features from features using target as the target variable"""
     S = np.array([], "int")
-    with persist.snapshotter() as self_coredump:
-        for idx in range(k):  # type: int
-            self_coredump("omp")
+    with persist.SimpleTcpClient("omp") as client:
+        for idx in client.iterate(range(k)):  # type: int
             log(idx, k)
             dims = np.unique(S[S >= 0])
             target = np.array(target).reshape(target.shape[0], -1)
@@ -64,6 +63,7 @@ def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
                 S = np.unique(append_int(S, a))
             else:
                 break
+            client.commit()
     return S
 
 
