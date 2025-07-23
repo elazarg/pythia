@@ -39,10 +39,8 @@ def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
         log(idx, k)
 
         # Prepare feature matrix using selected features
-        if selected_count == 0:
-            # No features selected yet, use zero predictions
-            prediction.fill(0.0)
-        else:
+        prediction.fill(0.0)
+        if selected_count != 0:
             # Extract selected features into pre-allocated array
             selected_features = S[:selected_count]
             X_data = features[:, selected_features]
@@ -83,7 +81,6 @@ def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
                 theta_view -= learning_rate * gradient
 
             # Make predictions using manual dot product (matching original logic)
-            prediction.fill(0.0)
             for j in range(n_samples):
                 total = 0.0
                 for i in range(n_cols):
