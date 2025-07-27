@@ -20,9 +20,9 @@ def log(idx: int, k: int) -> None:
 def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
     """select k features from features using target as the target variable"""
     S = np.array([], "int")
-    with persist.snapshotter() as self_coredump:
+    with persist.snapshotter("omp") as self_coredump:
         for idx in range(k):  # type: int
-            self_coredump("omp")
+            self_coredump()
             log(idx, k)
             dims = np.unique(S[S >= 0])
             target = np.array(target).reshape(target.shape[0], -1)

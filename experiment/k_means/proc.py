@@ -19,9 +19,9 @@ def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
     """
     centroids = X[np.random.choice(X.shape[0], k)]
     clusters = list[list[int]]()
-    with persist.snapshotter() as self_coredump:
+    with persist.snapshotter("k_means") as self_coredump:
         for i in range(max_iterations):  # type: int
-            self_coredump("k_means")
+            self_coredump()
             clusters = [list[int]() for _ in range(k)]
             for sample_i in range(len(X)):
                 r = np.linalg.norm(X[sample_i] - centroids, None, 1).argmin()

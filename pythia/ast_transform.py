@@ -245,7 +245,7 @@ def make_coredump(tag: str, filename: pathlib.Path) -> Maker:
         res = ast.With(
             items=[
                 ast.withitem(
-                    context_expr=parse_expression("persist.snapshotter()"),
+                    context_expr=parse_expression(f"persist.snapshotter('{tag}')"),
                     optional_vars=ast.Name(id="self_coredump", ctx=ast.Store()),
                 )
             ],
@@ -254,7 +254,7 @@ def make_coredump(tag: str, filename: pathlib.Path) -> Maker:
                     target=for_loop.target,
                     iter=for_loop.iter,
                     body=[
-                        ast.Expr(parse_expression(f'self_coredump("{tag}")')),
+                        ast.Expr(parse_expression(f"self_coredump()")),
                         *for_loop.body,
                     ],
                     orelse=for_loop.orelse,

@@ -3,9 +3,9 @@ from checkpoint import persist
 
 def run() -> None:
     """Trivial baseline"""
-    with persist.snapshotter() as self_coredump:
+    with persist.snapshotter("trivial") as self_coredump:
         for i in range(100):  # type: int
-            self_coredump("trivial")
+            self_coredump()
             pass
 
 
