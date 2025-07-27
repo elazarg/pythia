@@ -126,13 +126,14 @@ class Loader:
 
             temp_filename = self.filename.with_suffix(".tmp")
             with open(temp_filename, "wb") as snapshot:
-                pickle.dump((self.i, args, self.iterator), snapshot)
+                data = pickle.dumps((self.i, args, self.iterator), protocol=5)
+                snapshot.write(data)
 
             pathlib.Path(self.filename).unlink(missing_ok=True)
             pathlib.Path(temp_filename).rename(self.filename)
 
             with open(self.tsv_filename, "a") as f:
-                size = pickle.dumps((self.i, args, self.iterator)).__sizeof__()
+                size = len(data)
                 self.printing_index += 1
                 print(self.printing_index, size, sep="\t", end="\n", flush=True, file=f)
 
