@@ -124,10 +124,10 @@ class Loader:
             if self.fuel <= 0:
                 raise KeyboardInterrupt("Out of fuel")
 
+            data = pickle.dumps((self.i, args, self.iterator), protocol=5)
+
             temp_filename = self.filename.with_suffix(".tmp")
-            with open(temp_filename, "wb") as snapshot:
-                data = pickle.dumps((self.i, args, self.iterator), protocol=5)
-                snapshot.write(data)
+            temp_filename.write_bytes(data)
 
             pathlib.Path(self.filename).unlink(missing_ok=True)
             pathlib.Path(temp_filename).rename(self.filename)
