@@ -64,6 +64,23 @@ def run_instrumented_file(
     return ""
 
 
+def atomic_write_file(filename: pathlib.Path, data: bytes) -> None:
+    temp_filename = filename.with_suffix(".tmp")
+
+    with open(temp_filename, "wb") as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+
+    temp_filename.replace(filename)
+
+    dir_fd = os.open(str(filename.parent), os.O_DIRECTORY)
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
+
+
 class Loader:
     fuel: int
 
@@ -125,16 +142,11 @@ class Loader:
                 raise KeyboardInterrupt("Out of fuel")
 
             data = pickle.dumps((self.i, args, self.iterator), protocol=5)
+            atomic_write_file(self.filename, data)
+            size = len(data)
 
-            temp_filename = self.filename.with_suffix(".tmp")
-            temp_filename.write_bytes(data)
-
-            pathlib.Path(self.filename).unlink(missing_ok=True)
-            pathlib.Path(temp_filename).rename(self.filename)
-
+            self.printing_index += 1
             with open(self.tsv_filename, "a") as f:
-                size = len(data)
-                self.printing_index += 1
                 print(self.printing_index, size, sep="\t", end="\n", flush=True, file=f)
 
     def __bool__(self) -> bool:
