@@ -1,14 +1,14 @@
 """
 A script to save a snapshot of the VM's memory:
 $iterations times do:
-    1. pause the VM
-    2. dump memory to two hard links "{i}.a.dump" and "{i-1}.b.dump"
-    3. run concurrently count_diff on {i-1}.a.dump and {i-1}.b.dump (both will be removed by count_diff)
-    4. continue the VM
-    5. sleep X milliseconds
+    1. Pause the VM
+    2. Dump memory to two hard links "{i}.a.dump" and "{i-1}.b.dump"
+    3. Run concurrently count_diff on {i-1}.a.dump and {i-1}.b.dump (count_diff will remove both)
+    4. Continue the VM
+    5. Sleep X milliseconds
     Finally, wait for all the concurrently running processes to finish.
 
-"server" does the same, but reads the commands from a TCP socket and does not sleep.
+"Server" does the same, but reads the commands from a TCP socket and does not sleep.
 """
 
 import asyncio

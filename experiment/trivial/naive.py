@@ -7,7 +7,7 @@ def run() -> None:
     with persist.Loader(__file__, locals()) as transaction:
         if transaction:
             [i] = transaction.move()
-        for i in transaction.iterate(range(100)):  # type: int
+        for i in transaction.iterate(range(20)):  # type: int
             pass
             transaction.commit(i)
 

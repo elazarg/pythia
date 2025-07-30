@@ -1,6 +1,6 @@
 def run() -> None:
     """Trivial baseline"""
-    for i in range(100):  # type: int
+    for i in range(20):  # type: int
         pass
 
 
