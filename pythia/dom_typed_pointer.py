@@ -241,6 +241,16 @@ class Pointer:
         else:
             self.graph[obj][var] = values
 
+    def weak_update(
+        self, obj: Object, var: tac.Var, values: pythia.dom_concrete.Set[Object]
+    ) -> None:
+        if obj not in self.graph:
+            self.graph[obj] = make_fields({var: values})
+        else:
+            self.graph[obj][var] = pythia.dom_concrete.Set.join(
+                self.graph[obj][var], values
+            )
+
     def keep_keys(self, keys: typing.Iterable[Object]) -> None:
         for obj in set(self):
             if obj not in keys:
@@ -774,7 +784,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                                         targets = prev_tp.pointers[
                                             targets, tac.Var("*")
                                         ]
-                                    new_tp.pointers.update(
+                                    new_tp.pointers.weak_update(
                                         self_obj, tac.Var("*"), targets
                                     )
                                 else:
@@ -802,7 +812,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                             for i, arg in enumerate(arg_objects):
                                 new_tp.pointers[location, tac.Var(f"{i}")] = arg
                         else:
-                            new_tp.pointers.update(
+                            new_tp.pointers.weak_update(
                                 location, tac.Var("*"), pointed_objects
                             )
 
