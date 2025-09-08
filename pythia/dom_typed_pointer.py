@@ -362,13 +362,12 @@ class TypeMap:
         key = pythia.dom_concrete.Set[Object].squeeze(key)
         match key:
             case pythia.dom_concrete.Set() as objects:
-                # Weak update; not a singleton
                 for k in self.map.keys():
                     if k in objects:
                         v = ts.join(self.map[k], value)
                         self.map[k] = v
-            case obj:
-                self.map[obj] = value
+            case k:
+                self.map[k] = ts.join(self.map[k], value)
 
     def keep_keys(self, keys: typing.Iterable[Object]) -> None:
         for obj in set(self):
