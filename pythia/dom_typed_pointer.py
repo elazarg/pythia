@@ -659,11 +659,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Subscript(var=tac.Var() as var, index=tac.Var() as index):
                 var_objs = prev_tp.pointers[LOCALS, var]
                 index_objs = prev_tp.pointers[LOCALS, index]
-                index_type = prev_tp.types[index_objs]
-                var_type = prev_tp.types[var_objs]
-                selftype = self.resolve(var_type)
-                index = self.resolve(index_type)
-                t = ts.subscr(selftype, index)
+                index_type = self.resolve(prev_tp.types[index_objs])
+                selftype = self.resolve(prev_tp.types[var_objs])
+                t = ts.subscr(selftype, index_type)
                 any_new = all_new = False
                 if isinstance(t, ts.Overloaded) and any(
                     item.is_property for item in t.items
@@ -672,7 +670,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     any_new = t.any_new()
                     all_new = t.all_new()
                     t = ts.get_return(t)
-                assert t != ts.BOTTOM, f"Subscript {var}[{index}] is BOTTOM"
+                assert t != ts.BOTTOM, f"Subscript {var}[{index_type}] is BOTTOM"
                 direct_objs = prev_tp.pointers[var_objs, tac.Var("*")]
                 # TODO: class through type
 
