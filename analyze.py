@@ -1,6 +1,6 @@
 import pathlib
 
-from pythia.analysis import analyze_and_transform
+from spyte.analysis import analyze_and_transform
 
 
 def main() -> None:

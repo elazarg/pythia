@@ -1,6 +1,6 @@
 import math
 import networkx as nx
-from pythia.graph_utils import (
+from spyte.graph_utils import (
     EXIT_LABEL,
     is_exit,
     Block,

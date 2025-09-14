@@ -10,7 +10,7 @@ from typing import Callable, Iterator, Optional
 import networkx as nx
 from networkx.classes.reportviews import NodeView
 
-from pythia.utils import Function
+from spyte.utils import Function
 
 BLOCK_NAME = "block"
 

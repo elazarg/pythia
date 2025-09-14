@@ -9,7 +9,7 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from pythia.utils import discard as _discard
+from spyte.utils import discard as _discard
 
 
 @dataclass(frozen=True, slots=True)

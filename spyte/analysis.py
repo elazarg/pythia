@@ -4,17 +4,17 @@ import typing
 from copy import deepcopy
 from dataclasses import dataclass
 
-from pythia.strategy import iteration_strategy
-from pythia.domains import InstructionLattice
-from pythia import graph_utils as gu
-from pythia import type_system as ts
-from pythia import tac
-from pythia import disassemble, ast_transform
-from pythia.domains import InvariantMap
-from pythia.dom_typed_pointer import TypedPointerLattice, find_dirty_roots
-from pythia.dom_liveness import LivenessVarLattice
+from spyte.strategy import iteration_strategy
+from spyte.domains import InstructionLattice
+from spyte import graph_utils as gu
+from spyte import type_system as ts
+from spyte import spytecode
+from spyte import disassemble, ast_transform
+from spyte.domains import InvariantMap
+from spyte.dom_typed_pointer import TypedPointerLattice, find_dirty_roots
+from spyte.dom_liveness import LivenessVarLattice
 
-type Cfg = gu.Cfg[tac.Tac]
+type Cfg = gu.Cfg[spytecode.Spytecode]
 
 TYPE_INV_NAME = TypedPointerLattice.name()
 LIVENESS_INV_NAME = LivenessVarLattice.name()
@@ -165,12 +165,13 @@ def analyze_function(
 
     analysis_result: dict[str, AnalysisResult] = {}
     for function_name, f in functions.items():
-        cfg = tac.make_tac_cfg(f, simplify=simplify)
+        cfg = spytecode.make_tac_cfg(f, simplify=simplify)
         for_annotations = parsed_file.annotated_for[function_name]
         for_locations = gu.find_loops(
             cfg,
             is_loop=lambda ins: (
-                isinstance(ins, tac.For) and ins.original_lineno in for_annotations
+                isinstance(ins, spytecode.For)
+                and ins.original_lineno in for_annotations
             ),
         )
         analysis_result[function_name] = run(

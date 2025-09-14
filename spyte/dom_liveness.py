@@ -2,7 +2,7 @@
 Liveness analysis
 These are important in order to make the TAC at least *look* different from
 stack-oriented code, and it removes many variables.
-The analysis is based heavily on the information in the tac module - some of
+The analysis is based heavily on the information in the spytecode module - some of
 it is dedicated for the analysis
 
 A note about naming:
@@ -23,18 +23,18 @@ Here:
 
 from __future__ import annotations as _
 
-from pythia import tac
-from pythia.domains import (
+from spyte import spytecode
+from spyte.domains import (
     Top,
     Bottom,
     TOP,
     BOTTOM,
     InstructionLattice,
 )
-from pythia.dom_concrete import Set, SetDomain
-from pythia.graph_utils import Location
+from spyte.dom_concrete import Set, SetDomain
+from spyte.graph_utils import Location
 
-type Liveness = SetDomain[tac.Var]
+type Liveness = SetDomain[spytecode.Var]
 
 
 class LivenessVarLattice(InstructionLattice[Liveness]):
@@ -43,14 +43,14 @@ class LivenessVarLattice(InstructionLattice[Liveness]):
 
     def __init__(self) -> None:
         super().__init__()
-        self.lattice = Set[tac.Var]()
+        self.lattice = Set[spytecode.Var]()
 
     @classmethod
     def name(cls) -> str:
         return "Liveness"
 
     def initial(self) -> Liveness:
-        return Set[tac.Var]()
+        return Set[spytecode.Var]()
 
     def is_less_than(self, left: Liveness, right: Liveness) -> bool:
         return self.join(left, right) == right
@@ -76,8 +76,12 @@ class LivenessVarLattice(InstructionLattice[Liveness]):
             case _, _:
                 raise ValueError(f"Invalid join: {left!r} and {right!r}")
 
-    def transfer(self, values: Liveness, ins: tac.Tac, location: Location) -> Liveness:
+    def transfer(
+        self, values: Liveness, ins: spytecode.Spytecode, location: Location
+    ) -> Liveness:
         if isinstance(values, Bottom):
             return BOTTOM
-        res = (values - Set[tac.Var](tac.gens(ins))) | Set[tac.Var](tac.free_vars(ins))
+        res = (values - Set[spytecode.Var](spytecode.gens(ins))) | Set[spytecode.Var](
+            spytecode.free_vars(ins)
+        )
         return res

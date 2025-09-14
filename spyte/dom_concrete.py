@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing
 from copy import deepcopy
 
-from pythia.domains import Top, TOP, Bottom
+from spyte.domains import Top, TOP, Bottom
 
 
 class Set[T]:

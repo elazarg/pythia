@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from pythia import analysis, ast_transform
+from spyte import analysis, ast_transform
 
 
 def find_transaction(text: str) -> list[tuple[int, Any]]:

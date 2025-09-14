@@ -5,8 +5,8 @@ import sys
 from typing import Sequence
 
 from checkpoint import persist
-from pythia import ast_transform
-from pythia.analysis import analyze_and_transform
+from spyte import ast_transform
+from spyte.analysis import analyze_and_transform
 
 
 def parse_args(args: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:

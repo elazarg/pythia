@@ -7,10 +7,10 @@ import typing
 from dataclasses import dataclass, replace
 from typing import Optional, TypeAlias
 
-from pythia import disassemble
-from pythia import graph_utils as gu
-from pythia import instruction_cfg
-from pythia.graph_utils import Label, Location
+from spyte import disassemble
+from spyte import graph_utils as gu
+from spyte import instruction_cfg
+from spyte.graph_utils import Label, Location
 
 
 @dataclass(frozen=True)
@@ -285,7 +285,7 @@ class Unsupported:
     name: str
 
 
-Tac = Nop | Assign | Jump | For | Return | Raise | Del | Unsupported
+Spytecode = Nop | Assign | Jump | For | Return | Raise | Del | Unsupported
 
 NOP = Nop()
 
@@ -340,8 +340,8 @@ def free_vars_lval(signature: Signature) -> set[Var]:
             raise NotImplementedError(f"free_vars_lval({repr(signature)})")
 
 
-def free_vars(tac: Tac) -> set[Var]:
-    match tac:
+def free_vars(spytecode: Spytecode) -> set[Var]:
+    match spytecode:
         case Nop():
             return set()
         case Assign() as assign:
@@ -349,15 +349,15 @@ def free_vars(tac: Tac) -> set[Var]:
                 return free_vars_lval(assign.lhs)
             return free_vars_lval(assign.lhs) | free_vars_expr(assign.expr)
         case Jump():
-            return free_vars_expr(tac.cond)
+            return free_vars_expr(spytecode.cond)
         case For():
-            return free_vars_expr(tac.iterator)
+            return free_vars_expr(spytecode.iterator)
         case Return():
-            return free_vars_expr(tac.value)
+            return free_vars_expr(spytecode.value)
         case Raise():
-            return free_vars_expr(tac.value)
+            return free_vars_expr(spytecode.value)
         case Del():
-            return set(tac.variables)
+            return set(spytecode.variables)
         case Unsupported():
             return set()
         case PredefinedFunction():
@@ -365,7 +365,7 @@ def free_vars(tac: Tac) -> set[Var]:
         case PredefinedScope():
             return set()
         case _:
-            raise NotImplementedError(f"{tac}")
+            raise NotImplementedError(f"{spytecode}")
 
 
 def gens_signature(signature: Signature) -> set[Var]:
@@ -384,8 +384,8 @@ def gens_signature(signature: Signature) -> set[Var]:
             raise NotImplementedError(f"gens_signature({repr(signature)})")
 
 
-def gens(tac: Tac) -> set[Var]:
-    match tac:
+def gens(spytecode: Spytecode) -> set[Var]:
+    match spytecode:
         case Nop():
             return set()
         case Assign(lhs=lhs):
@@ -399,11 +399,11 @@ def gens(tac: Tac) -> set[Var]:
         case Raise():
             return set()
         case Del():
-            return set(tac.variables)
+            return set(spytecode.variables)
         case Unsupported():
             return set()
         case _:
-            raise NotImplementedError(f"gens({tac})")
+            raise NotImplementedError(f"gens({spytecode})")
 
 
 def subst_var_in_expr(expr: Expr, target: Var, new_var: Var) -> Expr:
@@ -463,7 +463,7 @@ def make_tac(
     ins: instruction_cfg.Instruction,
     stack_depth: int,
     trace_origin: dict[int, instruction_cfg.Instruction],
-) -> list[Tac]:
+) -> list[Spytecode]:
     if ins.opname == "LOAD_CONST" and isinstance(ins.argval, tuple):
         # We want to handle list and tuple literal in the same way,
         # So we load tuple as if it was a list
@@ -491,9 +491,9 @@ def make_tac(
             ins.argrepr,
             ins.positions.lineno,
         )
-    for tac in tac_list:
-        trace_origin[id(tac)] = ins
-    return tac_list  # [t._replace(starts_line=starts_line) for t in tac]
+    for spytecode in tac_list:
+        trace_origin[id(spytecode)] = ins
+    return tac_list  # [t._replace(starts_line=starts_line) for t in spytecode]
 
 
 def make_global(field: str) -> Attribute:
@@ -511,7 +511,7 @@ def make_class(name: str) -> Attribute:
     return Attribute(PredefinedScope.NONLOCALS, Var(name))
 
 
-def make_tac_cfg(f: typing.Any, simplify: bool = False) -> gu.Cfg[Tac]:
+def make_tac_cfg(f: typing.Any, simplify: bool = False) -> gu.Cfg[Spytecode]:
     allowed = {(3, 12), (3, 13)}
     assert (
         sys.version_info[:2] in allowed
@@ -522,7 +522,7 @@ def make_tac_cfg(f: typing.Any, simplify: bool = False) -> gu.Cfg[Tac]:
 
     def instruction_block_to_tac_block(
         n: Label, block: gu.Block[instruction_cfg.Instruction]
-    ) -> gu.Block[Tac]:
+    ) -> gu.Block[Spytecode]:
         return gu.Block(
             list(
                 it.chain.from_iterable(
@@ -531,13 +531,15 @@ def make_tac_cfg(f: typing.Any, simplify: bool = False) -> gu.Cfg[Tac]:
             )
         )
 
-    def annotator(location: Location, n: Tac) -> str:
+    def annotator(location: Location, n: Spytecode) -> str:
         pos = trace_origin[id(n)].positions
         # if pos is None:
         #     return f""
         return instruction_cfg.pos_str(pos)  # f"{pos.lineno}:{pos.col_offset}"
 
-    tac_cfg: gu.Cfg[Tac] = gu.node_data_map(ins_cfg, instruction_block_to_tac_block)
+    tac_cfg: gu.Cfg[Spytecode] = gu.node_data_map(
+        ins_cfg, instruction_block_to_tac_block
+    )
     tac_cfg.annotator = annotator
 
     tac_cfg = gu.simplify_cfg(tac_cfg)
@@ -554,7 +556,7 @@ def make_tac_no_dels(
     stack_depth: int,
     argrepr: str,
     start_lineno: int,
-) -> list[Tac]:
+) -> list[Spytecode]:
     assert is_const(val), f"{opname}, {val}, {argrepr}"
     """Translate a bytecode operation into a list of TAC instructions."""
     out = stack_depth + stack_effect
@@ -628,7 +630,7 @@ def make_tac_no_dels(
         ):
             sop = "_".join(v)
             # 'FALSE' | 'TRUE' | 'NONE' | 'NOT_NONE'
-            res: list[Tac]
+            res: list[Spytecode]
             if sop == "FALSE":
                 res = [
                     Assign(

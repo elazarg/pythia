@@ -7,8 +7,8 @@ import struct
 from dataclasses import dataclass
 from typing import Any
 
-from pythia.utils import discard as _discard
-from pythia import ast_transform
+from spyte.utils import discard as _discard
+from spyte import ast_transform
 
 
 # Based on https://stackoverflow.com/a/67428655/2289509

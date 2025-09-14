@@ -5,14 +5,14 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from typing import Final
 
-import pythia.dom_concrete
-from pythia.dom_liveness import LivenessVarLattice, Liveness
-from pythia import tac
-from pythia.graph_utils import Location
-from pythia import domains as domain
-from pythia.domains import InstructionLattice
-from pythia.dom_concrete import MapDomain
-import pythia.type_system as ts
+import spyte.dom_concrete
+from spyte.dom_liveness import LivenessVarLattice, Liveness
+from spyte import spytecode
+from spyte.graph_utils import Location
+from spyte import domains as domain
+from spyte.domains import InstructionLattice
+from spyte.dom_concrete import MapDomain
+import spyte.type_system as ts
 
 
 # Abstract location can be either:
@@ -24,7 +24,7 @@ import pythia.type_system as ts
 
 @dataclass(frozen=True)
 class Param:
-    param: typing.Optional[tac.Var] = None
+    param: typing.Optional[spytecode.Var] = None
 
     def __repr__(self) -> str:
         return f"@param {self.param}"
@@ -38,10 +38,10 @@ class Immutable:
         return f"@type {self.hash}"
 
 
-def immutable(t: ts.TypeExpr, cache={}) -> pythia.dom_concrete.Set[Object]:
+def immutable(t: ts.TypeExpr, cache={}) -> spyte.dom_concrete.Set[Object]:
     if t not in cache:
         cache[t] = Immutable(len(cache))
-    return pythia.dom_concrete.Set[Object].singleton(cache[t])
+    return spyte.dom_concrete.Set[Object].singleton(cache[t])
 
 
 @dataclass(frozen=True)
@@ -68,39 +68,41 @@ class LocationObject:
 
 type Object = typing.Union[LocationObject, Param, Immutable, Scope]
 
-type Fields = pythia.dom_concrete.Map[tac.Var, pythia.dom_concrete.Set[Object]]
-type Graph = pythia.dom_concrete.Map[Object, Fields]
+type Fields = spyte.dom_concrete.Map[spytecode.Var, spyte.dom_concrete.Set[Object]]
+type Graph = spyte.dom_concrete.Map[Object, Fields]
 
-type Dirty = pythia.dom_concrete.Map[Object, pythia.dom_concrete.Set[tac.Var]]
+type Dirty = spyte.dom_concrete.Map[Object, spyte.dom_concrete.Set[spytecode.Var]]
 
 
 def make_fields(
-    d: typing.Optional[typing.Mapping[tac.Var, pythia.dom_concrete.Set[Object]]] = None
+    d: typing.Optional[
+        typing.Mapping[spytecode.Var, spyte.dom_concrete.Set[Object]]
+    ] = None
 ) -> Fields:
     d = d or {}
-    return pythia.dom_concrete.Map(default=pythia.dom_concrete.Set, d=d)
+    return spyte.dom_concrete.Map(default=spyte.dom_concrete.Set, d=d)
 
 
 def make_graph(d: typing.Optional[typing.Mapping[Object, Fields]] = None) -> Graph:
     d = d or {}
-    return pythia.dom_concrete.Map(default=make_fields, d=d)
+    return spyte.dom_concrete.Map(default=make_fields, d=d)
 
 
 def make_dirty(
-    d: typing.Optional[typing.Mapping[Object, typing.Iterable[tac.Var]]] = None
+    d: typing.Optional[typing.Mapping[Object, typing.Iterable[spytecode.Var]]] = None
 ) -> Dirty:
     d = d or {}
-    return pythia.dom_concrete.Map(
-        default=pythia.dom_concrete.Set,
-        d={k: pythia.dom_concrete.Set(v) for k, v in d.items()},
+    return spyte.dom_concrete.Map(
+        default=spyte.dom_concrete.Set,
+        d={k: spyte.dom_concrete.Set(v) for k, v in d.items()},
     )
 
 
 def make_dirty_from_keys(
-    keys: pythia.dom_concrete.Set[Object], field: pythia.dom_concrete.Set[tac.Var]
+    keys: spyte.dom_concrete.Set[Object], field: spyte.dom_concrete.Set[spytecode.Var]
 ) -> Dirty:
-    return pythia.dom_concrete.Map(
-        default=pythia.dom_concrete.Set, d={k: field for k in keys.as_set()}
+    return spyte.dom_concrete.Map(
+        default=spyte.dom_concrete.Set, d={k: field for k in keys.as_set()}
     )
 
 
@@ -110,9 +112,9 @@ def make_bottom():
 
 def make_type_map(
     d: typing.Optional[typing.Mapping[Object, ts.TypeExpr]] = None
-) -> pythia.dom_concrete.Map[Object, ts.TypeExpr]:
+) -> spyte.dom_concrete.Map[Object, ts.TypeExpr]:
     d = d or {}
-    return pythia.dom_concrete.Map(default=make_bottom, d=d)
+    return spyte.dom_concrete.Map(default=make_bottom, d=d)
 
 
 @dataclass
@@ -169,13 +171,13 @@ class Pointer:
 
     @typing.overload
     def __getitem__(
-        self, key: tuple[Object, tac.Var]
-    ) -> pythia.dom_concrete.Set[Object]: ...
+        self, key: tuple[Object, spytecode.Var]
+    ) -> spyte.dom_concrete.Set[Object]: ...
 
     @typing.overload
     def __getitem__(
-        self, key: tuple[pythia.dom_concrete.Set[Object], tac.Var]
-    ) -> pythia.dom_concrete.Set[Object]: ...
+        self, key: tuple[spyte.dom_concrete.Set[Object], spytecode.Var]
+    ) -> spyte.dom_concrete.Set[Object]: ...
 
     def __getitem__(self, key):
         match key:
@@ -183,11 +185,11 @@ class Pointer:
                 return self.graph[obj]
             case (
                 Param() | Immutable() | Scope() | LocationObject() as obj,
-                tac.Var() as var,
+                spytecode.Var() as var,
             ):
                 return self.graph[obj][var]
-            case (pythia.dom_concrete.Set() as objects, tac.Var() as var):
-                return pythia.dom_concrete.Set[Object].union_all(
+            case (spyte.dom_concrete.Set() as objects, spytecode.Var() as var):
+                return spyte.dom_concrete.Set[Object].union_all(
                     self.graph[obj][var] for obj in self.graph.keys() if obj in objects
                 )
             case _:
@@ -198,35 +200,35 @@ class Pointer:
 
     @typing.overload
     def __setitem__(
-        self, key: tuple[Object, tac.Var], value: pythia.dom_concrete.Set[Object]
+        self, key: tuple[Object, spytecode.Var], value: spyte.dom_concrete.Set[Object]
     ) -> None: ...
 
     @typing.overload
     def __setitem__(
         self,
-        key: tuple[pythia.dom_concrete.Set[Object], tac.Var],
-        value: pythia.dom_concrete.Set[Object],
+        key: tuple[spyte.dom_concrete.Set[Object], spytecode.Var],
+        value: spyte.dom_concrete.Set[Object],
     ) -> None: ...
 
     def __setitem__(self, key, value):
         match key, value:
             case (
                 Param() | Immutable() | Scope() | LocationObject() as obj,
-                tac.Var() as var,
-            ), pythia.dom_concrete.Set() as values:
+                spytecode.Var() as var,
+            ), spyte.dom_concrete.Set() as values:
                 if obj not in self.graph:
                     self.graph[obj] = make_fields({var: values})
                 else:
                     self.graph[obj][var] = values
             case (
                 Param() | Immutable() | Scope() | LocationObject() as obj,
-                pythia.dom_concrete.Map() as fields,
+                spyte.dom_concrete.Map() as fields,
             ):
                 self.graph[obj] = fields
             case (
-                pythia.dom_concrete.Set() as objects,
-                tac.Var() as var,
-            ), pythia.dom_concrete.Set() as values:
+                spyte.dom_concrete.Set() as objects,
+                spytecode.Var() as var,
+            ), spyte.dom_concrete.Set() as values:
                 for obj in self.graph.keys():
                     if obj in objects:
                         self.graph[obj][var] = values
@@ -234,7 +236,7 @@ class Pointer:
                 raise ValueError(f"Invalid key {key} or value {value}")
 
     def update(
-        self, obj: Object, var: tac.Var, values: pythia.dom_concrete.Set[Object]
+        self, obj: Object, var: spytecode.Var, values: spyte.dom_concrete.Set[Object]
     ) -> None:
         if obj not in self.graph:
             self.graph[obj] = make_fields({var: values})
@@ -242,12 +244,12 @@ class Pointer:
             self.graph[obj][var] = values
 
     def weak_update(
-        self, obj: Object, var: tac.Var, values: pythia.dom_concrete.Set[Object]
+        self, obj: Object, var: spytecode.Var, values: spyte.dom_concrete.Set[Object]
     ) -> None:
         if obj not in self.graph:
             self.graph[obj] = make_fields({var: values})
         else:
-            self.graph[obj][var] = pythia.dom_concrete.Set.join(
+            self.graph[obj][var] = spyte.dom_concrete.Set.join(
                 self.graph[obj][var], values
             )
 
@@ -275,13 +277,13 @@ class Pointer:
         )
 
     @staticmethod
-    def initial(annotations: pythia.dom_concrete.Map[Param, ts.TypeExpr]) -> Pointer:
+    def initial(annotations: spyte.dom_concrete.Map[Param, ts.TypeExpr]) -> Pointer:
         return Pointer(
             make_graph(
                 {
                     LOCALS: make_fields(
                         {
-                            obj.param: pythia.dom_concrete.Set[Object].singleton(obj)
+                            obj.param: spyte.dom_concrete.Set[Object].singleton(obj)
                             for obj in annotations
                             if obj.param is not None
                         }
@@ -292,51 +294,51 @@ class Pointer:
         )
 
 
-def unop_to_str(op: tac.UnOp) -> str:
+def unop_to_str(op: spytecode.UnOp) -> str:
     match op:
-        case tac.UnOp.BOOL:
+        case spytecode.UnOp.BOOL:
             return "bool"
-        case tac.UnOp.NEG:
+        case spytecode.UnOp.NEG:
             return "-"
-        case tac.UnOp.NOT:
+        case spytecode.UnOp.NOT:
             return "not"
-        case tac.UnOp.INVERT:
+        case spytecode.UnOp.INVERT:
             return "~"
-        case tac.UnOp.POS:
+        case spytecode.UnOp.POS:
             return "+"
-        case tac.UnOp.ITER:
+        case spytecode.UnOp.ITER:
             return "iter"
-        case tac.UnOp.NEXT:
+        case spytecode.UnOp.NEXT:
             return "next"
-        case tac.UnOp.YIELD_ITER:
+        case spytecode.UnOp.YIELD_ITER:
             return "yield iter"
         case _:
             raise NotImplementedError(f"UnOp.{op.name}")
 
 
-def predefined(name: tac.PredefinedFunction) -> ts.TypeExpr:
+def predefined(name: spytecode.PredefinedFunction) -> ts.TypeExpr:
     match name:
-        case tac.PredefinedFunction.LIST:
+        case spytecode.PredefinedFunction.LIST:
             return ts.make_list_constructor()
-        case tac.PredefinedFunction.SET:
+        case spytecode.PredefinedFunction.SET:
             return ts.make_set_constructor()
-        case tac.PredefinedFunction.TUPLE:
+        case spytecode.PredefinedFunction.TUPLE:
             return ts.make_tuple_constructor()
-        case tac.PredefinedFunction.SLICE:
+        case spytecode.PredefinedFunction.SLICE:
             return ts.make_slice_constructor()
     assert False, name
 
 
 @dataclass
 class TypeMap:
-    map: pythia.dom_concrete.Map[Object, ts.TypeExpr]
+    map: spyte.dom_concrete.Map[Object, ts.TypeExpr]
 
     def __repr__(self):
         return f"TypeMap({self.map})"
 
-    def __init__(self, map: pythia.dom_concrete.Map[Object, ts.TypeExpr]):
+    def __init__(self, map: spyte.dom_concrete.Map[Object, ts.TypeExpr]):
         if not map:
-            self.map = pythia.dom_concrete.Map[Object, ts.TypeExpr](map.default)
+            self.map = spyte.dom_concrete.Map[Object, ts.TypeExpr](map.default)
         else:
             self.map = deepcopy(map)
 
@@ -358,20 +360,20 @@ class TypeMap:
     def is_bottom(self) -> bool:
         return False
 
-    def __getitem__(self, key: Object | pythia.dom_concrete.Set[Object]) -> ts.TypeExpr:
-        key = pythia.dom_concrete.Set[Object].squeeze(key)
+    def __getitem__(self, key: Object | spyte.dom_concrete.Set[Object]) -> ts.TypeExpr:
+        key = spyte.dom_concrete.Set[Object].squeeze(key)
         match key:
-            case pythia.dom_concrete.Set() as objects:
+            case spyte.dom_concrete.Set() as objects:
                 return ts.join_all(v for k, v in self.map.items() if k in objects)
             case obj:
                 return self.map[obj]
 
     def __setitem__(
-        self, key: Object | pythia.dom_concrete.Set[Object], value: ts.TypeExpr
+        self, key: Object | spyte.dom_concrete.Set[Object], value: ts.TypeExpr
     ) -> None:
-        key = pythia.dom_concrete.Set[Object].squeeze(key)
+        key = spyte.dom_concrete.Set[Object].squeeze(key)
         match key:
-            case pythia.dom_concrete.Set() as objects:
+            case spyte.dom_concrete.Set() as objects:
                 for k in self.map.keys():
                     if k in objects:
                         v = ts.join(self.map[k], value)
@@ -390,7 +392,7 @@ class TypeMap:
     def join(self, other: TypeMap) -> TypeMap:
         left = self.map
         right = other.map
-        res: pythia.dom_concrete.Map[Object, ts.TypeExpr] = TypeMap.bottom().map
+        res: spyte.dom_concrete.Map[Object, ts.TypeExpr] = TypeMap.bottom().map
         for k in left.keys() | right.keys():
             res[k] = ts.join(left[k], right[k])
         return TypeMap(res)
@@ -401,7 +403,7 @@ class TypeMap:
         )
 
     @staticmethod
-    def initial(annotations: pythia.dom_concrete.Map[Param, ts.TypeExpr]) -> TypeMap:
+    def initial(annotations: spyte.dom_concrete.Map[Param, ts.TypeExpr]) -> TypeMap:
         return TypeMap(annotations)
 
 
@@ -454,7 +456,7 @@ class TypedPointer:
 
     @staticmethod
     def initial(
-        annotations: pythia.dom_concrete.Map[Param, ts.TypeExpr]
+        annotations: spyte.dom_concrete.Map[Param, ts.TypeExpr]
     ) -> TypedPointer:
         return typed_pointer(
             Pointer.initial(annotations), TypeMap.initial(annotations), make_dirty()
@@ -496,7 +498,7 @@ def typed_pointer(pointers: Pointer, types: TypeMap, dirty: Dirty) -> TypedPoint
 
 def parse_annotations(
     this_function: str, this_module: ts.Module
-) -> pythia.dom_concrete.Map[Param, ts.TypeExpr]:
+) -> spyte.dom_concrete.Map[Param, ts.TypeExpr]:
     this_signature = ts.subscr(this_module, ts.literal(this_function))
     assert isinstance(
         this_signature, ts.Overloaded
@@ -506,17 +508,17 @@ def parse_annotations(
     ), f"Expected single signature, got {this_signature}"
     [this_signature] = this_signature.items
     annotations: dict[Param, ts.TypeExpr] = {
-        Param(tac.Var(row.index.name)): row.type
+        Param(spytecode.Var(row.index.name)): row.type
         for row in this_signature.params.row_items()
         if row.index.name is not None
     }
-    # annotations[Param(tac.Var('return'))] = this_signature.return_type
-    return pythia.dom_concrete.Map(default=(lambda: ts.BOTTOM), d=annotations)
+    # annotations[Param(spytecode.Var('return'))] = this_signature.return_type
+    return spyte.dom_concrete.Map(default=(lambda: ts.BOTTOM), d=annotations)
 
 
 class TypedPointerLattice(InstructionLattice[TypedPointer]):
     liveness: dict[Location, Liveness]
-    annotations: pythia.dom_concrete.Map[Param, ts.TypeExpr]
+    annotations: spyte.dom_concrete.Map[Param, ts.TypeExpr]
     backward: bool = False
     for_locations: frozenset[Location]
 
@@ -526,7 +528,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
 
     def __init__(
         self,
-        liveness: dict[Location, MapDomain[tac.Var, Liveness]],
+        liveness: dict[Location, MapDomain[spytecode.Var, Liveness]],
         this_function: str,
         this_module: ts.Module,
         for_locations: frozenset[Location],
@@ -564,7 +566,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     return ts.subscr(self.this_module, ts.literal(name))
         return ref
 
-    def attribute(self, t: ts.TypeExpr, attr: tac.Var) -> ts.TypeExpr:
+    def attribute(self, t: ts.TypeExpr, attr: spytecode.Var) -> ts.TypeExpr:
         mod = self.resolve(t)
         assert mod != ts.TOP, f"Cannot resolve {attr} in {t}"
         try:
@@ -591,22 +593,22 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     def expr(
         self,
         prev_tp: TypedPointer,
-        expr: tac.Expr,
+        expr: spytecode.Expr,
         location: LocationObject,
         new_tp: TypedPointer,
-    ) -> tuple[pythia.dom_concrete.Set[Object], ts.TypeExpr, Dirty]:
-        objects: pythia.dom_concrete.Set[Object]
+    ) -> tuple[spyte.dom_concrete.Set[Object], ts.TypeExpr, Dirty]:
+        objects: spyte.dom_concrete.Set[Object]
         dirty: Dirty
         match expr:
-            case tac.Const(value):
+            case spytecode.Const(value):
                 t = ts.literal(value)
                 return (immutable(t), t, make_dirty())
-            case tac.Var() as var:
+            case spytecode.Var() as var:
                 objs = prev_tp.pointers[LOCALS, var]
                 types = prev_tp.types[objs]
                 return (objs, types, make_dirty())
-            case tac.Attribute(
-                var=tac.PredefinedScope.GLOBALS, field=tac.Var() as field
+            case spytecode.Attribute(
+                var=spytecode.PredefinedScope.GLOBALS, field=spytecode.Var() as field
             ):
                 global_objs = prev_tp.pointers[GLOBALS, field]
                 assert not global_objs
@@ -625,7 +627,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                         t = ts.get_return(t)
                 # TODO: class through type
                 return (immutable(t), t, make_dirty())
-            case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
+            case spytecode.Attribute(
+                var=spytecode.Var() as var, field=spytecode.Var() as field
+            ):
                 var_objs = prev_tp.pointers[LOCALS, var]
                 t = self.attribute(prev_tp.types[var_objs], field)
                 any_new = all_new = False
@@ -637,7 +641,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                         all_new = t.all_new()
                         t = ts.get_return(t)
                     if ts.is_bound_method(t):
-                        new_tp.pointers[location, tac.Var("self")] = var_objs
+                        new_tp.pointers[location, spytecode.Var("self")] = var_objs
                         any_new = True
                         all_new = True
 
@@ -646,7 +650,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 else:
                     objects = prev_tp.pointers[var_objs, field]
                     if any_new:
-                        objects = objects | pythia.dom_concrete.Set[Object].singleton(
+                        objects = objects | spyte.dom_concrete.Set[Object].singleton(
                             location
                         )
                     if not all_new:
@@ -656,7 +660,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                             assert False
 
                 return (objects, t, make_dirty())
-            case tac.Subscript(var=tac.Var() as var, index=tac.Var() as index):
+            case spytecode.Subscript(
+                var=spytecode.Var() as var, index=spytecode.Var() as index
+            ):
                 var_objs = prev_tp.pointers[LOCALS, var]
                 index_objs = prev_tp.pointers[LOCALS, index]
                 index_type = self.resolve(prev_tp.types[index_objs])
@@ -671,7 +677,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     all_new = t.all_new()
                     t = ts.get_return(t)
                 assert t != ts.BOTTOM, f"Subscript {var}[{index_type}] is BOTTOM"
-                direct_objs = prev_tp.pointers[var_objs, tac.Var("*")]
+                direct_objs = prev_tp.pointers[var_objs, spytecode.Var("*")]
                 # TODO: class through type
 
                 if ts.is_immutable(t):
@@ -681,11 +687,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     if any_new:
                         if all_new:
                             # TODO: assert not direct_objs ??
-                            objects = pythia.dom_concrete.Set[Object].singleton(
-                                location
-                            )
+                            objects = spyte.dom_concrete.Set[Object].singleton(location)
                         else:
-                            objects = objects | pythia.dom_concrete.Set[
+                            objects = objects | spyte.dom_concrete.Set[
                                 Object
                             ].singleton(location)
                     if not all_new:
@@ -693,13 +697,13 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                             objects = objects | immutable(t)
 
                 return (objects, t, make_dirty())
-            case tac.Call(var, tuple() as args):
-                if isinstance(var, tac.Var):
+            case spytecode.Call(var, tuple() as args):
+                if isinstance(var, spytecode.Var):
                     func_objects = prev_tp.pointers[LOCALS, var]
                     func_type = prev_tp.types[func_objects]
-                elif isinstance(var, tac.PredefinedFunction):
+                elif isinstance(var, spytecode.PredefinedFunction):
                     # TODO: point from exact literal when possible
-                    func_objects = pythia.dom_concrete.Set[Object]()
+                    func_objects = spyte.dom_concrete.Set[Object]()
                     func_type = predefined(var)
                 else:
                     assert False, f"Expected Var or PredefinedFunction, got {var}"
@@ -726,17 +730,17 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 side_effect = ts.get_side_effect(applied)
                 dirty = make_dirty()
                 if side_effect.update[0] is not None:
-                    func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
-                    if isinstance(func_obj, pythia.dom_concrete.Set):
+                    func_obj = spyte.dom_concrete.Set[Object].squeeze(func_objects)
+                    if isinstance(func_obj, spyte.dom_concrete.Set):
                         raise RuntimeError(
                             f"Update with multiple function objects: {func_objects}"
                         )
-                    self_objects = prev_tp.pointers[func_obj, tac.Var("self")]
+                    self_objects = prev_tp.pointers[func_obj, spytecode.Var("self")]
                     dirty = make_dirty_from_keys(
-                        self_objects, pythia.dom_concrete.Set[tac.Var].top()
+                        self_objects, spyte.dom_concrete.Set[spytecode.Var].top()
                     )
-                    self_obj = pythia.dom_concrete.Set[Object].squeeze(self_objects)
-                    if isinstance(self_obj, pythia.dom_concrete.Set):
+                    self_obj = spyte.dom_concrete.Set[Object].squeeze(self_objects)
+                    if isinstance(self_obj, spyte.dom_concrete.Set):
                         raise RuntimeError(
                             f"Update with multiple self objects: {self_objects}"
                         )
@@ -780,10 +784,10 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                                     targets = arg_objects[v]
                                     if starred:
                                         targets = prev_tp.pointers[
-                                            targets, tac.Var("*")
+                                            targets, spytecode.Var("*")
                                         ]
                                     new_tp.pointers.weak_update(
-                                        self_obj, tac.Var("*"), targets
+                                        self_obj, spytecode.Var("*"), targets
                                     )
                                 else:
                                     assert False, i
@@ -791,27 +795,27 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 t = ts.get_return(applied)
                 assert t != ts.BOTTOM, f"Expected non-bottom return type for {locals()}"
 
-                pointed_objects = pythia.dom_concrete.Set[Object]()
+                pointed_objects = spyte.dom_concrete.Set[Object]()
                 if side_effect.points_to_args:
-                    pointed_objects = pythia.dom_concrete.Set[Object].union_all(
+                    pointed_objects = spyte.dom_concrete.Set[Object].union_all(
                         arg_objects
                     )
 
-                objects = pythia.dom_concrete.Set[Object]()
+                objects = spyte.dom_concrete.Set[Object]()
                 if applied.any_new():
-                    objects = objects | pythia.dom_concrete.Set[Object].singleton(
+                    objects = objects | spyte.dom_concrete.Set[Object].singleton(
                         location
                     )
                     if side_effect.points_to_args:
                         if (
-                            var == tac.PredefinedFunction.TUPLE
-                            and not new_tp.pointers[location, tac.Var("*")]
+                            var == spytecode.PredefinedFunction.TUPLE
+                            and not new_tp.pointers[location, spytecode.Var("*")]
                         ):
                             for i, arg in enumerate(arg_objects):
-                                new_tp.pointers[location, tac.Var(f"{i}")] = arg
+                                new_tp.pointers[location, spytecode.Var(f"{i}")] = arg
                         else:
                             new_tp.pointers.weak_update(
-                                location, tac.Var("*"), pointed_objects
+                                location, spytecode.Var("*"), pointed_objects
                             )
 
                 if ts.is_immutable(t):
@@ -830,7 +834,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
 
                 assert objects
                 return (objects, t, dirty)
-            case tac.Unary(var=tac.Var() as var, op=tac.UnOp() as op):
+            case spytecode.Unary(var=spytecode.Var() as var, op=spytecode.UnOp() as op):
                 value_objects = prev_tp.pointers[LOCALS, var]
                 assert value_objects, f"Expected objects for {var}"
                 arg_type = prev_tp.types[value_objects]
@@ -840,7 +844,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 dirty = make_dirty()
                 if side_effect.update[0] is not None:
                     dirty = make_dirty_from_keys(
-                        value_objects, pythia.dom_concrete.Set[tac.Var].top()
+                        value_objects, spyte.dom_concrete.Set[spytecode.Var].top()
                     )
                 assert isinstance(
                     applied, ts.Overloaded
@@ -851,9 +855,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if ts.is_immutable(t):
                     objects = immutable(t)
                 else:
-                    objects = pythia.dom_concrete.Set[Object]()
+                    objects = spyte.dom_concrete.Set[Object]()
                     if applied.any_new():
-                        objects = objects | pythia.dom_concrete.Set[Object].singleton(
+                        objects = objects | spyte.dom_concrete.Set[Object].singleton(
                             location
                         )
                     if not applied.all_new():
@@ -863,8 +867,10 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                             assert False
 
                 return (objects, t, dirty)
-            case tac.Binary(
-                left=tac.Var() as left, right=tac.Var() as right, op=str() as op
+            case spytecode.Binary(
+                left=spytecode.Var() as left,
+                right=spytecode.Var() as right,
+                op=str() as op,
             ):
                 left_objects = prev_tp.pointers[LOCALS, left]
                 right_objects = prev_tp.pointers[LOCALS, right]
@@ -880,9 +886,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if ts.is_immutable(t):
                     objects = immutable(t)
                 else:
-                    objects = pythia.dom_concrete.Set[Object]()
+                    objects = spyte.dom_concrete.Set[Object]()
                     if applied.any_new():
-                        objects = objects | pythia.dom_concrete.Set[Object].singleton(
+                        objects = objects | spyte.dom_concrete.Set[Object].singleton(
                             location
                         )
                     if not applied.all_new():
@@ -898,21 +904,21 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
     def signature(
         self,
         tp: TypedPointer,
-        signature: tac.Signature,
-        pointed: pythia.dom_concrete.Set[Object],
+        signature: spytecode.Signature,
+        pointed: spyte.dom_concrete.Set[Object],
         t: ts.TypeExpr,
     ) -> None:
         match signature:
             case None:
                 pass
             case tuple() as signature:  # type: ignore
-                unknown = tp.pointers[pointed, tac.Var("*")]
+                unknown = tp.pointers[pointed, spytecode.Var("*")]
                 indirect_pointed = [
-                    tp.pointers[pointed, tac.Var(f"{i}")] | unknown
+                    tp.pointers[pointed, spytecode.Var(f"{i}")] | unknown
                     for i in range(len(signature))
                 ]
                 for i, var in enumerate(signature):
-                    assert isinstance(var, tac.Var), f"Expected Var, got {var}"
+                    assert isinstance(var, spytecode.Var), f"Expected Var, got {var}"
                     objs = indirect_pointed[i]
                     ti = ts.subscr(t, ts.literal(i))
                     if isinstance(ti, ts.Overloaded):
@@ -927,41 +933,41 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                         objs = immutable(ti)
                     tp.pointers[LOCALS, var] = objs
                     tp.types[objs] = ti
-            case tac.Var() as var:
+            case spytecode.Var() as var:
                 tp.pointers[LOCALS, var] = pointed
                 tp.types[pointed] = t
                 new_dirty = make_dirty_from_keys(
-                    pythia.dom_concrete.Set[Object].singleton(LOCALS),
-                    pythia.dom_concrete.Set[tac.Var].singleton(var),
+                    spyte.dom_concrete.Set[Object].singleton(LOCALS),
+                    spyte.dom_concrete.Set[spytecode.Var].singleton(var),
                 )
                 tp.dirty = tp.dirty.join(new_dirty)
-            case tac.Attribute(var=var, field=field):
+            case spytecode.Attribute(var=var, field=field):
                 targets = tp.pointers[LOCALS, var]
                 tp.pointers[targets, field] = pointed
                 new_dirty = make_dirty_from_keys(
-                    targets, pythia.dom_concrete.Set[tac.Var].singleton(field)
+                    targets, spyte.dom_concrete.Set[spytecode.Var].singleton(field)
                 )
                 tp.dirty = tp.dirty.join(new_dirty)
-            case tac.Subscript(var=var):
+            case spytecode.Subscript(var=var):
                 targets = tp.pointers[LOCALS, var]
-                tp.pointers[targets, tac.Var("*")] = pointed
+                tp.pointers[targets, spytecode.Var("*")] = pointed
                 new_dirty = make_dirty_from_keys(
                     targets,
-                    pythia.dom_concrete.Set[tac.Var].singleton(tac.Var("*")),
+                    spyte.dom_concrete.Set[spytecode.Var].singleton(spytecode.Var("*")),
                 )
                 tp.dirty = tp.dirty.join(new_dirty)
             case _:
                 assert False, f"unexpected signature {signature}"
 
     def transfer(
-        self, prev_tp: TypedPointer, ins: tac.Tac, location: Location
+        self, prev_tp: TypedPointer, ins: spytecode.Spytecode, location: Location
     ) -> TypedPointer:
         tp = deepcopy(prev_tp)
 
         if location in self.for_locations:
             tp.dirty = make_dirty()
 
-        if isinstance(ins, tac.For):
+        if isinstance(ins, spytecode.For):
             ins = ins.as_call()
 
         print(f"Transfer {ins} at {location}")
@@ -969,12 +975,12 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         print(f"Prev: {tp}")
 
         # FIX: this removes pointers and make it "bottom" instead of "top"
-        for var in tac.gens(ins):
+        for var in spytecode.gens(ins):
             if var in tp.pointers[LOCALS]:
                 del tp.pointers[LOCALS][var]
 
         match ins:
-            case tac.Assign(lhs, expr, or_null):
+            case spytecode.Assign(lhs, expr, or_null):
                 (pointed, types, new_dirty) = self.expr(
                     prev_tp, expr, LocationObject(location), tp
                 )
@@ -985,9 +991,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     (pointed, types, new_dirty) = (immutable(t), t, make_dirty())
                 tp.dirty = tp.dirty.join(new_dirty)
                 self.signature(tp, lhs, pointed, types)
-            case tac.Return(var):
+            case spytecode.Return(var):
                 val = tp.pointers[LOCALS, var]
-                tp.pointers[LOCALS, tac.Var("return")] = val
+                tp.pointers[LOCALS, spytecode.Var("return")] = val
 
         print_debug(ins, tp)
         print(f"Post: {tp}")
@@ -1000,8 +1006,8 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         return tp
 
 
-def print_debug(ins: tac.Tac, tp: TypedPointer) -> None:
-    for var in tac.free_vars(ins):
+def print_debug(ins: spytecode.Spytecode, tp: TypedPointer) -> None:
+    for var in spytecode.free_vars(ins):
         if var in tp.pointers[LOCALS].keys():
             p = tp.pointers[LOCALS, var]
             t = tp.types[p]
@@ -1024,8 +1030,8 @@ def find_reachable_from_vars(ptr: Pointer) -> set[Object]:
 
 def find_reachable(
     ptr: Pointer,
-    alive: set[tac.Var],
-    params: set[tac.Var],
+    alive: set[spytecode.Var],
+    params: set[spytecode.Var],
     sources: typing.Optional[typing.Iterable[Object]] = None,
 ) -> typing.Iterator[LocationObject]:
     worklist = set(sources) if sources is not None else {LOCALS}

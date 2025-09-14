@@ -5,7 +5,7 @@ Pythia is a static analysis framework for Python that translates bytecode to Thr
 ## Overview
 
 Pythia provides tools for:
-- Translating Python [bytecode](https://docs.python.org/3.11/library/dis.html#python-bytecode-instructions) to Three Address Code (TAC)
+- Translating Python [bytecode](https://docs.python.org/3.11/library/dis.html#python-bytecode-instructions) to IR (Spytecode)
 - Building and analyzing Control Flow Graphs (CFGs)
 - Performing data flow analysis
 - Type inference and checking
@@ -70,7 +70,7 @@ Options:
 
 ### Core Modules
 
-- **tac.py**: Translates basic block CFG into equivalent Three Address Code (TAC)
+- **spytecode.py**: Translates basic block CFG into equivalent Three Address Code (TAC)
 - **analysis.py**: Performs data flow analysis of TAC CFG
 - **graph_utils.py**: Provides utilities for working with Control Flow Graphs
 - **type_system.py**: Implements a static type system for Python

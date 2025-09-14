@@ -2,8 +2,8 @@ import abc
 from dataclasses import dataclass
 import typing
 
-from pythia import graph_utils as gu
-from pythia.graph_utils import Label
+from spyte import graph_utils as gu
+from spyte.graph_utils import Label
 
 
 class IterationStrategy[T]:

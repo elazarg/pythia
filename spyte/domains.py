@@ -3,8 +3,8 @@ from __future__ import annotations as _
 import typing
 from dataclasses import dataclass
 
-from pythia import tac
-from pythia.graph_utils import Label, Location
+from spyte import spytecode
+from spyte.graph_utils import Label, Location
 
 
 class Lattice[T](typing.Protocol):
@@ -93,7 +93,7 @@ TOP = Top()
 class InstructionLattice[T](Lattice[T], typing.Protocol):
     backward: bool
 
-    def transfer(self, values: T, ins: tac.Tac, location: Location) -> T:
+    def transfer(self, values: T, ins: spytecode.Spytecode, location: Location) -> T:
         raise NotImplementedError
 
     def initial(self) -> T:
@@ -107,8 +107,8 @@ class ValueLattice[T](Lattice[T], typing.Protocol):
     def var(self, value: T) -> T:
         return value
 
-    def attribute(self, var: T, attr: tac.Var) -> T:
-        assert isinstance(attr, tac.Var)
+    def attribute(self, var: T, attr: spytecode.Var) -> T:
+        assert isinstance(attr, spytecode.Var)
         return self.top()
 
     def subscr(self, array: T, index: T) -> T:
@@ -117,10 +117,10 @@ class ValueLattice[T](Lattice[T], typing.Protocol):
     def call(self, function: T, args: list[T]) -> T:
         return self.top()
 
-    def predefined(self, name: tac.PredefinedFunction) -> T:
+    def predefined(self, name: spytecode.PredefinedFunction) -> T:
         return self.top()
 
-    def annotation(self, name: tac.Var, t: str) -> T:
+    def annotation(self, name: spytecode.Var, t: str) -> T:
         return self.top()
 
     def default(self) -> T:

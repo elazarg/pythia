@@ -3,7 +3,7 @@ import re
 import typing
 import pytest
 
-from pythia import analysis
+from spyte import analysis
 
 
 def collect(*filenames: str) -> typing.Iterator[tuple[str, str, bool]]:

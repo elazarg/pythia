@@ -1,4 +1,4 @@
-from pythia.tac import (
+from spyte.spytecode import (
     Const,
     Var,
     Attribute,

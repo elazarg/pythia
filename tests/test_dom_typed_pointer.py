@@ -1,5 +1,5 @@
 import pytest
-from pythia.dom_typed_pointer import (
+from spyte.dom_typed_pointer import (
     Param,
     Immutable,
     Scope,
@@ -17,10 +17,10 @@ from pythia.dom_typed_pointer import (
     GLOBALS,
     immutable,
 )
-from pythia.dom_concrete import Set, Map
-from pythia.graph_utils import Location
-from pythia.tac import Var
-import pythia.type_system as ts
+from spyte.dom_concrete import Set, Map
+from spyte.graph_utils import Location
+from spyte.spytecode import Var
+import spyte.type_system as ts
 
 
 def test_param_repr():

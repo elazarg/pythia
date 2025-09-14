@@ -1,7 +1,7 @@
 from dataclasses import replace
 
-from pythia import type_system as ts
-from pythia.type_system import INT, FLOAT, STR, LIST, SET, TUPLE, BOTTOM, TOP, ANY
+from spyte import type_system as ts
+from spyte.type_system import INT, FLOAT, STR, LIST, SET, TUPLE, BOTTOM, TOP, ANY
 
 ARRAY = ts.Ref("numpy.ndarray")
 

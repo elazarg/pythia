@@ -1,4 +1,4 @@
-import pythia.type_system
+import spyte.type_system
 
-if __name__ == '__main__':
-    pythia.type_system.main()
+if __name__ == "__main__":
+    spyte.type_system.main()

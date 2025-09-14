@@ -1,7 +1,7 @@
 import pytest
-from pythia.dom_liveness import LivenessVarLattice, Liveness, Set, TOP, BOTTOM
-from pythia.tac import Var, Assign, Const, Binary, Return, Del
-from pythia.graph_utils import Location
+from spyte.dom_liveness import LivenessVarLattice, Liveness, Set, TOP, BOTTOM
+from spyte.spytecode import Var, Assign, Const, Binary, Return, Del
+from spyte.graph_utils import Location
 
 X = Var("X", False)
 Y = Var("Y", False)

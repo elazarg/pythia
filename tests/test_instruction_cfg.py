@@ -1,8 +1,8 @@
 import pytest
 import dis
 from dis import Instruction
-import pythia.graph_utils as gu
-from pythia.instruction_cfg import (
+import spyte.graph_utils as gu
+from spyte.instruction_cfg import (
     is_unconditional_jump,
     is_return,
     is_raise,

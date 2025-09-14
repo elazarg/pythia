@@ -1,5 +1,5 @@
 import pytest
-from pythia.domains import Top, Bottom, TOP, BOTTOM
+from spyte.domains import Top, Bottom, TOP, BOTTOM
 
 
 def test_top_str():

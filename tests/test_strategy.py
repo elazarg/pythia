@@ -1,6 +1,6 @@
 import pytest
-import pythia.graph_utils as gu
-from pythia.strategy import (
+import spyte.graph_utils as gu
+from spyte.strategy import (
     IterationStrategy,
     ForwardIterationStrategy,
     BackwardIterationStrategy,

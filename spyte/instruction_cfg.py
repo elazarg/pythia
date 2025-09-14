@@ -4,7 +4,7 @@ import typing
 from dis import Instruction
 from typing import Any
 
-import pythia.graph_utils as gu
+import spyte.graph_utils as gu
 
 Cfg = gu.Cfg[Instruction]
 
