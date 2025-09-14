@@ -1,10 +1,10 @@
-# Pythia
+# Spyte
 
-Pythia is a static analysis framework for Python that translates bytecode to Three Address Code (TAC) and performs various analyses on it, including type analysis, data flow analysis, and code instrumentation for efficient checkpointing.
+Spyte is a static analysis framework for Python that translates bytecode to Three Address Code (TAC) and performs various analyses on it, including type analysis, data flow analysis, and code instrumentation for efficient checkpointing.
 
 ## Overview
 
-Pythia provides tools for:
+Spyte provides tools for:
 - Translating Python [bytecode](https://docs.python.org/3.11/library/dis.html#python-bytecode-instructions) to IR (Spytecode)
 - Building and analyzing Control Flow Graphs (CFGs)
 - Performing data flow analysis
@@ -70,7 +70,7 @@ Options:
 
 ### Core Modules
 
-- **spytecode.py**: Translates basic block CFG into equivalent Three Address Code (TAC)
+- **spytecode.py**: Translates basic block CFG into equivalent IR (Spytecode)
 - **analysis.py**: Performs data flow analysis of TAC CFG
 - **graph_utils.py**: Provides utilities for working with Control Flow Graphs
 - **type_system.py**: Implements a static type system for Python
@@ -85,7 +85,7 @@ Options:
 
 ## Examples
 
-The `experiment` directory contains example applications of Pythia, including:
+The `experiment` directory contains example applications of Spyte, including:
 - k_means: K-means clustering algorithm
 - omp: One More Proof algorithm
 - pivoter: Graph analysis algorithm
