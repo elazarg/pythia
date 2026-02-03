@@ -173,6 +173,9 @@ class linalg:
     def norm(a: ndarray, ord: None, axis: int) -> ndarray: ...
     @staticmethod
     @new
+    def norm(a: ndarray, axis: int) -> ndarray: ...
+    @staticmethod
+    @new
     def inv(a: ndarray) -> ndarray: ...
     @staticmethod
     @new

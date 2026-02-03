@@ -278,6 +278,9 @@ def max[T](x: T, y: T) -> T:
 def max[T](xs: Iterable[T]) -> T:
     pass
 
+def max[T](xs: Iterable[T], default: T) -> T:
+    pass
+
 def sum[T](xs: Iterable[T]) -> T:
     pass
 

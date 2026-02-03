@@ -145,14 +145,20 @@ def test_call():
 
     assert call.function == func
     assert call.args == args
-    assert call.kwargs is None
+    assert call.kwnames == ()
     assert str(call) == "func(a, b)"
 
-    # Test with kwargs
-    kwargs = Var("kwargs")
-    call = Call(func, args, kwargs)
-    assert call.kwargs == kwargs
-    assert str(call) == "func(a, b), kwargs=kwargs"
+    # Test with kwnames - last 1 arg is keyword
+    call = Call(func, args, ("y",))
+    assert call.kwnames == ("y",)
+    assert str(call) == "func(a, y=b)"
+
+    # Test with multiple kwnames - last 2 args are keywords
+    c = Var("c", False)
+    args_with_kw = (A, B, c)
+    call = Call(func, args_with_kw, ("x", "y"))
+    assert call.kwnames == ("x", "y")
+    assert str(call) == "func(a, x=b, y=c)"
 
     # Test with PredefinedFunction
     func = PredefinedFunction.SET
@@ -297,9 +303,9 @@ def test_free_vars_expr():
     call = Call(Var("func"), (A, B))
     assert free_vars_expr(call) == {Var("func"), A, B}
 
-    # Test Call with kwargs
-    call = Call(Var("func"), (A, B), Var("kwargs"))
-    assert free_vars_expr(call) == {Var("func"), A, B, Var("kwargs")}
+    # Test Call with kwnames (kwnames are strings, not Vars, so no extra free vars)
+    call = Call(Var("func"), (A, B), ("x",))
+    assert free_vars_expr(call) == {Var("func"), A, B}
 
     # Test Yield
     assert free_vars_expr(Yield(X)) == {X}
@@ -372,3 +378,33 @@ def test_gens():
     # Test Raise
     raise_stmt = Raise(Var("error"))
     assert gens(raise_stmt) == set()
+
+
+def test_keyword_args_in_tac():
+    """Test that keyword arguments are correctly captured in TAC from bytecode."""
+    from pythia.tac import make_tac_cfg
+    import pythia.graph_utils as gu
+
+    # Define a function that uses keyword arguments
+    # Use a tuple literal which is supported, not list literal
+    def func_with_kwargs():
+        return max((1, 2, 3), default=0)
+
+    # Generate TAC CFG
+    cfg = make_tac_cfg(func_with_kwargs)
+
+    # Find all Call instructions in the CFG
+    calls = []
+    for label in cfg.labels:
+        block = cfg[label]
+        for ins in block:
+            if isinstance(ins, Assign) and isinstance(ins.expr, Call):
+                calls.append(ins.expr)
+
+    # Find a call with 'default=' keyword arg
+    kw_calls = [c for c in calls if "default=" in str(c)]
+    assert len(kw_calls) >= 1, f"Expected at least one call with 'default=' keyword, got: {[str(c) for c in calls]}"
+
+    # Verify the kwnames structure
+    kw_call = kw_calls[0]
+    assert kw_call.kwnames == ("default",), f"Expected kwnames=('default',), got {kw_call.kwnames}"

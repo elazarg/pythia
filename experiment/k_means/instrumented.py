@@ -25,7 +25,7 @@ def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
         for i in transaction.iterate(range(max_iterations)):  # type: int
             clusters = [list[int]() for _ in range(k)]
             for sample_i in range(len(X)):
-                r = np.linalg.norm(X[sample_i] - centroids, None, 1).argmin()
+                r = np.linalg.norm(X[sample_i] - centroids, axis=1).argmin()
                 clusters[r].append(sample_i)
             new_centroids = np.array([X[cluster].mean(0) for cluster in clusters])
             if np.allclose(centroids, new_centroids):

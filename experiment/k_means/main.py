@@ -24,7 +24,7 @@ def run(X: np.ndarray, k: int, max_iterations: int) -> np.ndarray:
         # Assign samples to the closest centroids (create clusters)
         clusters = [list[int]() for _ in range(k)]
         for sample_i in range(len(X)):
-            r = np.linalg.norm(X[sample_i] - centroids, None, 1).argmin()
+            r = np.linalg.norm(X[sample_i] - centroids, axis=1).argmin()
             clusters[r].append(sample_i)
 
         # # Calculate new centroids from the clusters

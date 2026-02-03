@@ -135,7 +135,7 @@ class Unary:
 class Call:
     function: Var | PredefinedFunction
     args: tuple[Var, ...]
-    kwargs: Optional[Var] = None
+    kwnames: tuple[str, ...] = ()  # Names for trailing keyword args
 
     def location(self) -> int:
         return id(self)
@@ -144,9 +144,11 @@ class Call:
         res = ""
         if self.function != Var("TUPLE"):
             res += f"{self.function}"
-        res += f'({", ".join(str(x) for x in self.args)})'
-        if self.kwargs:
-            res += f", kwargs={self.kwargs}"
+        n_positional = len(self.args) - len(self.kwnames)
+        arg_strs = [str(x) for x in self.args[:n_positional]]
+        for i, name in enumerate(self.kwnames):
+            arg_strs.append(f"{name}={self.args[n_positional + i]}")
+        res += f'({", ".join(arg_strs)})'
         return res
 
 
@@ -308,7 +310,6 @@ def free_vars_expr(expr: Expr) -> set[Var]:
             return (
                 free_vars_expr(expr.function)
                 | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args))
-                | ({expr.kwargs} if expr.kwargs else set())
             )
         case Yield():
             return free_vars_expr(expr.value)
@@ -477,6 +478,7 @@ def make_tac(
     ins: instruction_cfg.Instruction,
     stack_depth: int,
     trace_origin: dict[int, instruction_cfg.Instruction],
+    pending_kwnames: Optional[list[tuple[str, ...]]] = None,
 ) -> list[Tac]:
     if ins.opname == "LOAD_CONST" and isinstance(ins.argval, tuple):
         # We want to handle list and tuple literal in the same way,
@@ -484,7 +486,8 @@ def make_tac(
         lst = []
         for v in ins.argval:
             lst += make_tac_no_dels(
-                "LOAD_CONST", v, 1, stack_depth, ins.argrepr, ins.positions.lineno
+                "LOAD_CONST", v, 1, stack_depth, ins.argrepr, ins.positions.lineno,
+                pending_kwnames,
             )
             stack_depth += 1
         tac_list = lst + make_tac_no_dels(
@@ -494,6 +497,7 @@ def make_tac(
             stack_depth,
             ins.argrepr,
             ins.positions.lineno,
+            pending_kwnames,
         )
     else:
         max_stack_effect = instruction_cfg.calculate_stack_effect(ins, jump=None)
@@ -504,6 +508,7 @@ def make_tac(
             stack_depth,
             ins.argrepr,
             ins.positions.lineno,
+            pending_kwnames,
         )
     for tac in tac_list:
         trace_origin[id(tac)] = ins
@@ -534,13 +539,17 @@ def make_tac_cfg(f: typing.Any, simplify: bool = False) -> gu.Cfg[Tac]:
     # gu.pretty_print_cfg(gu.simplify_cfg(ins_cfg))
     trace_origin: dict[int, instruction_cfg.Instruction] = {}
 
+    # Track pending keyword names for CALL instructions (mutable list for closure)
+    pending_kwnames: list[tuple[str, ...]] = [()]
+
     def instruction_block_to_tac_block(
         n: Label, block: gu.Block[instruction_cfg.Instruction]
     ) -> gu.Block[Tac]:
         return gu.Block(
             list(
                 it.chain.from_iterable(
-                    make_tac(ins, depths[ins.offset], trace_origin) for ins in block
+                    make_tac(ins, depths[ins.offset], trace_origin, pending_kwnames)
+                    for ins in block
                 )
             )
         )
@@ -568,6 +577,7 @@ def make_tac_no_dels(
     stack_depth: int,
     argrepr: str,
     start_lineno: int,
+    pending_kwnames: Optional[list[tuple[str, ...]]] = None,
 ) -> list[Tac]:
     assert is_const(val), f"{opname}, {val}, {argrepr}"
     """Translate a bytecode operation into a list of TAC instructions."""
@@ -841,7 +851,12 @@ def make_tac_no_dels(
             else:
                 assert False, sys.version_info
             args = tuple([stackvar(stack_depth - i) for i in reversed(range(argc))])
-            res = [Assign(lhs, Call(stackvar(func), args))]
+            # Get kwnames from pending state if available
+            kwnames: tuple[str, ...] = ()
+            if pending_kwnames is not None and pending_kwnames[0]:
+                kwnames = pending_kwnames[0]
+                pending_kwnames[0] = ()
+            res = [Assign(lhs, Call(stackvar(func), args, kwnames))]
             return res
         case ["CALL", "KW"]:
             assert False, "added in python3.13"
@@ -880,6 +895,10 @@ def make_tac_no_dels(
             Prefixes CALL. Stores a reference to co_consts[consti] into an internal variable for use by CALL.
             co_consts[consti] must be a tuple of strings.
             """
+            assert isinstance(val, tuple)
+            assert all(isinstance(name, str) for name in val)
+            if pending_kwnames is not None:
+                pending_kwnames[0] = val
             return []
         case ["MAKE", "FUNCTION"]:
             """

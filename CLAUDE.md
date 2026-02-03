@@ -37,15 +37,18 @@ Pythia is a **static analysis framework for Python** that:
 
 ### Test Coverage
 
-- 250 tests, all passing
+- 253 tests, all passing
 - Tests in `tests/` directory
 
 ## Current State
 
 - Python 3.12 required (also supports 3.13)
-- All 250 tests pass
+- All 253 tests pass
 - Branch: `claude-playground` (based on `master`)
-- Modified file: `pythia/dom_typed_pointer.py` (TypeMap.__setitem__ now uses join instead of overwrite)
+- Modified files:
+  - `pythia/tac.py` - Added keyword argument support (kwnames field in Call)
+  - `pythia/dom_typed_pointer.py` - Added build_args_typed_dict helper for keyword arg analysis
+  - `typeshed_mini/builtins.pyi` - Added max() overload with default parameter
 
 ### Debug Print Statements
 **FIXED**: Removed in commit c30c9e9:
@@ -73,6 +76,7 @@ Pythia is a **static analysis framework for Python** that:
 - [x] Document why `is_less_than` only checks self.map keys (commit 6e80321)
 - [x] Add test for `TypeMap.is_less_than` (commit d3d3d17)
 - [x] Add test for `Pointer.is_less_than` (commit f53e38a)
+- [x] **Keyword argument support** - Added kwnames field to Call, tracks KW_NAMES bytecode, passes keyword info to type analysis
 
 ### Code Quality
 - [ ] The `-1` offset for bound methods in `dom_typed_pointer.py:774` should be fixed at binding time in `type_system.py:bind_self_function`
@@ -86,6 +90,7 @@ Pythia is a **static analysis framework for Python** that:
 ### Analysis Quality
 - [x] Ran analysis with `--print-invariants` - output shows Liveness, TypedPointer, Types, and Dirty maps at each program point
 - [ ] Missing bytecode instruction: `BUILD_CONST_KEY_MAP` (dict with const keys) - causes NotImplementedError
+- [ ] Missing bytecode instruction: `LIST_EXTEND` (used for list literals like `[1, 2, 3]`) - should be similar to LIST_APPEND but calls `extend` method
 - [ ] Type system doesn't know about some numpy functions (e.g., `np.random.rand`) - causes assertion error "Expected Overloaded type, got BOT"
 
 ## Related Paper
@@ -155,6 +160,29 @@ for r in range(10**100):  # type: int  <-- This marks the loop!
 ```
 
 The analysis finds these loops via `annotated_for_labels()` in `ast_transform.py`.
+
+## Experiments (`experiment/` folder)
+
+The `experiment/` folder contains empirical evaluation benchmarks comparing different checkpointing strategies. Each experiment has multiple variants:
+
+| File | Description |
+|------|-------------|
+| `main.py` | Original algorithm without checkpointing |
+| `instrumented.py` | Uses Pythia's static analysis to checkpoint only dirty variables |
+| `naive.py` | Naive checkpointing that saves all modified variables |
+| `proc.py` | Process-level snapshotting |
+| `vm.py` | VM-level snapshotting |
+
+### Benchmarks
+
+- **k_means**: K-means clustering algorithm on random data
+- **omp**: Original OMP (Orthogonal Matching Pursuit) implementation
+- **omp_claud**: Claude's version of OMP
+- **pivoter**: Graph pivoting algorithm for clique enumeration
+- **trivial**: Simple test case
+- **worst**: Worst-case scenario for analysis
+
+These experiments demonstrate the effectiveness of static analysis for reducing checkpoint size compared to naive approaches.
 
 ## Session Log
 

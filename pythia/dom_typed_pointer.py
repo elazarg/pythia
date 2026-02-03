@@ -321,6 +321,26 @@ def predefined(name: tac.PredefinedFunction) -> ts.TypeExpr:
     assert False, name
 
 
+def build_args_typed_dict(
+    arg_types: tuple[ts.TypeExpr, ...],
+    kwnames: tuple[str, ...] = ()
+) -> ts.TypedDict:
+    """Build a TypedDict representing function arguments with keyword support.
+
+    The last len(kwnames) args are keywords with those names.
+    Positional args get Index(number, None), keyword args get Index(None, name).
+    """
+    n_positional = len(arg_types) - len(kwnames)
+    rows = []
+    # Positional: Index(number, None)
+    for i, t in enumerate(arg_types[:n_positional]):
+        rows.append(ts.make_row(i, None, t))
+    # Keyword: Index(None, name)
+    for i, name in enumerate(kwnames):
+        rows.append(ts.make_row(None, name, arg_types[n_positional + i]))
+    return ts.typed_dict(rows)
+
+
 @dataclass
 class TypeMap:
     map: pythia.dom_concrete.Map[Object, ts.TypeExpr]
@@ -695,7 +715,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                             objects = objects | immutable(t)
 
                 return (objects, t, make_dirty())
-            case tac.Call(var, tuple() as args):
+            case tac.Call(var, tuple() as args, tuple() as kwnames):
                 if isinstance(var, tac.Var):
                     func_objects = prev_tp.pointers[LOCALS, var]
                     func_type = prev_tp.types[func_objects]
@@ -719,7 +739,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     arg for arg in arg_objects
                 ), f"Expected non-empty arg objects, got {arg_objects}"
                 applied = ts.partial(
-                    func_type, ts.positional(*arg_types), only_callable_empty=True
+                    func_type, build_args_typed_dict(arg_types, kwnames), only_callable_empty=True
                 )
                 assert isinstance(
                     applied, ts.Overloaded
