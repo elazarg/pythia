@@ -255,6 +255,44 @@ def test_pointer_join():
     assert result[obj2, x] == Set([obj1])
 
 
+def test_pointer_is_less_than():
+    obj1 = Immutable(1)
+    obj2 = Immutable(2)
+    obj3 = Immutable(3)
+    x = Var("x", 0)
+    y = Var("y", 0)
+
+    # Empty pointer is less than everything (no edges = BOTTOM)
+    empty = Pointer(make_graph())
+    ptr_with_edge = Pointer(make_graph())
+    ptr_with_edge[obj1, x] = Set([obj2])
+    assert empty.is_less_than(ptr_with_edge)
+
+    # Pointer with edge is NOT less than empty pointer
+    assert not ptr_with_edge.is_less_than(empty)
+
+    # Pointer is less than or equal to itself
+    assert ptr_with_edge.is_less_than(ptr_with_edge)
+
+    # Pointer with subset of edges is less than pointer with superset
+    ptr_smaller = Pointer(make_graph())
+    ptr_smaller[obj1, x] = Set([obj2])
+    ptr_larger = Pointer(make_graph())
+    ptr_larger[obj1, x] = Set([obj2, obj3])
+    assert ptr_smaller.is_less_than(ptr_larger)
+    assert not ptr_larger.is_less_than(ptr_smaller)
+
+    # Pointers with different keys are incomparable
+    ptr1 = Pointer(make_graph())
+    ptr1[obj1, x] = Set([obj2])
+    ptr2 = Pointer(make_graph())
+    ptr2[obj1, y] = Set([obj3])
+    # ptr1 has obj1.x but not obj1.y -> ptr1[obj1,y] is empty -> empty.is_subset(anything) = True
+    # But ptr1[obj1,x] = {obj2}, ptr2[obj1,x] is empty -> {obj2}.is_subset(empty) = False
+    assert not ptr1.is_less_than(ptr2)
+    assert not ptr2.is_less_than(ptr1)
+
+
 def test_type_map_init():
     map = make_type_map({Immutable(1): ts.INT})
     type_map = TypeMap(map)
