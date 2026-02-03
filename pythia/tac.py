@@ -152,6 +152,33 @@ class Call:
         return res
 
 
+@dataclass(frozen=False)
+class BoundCall:
+    """A callable bound to its arguments, ready for invocation.
+
+    BoundCall performs:
+    - Function/method lookup
+    - Argument collection
+    - Overload resolution
+
+    The subsequent Call uses the resolved info to execute.
+    """
+
+    function: Var | PredefinedFunction
+    args: tuple[Var, ...]
+    kwnames: tuple[str, ...] = ()
+
+    def location(self) -> int:
+        return id(self)
+
+    def __str__(self) -> str:
+        n_positional = len(self.args) - len(self.kwnames)
+        arg_strs = [str(x) for x in self.args[:n_positional]]
+        for i, name in enumerate(self.kwnames):
+            arg_strs.append(f"{name}={self.args[n_positional + i]}")
+        return f'BIND {self.function}({", ".join(arg_strs)})'
+
+
 @dataclass
 class Yield:
     value: Var
@@ -195,6 +222,7 @@ Expr: TypeAlias = (
     | Binary
     | Unary
     | Call
+    | BoundCall
     | Yield
     | Import
     | MakeFunction
@@ -307,6 +335,11 @@ def free_vars_expr(expr: Expr) -> set[Var]:
         case Unary():
             return free_vars_expr(expr.var)
         case Call():
+            return (
+                free_vars_expr(expr.function)
+                | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args))
+            )
+        case BoundCall():
             return (
                 free_vars_expr(expr.function)
                 | set(it.chain.from_iterable(free_vars_expr(arg) for arg in expr.args))
@@ -436,6 +469,10 @@ def subst_var_in_expr(expr: Expr, target: Var, new_var: Var) -> Expr:
                 return replace(expr, var=new_var)
             return expr
         case Call():
+            args = tuple(subst_var_in_expr(arg, target, new_var) for arg in expr.args)
+            function = new_var if expr.function == target else expr.function
+            return replace(expr, function=function, args=args)
+        case BoundCall():
             args = tuple(subst_var_in_expr(arg, target, new_var) for arg in expr.args)
             function = new_var if expr.function == target else expr.function
             return replace(expr, function=function, args=args)
@@ -856,7 +893,11 @@ def make_tac_no_dels(
             if pending_kwnames is not None and pending_kwnames[0]:
                 kwnames = pending_kwnames[0]
                 pending_kwnames[0] = ()
-            res = [Assign(lhs, Call(stackvar(func), args, kwnames))]
+            # Emit BoundCall + Call: separates resolution from execution
+            res = [
+                Assign(fresh, BoundCall(stackvar(func), args, kwnames)),
+                Assign(lhs, Call(fresh, ())),
+            ]
             return res
         case ["CALL", "KW"]:
             assert False, "added in python3.13"

@@ -6,6 +6,7 @@ from pythia.tac import (
     Binary,
     Unary,
     Call,
+    BoundCall,
     Yield,
     Import,
     MakeFunction,
@@ -393,18 +394,52 @@ def test_keyword_args_in_tac():
     # Generate TAC CFG
     cfg = make_tac_cfg(func_with_kwargs)
 
-    # Find all Call instructions in the CFG
-    calls = []
+    # Find all BoundCall instructions in the CFG (keyword args are now in BoundCall)
+    bound_calls = []
     for label in cfg.labels:
         block = cfg[label]
         for ins in block:
-            if isinstance(ins, Assign) and isinstance(ins.expr, Call):
-                calls.append(ins.expr)
+            if isinstance(ins, Assign) and isinstance(ins.expr, BoundCall):
+                bound_calls.append(ins.expr)
 
-    # Find a call with 'default=' keyword arg
-    kw_calls = [c for c in calls if "default=" in str(c)]
-    assert len(kw_calls) >= 1, f"Expected at least one call with 'default=' keyword, got: {[str(c) for c in calls]}"
+    # Find a bound call with 'default=' keyword arg
+    kw_calls = [c for c in bound_calls if "default=" in str(c)]
+    assert len(kw_calls) >= 1, f"Expected at least one BoundCall with 'default=' keyword, got: {[str(c) for c in bound_calls]}"
 
     # Verify the kwnames structure
     kw_call = kw_calls[0]
     assert kw_call.kwnames == ("default",), f"Expected kwnames=('default',), got {kw_call.kwnames}"
+
+
+def test_bound_call():
+    """Test BoundCall creation and string representation."""
+    func = Var("func")
+    args = (A, B)
+    bound = BoundCall(func, args)
+
+    assert bound.function == func
+    assert bound.args == args
+    assert bound.kwnames == ()
+    assert str(bound) == "BIND func(a, b)"
+
+    # With keyword args - last 1 arg is keyword
+    bound = BoundCall(func, args, ("y",))
+    assert bound.kwnames == ("y",)
+    assert str(bound) == "BIND func(a, y=b)"
+
+    # Test with PredefinedFunction
+    func = PredefinedFunction.SET
+    bound = BoundCall(func, args)
+    assert bound.function == func
+    assert str(bound) == "BIND SET(a, b)"
+
+
+def test_free_vars_bound_call():
+    """Test free_vars_expr handles BoundCall."""
+    func = Var("func")
+    bound = BoundCall(func, (A, B))
+    assert free_vars_expr(bound) == {func, A, B}
+
+    # With kwnames (kwnames are strings, not Vars, so no extra free vars)
+    bound = BoundCall(func, (A, B), ("x",))
+    assert free_vars_expr(bound) == {func, A, B}

@@ -573,12 +573,14 @@ def apply_update_side_effects(
         )
 
     # Check for aliasing that would make the update unsound
+    # Exclude bound methods from aliasing check - they're internal tracking objects
     aliasing_pointers = {
         obj
         for obj, fields in prev_tp.pointers.items()
         for f, targets in fields.items()
         if self_obj in targets
         if f != tac.Var("*")  # Container element references are OK
+        if not prev_tp.is_bound_method(obj)  # Bound methods are internal
     } - {func_obj, LOCALS}
     monomorophized = [
         obj
@@ -1081,24 +1083,106 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                             objects = objects | immutable(t)
 
                 return (objects, t, make_dirty())
-            case tac.Call(var, tuple() as args, tuple() as kwnames):
+            case tac.BoundCall(var, tuple() as args, tuple() as kwnames):
+                # BoundCall: resolve function, collect arguments, perform overload resolution
+                # The result is a "bound callable" that Call can execute
+
+                # Step 1: Function lookup
                 if isinstance(var, tac.Var):
                     func_objects = prev_tp.pointers[LOCALS, var]
                     func_type = prev_tp.types[func_objects]
                 elif isinstance(var, tac.PredefinedFunction):
-                    # TODO: point from exact literal when possible
                     func_objects = pythia.dom_concrete.Set[Object]()
                     func_type = predefined(var)
                 else:
                     assert False, f"Expected Var or PredefinedFunction, got {var}"
 
-                arg_objects = tuple([prev_tp.pointers[LOCALS, var] for var in args])
+                # Step 2: Argument collection
+                arg_objects = tuple([prev_tp.pointers[LOCALS, v] for v in args])
                 arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
                 assert all(
                     arg for arg in arg_objects
                 ), f"Expected non-empty arg objects, got {arg_objects}"
 
+                # Step 3: Overload resolution
                 applied = resolve_call_overload(func_type, arg_types, kwnames)
+
+                # Step 4: Create bound callable object
+                bound_objects = pythia.dom_concrete.Set[Object].singleton(location)
+
+                # Copy self pointer if function is a bound method
+                if func_objects:
+                    func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
+                    if not isinstance(func_obj, pythia.dom_concrete.Set):
+                        self_objs = prev_tp.pointers[func_obj, tac.Var("self")]
+                        if self_objs:
+                            new_tp.pointers[location, tac.Var("self")] = self_objs
+
+                # Store arg objects for Call to retrieve
+                for i, arg_obj in enumerate(arg_objects):
+                    new_tp.pointers[location, tac.Var(f"_arg{i}")] = arg_obj
+
+                # Store the original function objects for side effect handling
+                if func_objects:
+                    new_tp.pointers[location, tac.Var("_func")] = func_objects
+
+                # Mark as bound callable
+                new_tp.mark_bound_method(location)
+
+                return (bound_objects, applied, make_dirty())
+            case tac.Call(var, tuple() as args, tuple() as kwnames):
+                if isinstance(var, tac.Var):
+                    func_objects = prev_tp.pointers[LOCALS, var]
+                    func_type = prev_tp.types[func_objects]
+
+                    # Check if calling a bound callable (from BoundCall)
+                    func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
+                    is_bound_call = (
+                        not isinstance(func_obj, pythia.dom_concrete.Set)
+                        and prev_tp.is_bound_method(func_obj)
+                        and not args  # Bound calls have empty args
+                    )
+
+                    if is_bound_call:
+                        # Retrieve stored arguments from BoundCall
+                        arg_objects_list: list[pythia.dom_concrete.Set[Object]] = []
+                        i = 0
+                        while True:
+                            arg_key = tac.Var(f"_arg{i}")
+                            arg_objs = prev_tp.pointers[func_obj, arg_key]
+                            if not arg_objs:
+                                break
+                            arg_objects_list.append(arg_objs)
+                            i += 1
+                        arg_objects = tuple(arg_objects_list)
+                        applied = func_type  # Already resolved by BoundCall
+
+                        # Retrieve original function objects for side effects
+                        stored_func = prev_tp.pointers[func_obj, tac.Var("_func")]
+                        if stored_func:
+                            func_objects = stored_func
+                    else:
+                        # Legacy direct call path
+                        arg_objects = tuple(
+                            [prev_tp.pointers[LOCALS, v] for v in args]
+                        )
+                        arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
+                        assert all(
+                            arg for arg in arg_objects
+                        ), f"Expected non-empty arg objects, got {arg_objects}"
+                        applied = resolve_call_overload(func_type, arg_types, kwnames)
+                elif isinstance(var, tac.PredefinedFunction):
+                    # TODO: point from exact literal when possible
+                    func_objects = pythia.dom_concrete.Set[Object]()
+                    func_type = predefined(var)
+                    arg_objects = tuple([prev_tp.pointers[LOCALS, v] for v in args])
+                    arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
+                    assert all(
+                        arg for arg in arg_objects
+                    ), f"Expected non-empty arg objects, got {arg_objects}"
+                    applied = resolve_call_overload(func_type, arg_types, kwnames)
+                else:
+                    assert False, f"Expected Var or PredefinedFunction, got {var}"
 
                 side_effect = ts.get_side_effect(applied)
                 dirty = apply_update_side_effects(
