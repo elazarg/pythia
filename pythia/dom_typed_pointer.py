@@ -604,6 +604,40 @@ def apply_update_side_effects(
     return dirty
 
 
+def create_operator_result_objects(
+    location: LocationObject,
+    applied: ts.Overloaded,
+    return_type: ts.TypeExpr,
+) -> pythia.dom_concrete.Set[Object]:
+    """Create result objects for operator expressions (Binary, Unary).
+
+    Handles the common pattern of creating result objects based on:
+    - Immutability of the return type
+    - @new annotations on the operator method
+
+    Args:
+        location: The location object representing this operation site
+        applied: The resolved operator overload
+        return_type: The return type of the operator
+
+    Returns:
+        Set of objects representing the result
+    """
+    if ts.is_immutable(return_type):
+        return immutable(return_type)
+
+    objects = pythia.dom_concrete.Set[Object]()
+    if applied.any_new():
+        objects = objects | pythia.dom_concrete.Set[Object].singleton(location)
+    if not applied.all_new():
+        if ts.is_immutable(return_type):
+            objects = objects | immutable(return_type)
+        else:
+            assert False, f"Non-immutable type {return_type} without @new annotation"
+
+    return objects
+
+
 @dataclass
 class TypeMap:
     map: pythia.dom_concrete.Map[Object, ts.TypeExpr]
@@ -1049,32 +1083,19 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 assert value_objects, f"Expected objects for {var}"
                 arg_type = prev_tp.types[value_objects]
                 applied = ts.get_unop(arg_type, unop_to_str(op))
-                assert isinstance(applied, ts.Overloaded)
+                assert isinstance(
+                    applied, ts.Overloaded
+                ), f"Expected overloaded type, got {applied}"
+
                 side_effect = ts.get_side_effect(applied)
                 dirty = make_dirty()
                 if side_effect.update[0] is not None:
                     dirty = make_dirty_from_keys(
                         value_objects, pythia.dom_concrete.Set[tac.Var].top()
                     )
-                assert isinstance(
-                    applied, ts.Overloaded
-                ), f"Expected overloaded type, got {applied}"
 
                 t = ts.get_return(applied)
-
-                if ts.is_immutable(t):
-                    objects = immutable(t)
-                else:
-                    objects = pythia.dom_concrete.Set[Object]()
-                    if applied.any_new():
-                        objects = objects | pythia.dom_concrete.Set[Object].singleton(
-                            location
-                        )
-                    if not applied.all_new():
-                        if ts.is_immutable(t):
-                            objects = objects | immutable(t)
-                        else:
-                            assert False
+                objects = create_operator_result_objects(location, applied, t)
 
                 return (objects, t, dirty)
             case tac.Binary(
@@ -1090,20 +1111,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 ), f"Expected overloaded type, got {applied}"
 
                 t = ts.get_return(applied)
-
-                if ts.is_immutable(t):
-                    objects = immutable(t)
-                else:
-                    objects = pythia.dom_concrete.Set[Object]()
-                    if applied.any_new():
-                        objects = objects | pythia.dom_concrete.Set[Object].singleton(
-                            location
-                        )
-                    if not applied.all_new():
-                        if ts.is_immutable(t):
-                            objects = objects | immutable(t)
-                        else:
-                            assert False
+                objects = create_operator_result_objects(location, applied, t)
 
                 return (objects, t, make_dirty())
             case _:
