@@ -138,7 +138,9 @@ class Pointer:
             for field in self.graph[obj]
         )
 
-    def __deepcopy__(self, memodict={}):
+    def __deepcopy__(self, memodict=None):
+        if memodict is None:
+            memodict = {}
         return Pointer(deepcopy(self.graph, memodict))
 
     @staticmethod
@@ -334,7 +336,9 @@ class TypeMap:
         # TODO: check
         return all(ts.is_subtype(self.map[obj], other.map[obj]) for obj in self.map)
 
-    def __deepcopy__(self, memodict={}):
+    def __deepcopy__(self, memodict=None):
+        if memodict is None:
+            memodict = {}
         return TypeMap(deepcopy(self.map, memodict))
 
     @staticmethod
@@ -408,7 +412,9 @@ class TypedPointer:
             and self.dirty.is_less_than(other.dirty)
         )
 
-    def __deepcopy__(self, memodict={}):
+    def __deepcopy__(self, memodict=None):
+        if memodict is None:
+            memodict = {}
         return TypedPointer(
             deepcopy(self.pointers, memodict),
             deepcopy(self.types, memodict),

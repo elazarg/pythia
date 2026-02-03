@@ -185,7 +185,7 @@ class Cfg[T]:
     def successors(self, label: Label) -> Iterator[Label]:
         return self.graph.successors(label)
 
-    def __deepcopy__(self, memodict={}) -> Cfg:
+    def __deepcopy__(self, memodict=None) -> Cfg:
         return Cfg(self.graph.copy(), add_sink=False)
 
     def dominance_frontiers(self) -> dict[Label, set[Label]]:

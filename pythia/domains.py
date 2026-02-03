@@ -42,7 +42,7 @@ class Top:
     def __str__(self) -> str:
         return "⊤"
 
-    def __deepcopy__(self, memodict={}):
+    def __deepcopy__(self, memodict=None):
         return self
 
     def __or__(self, other: object) -> Top:
@@ -69,8 +69,9 @@ class Bottom:
     def __str__(self) -> str:
         return "⊥"
 
-    def __deepcopy__(self, memodict={}):
-        memodict[id(self)] = self
+    def __deepcopy__(self, memodict=None):
+        if memodict is not None:
+            memodict[id(self)] = self
         return self
 
     def __or__[T](self, other: T) -> T:

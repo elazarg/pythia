@@ -23,7 +23,9 @@ class Set[T]:
         items = ", ".join(sorted([repr(x) for x in self._set]))
         return f"Set({items})"
 
-    def __deepcopy__(self, memodict={}):
+    def __deepcopy__(self, memodict=None):
+        if memodict is None:
+            memodict = {}
         if isinstance(self._set, Top):
             result = Set(TOP)
         else:
@@ -187,7 +189,7 @@ class Map[K, T]:
     def keys(self) -> set[K]:
         return set(self._map.keys())
 
-    def __deepcopy__(self, memodict={}):
+    def __deepcopy__(self, memodict=None):
         # deepcopy is done in the constructor
         return Map(self.default, {k: v for k, v in self._map.items()})
 
