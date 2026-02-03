@@ -306,6 +306,35 @@ def test_type_map_join():
     assert result[obj2] == ts.FLOAT
 
 
+def test_type_map_is_less_than():
+    obj1 = Immutable(1)
+    obj2 = Immutable(2)
+
+    # Empty map is less than everything (keys missing = BOTTOM = least element)
+    empty_map = TypeMap(make_type_map())
+    map_with_int = TypeMap(make_type_map({obj1: ts.INT}))
+    assert empty_map.is_less_than(map_with_int)
+
+    # Map with a type is NOT less than empty map (since INT is not subtype of BOTTOM)
+    assert not map_with_int.is_less_than(empty_map)
+
+    # Map is less than or equal to itself
+    assert map_with_int.is_less_than(map_with_int)
+
+    # Map with INT is less than map with (INT | FLOAT) since INT <= (INT | FLOAT)
+    map_with_union = TypeMap(make_type_map({obj1: ts.union([ts.INT, ts.FLOAT])}))
+    assert map_with_int.is_less_than(map_with_union)
+    assert not map_with_union.is_less_than(map_with_int)
+
+    # Maps with different keys: {obj1: INT} vs {obj2: FLOAT}
+    map1 = TypeMap(make_type_map({obj1: ts.INT}))
+    map2 = TypeMap(make_type_map({obj2: ts.FLOAT}))
+    # map1 is less than map2 if map1[obj1]=INT <= map2[obj1]=BOTTOM -> False
+    assert not map1.is_less_than(map2)
+    # map2 is less than map1 if map2[obj2]=FLOAT <= map1[obj2]=BOTTOM -> False
+    assert not map2.is_less_than(map1)
+
+
 def test_typed_pointer_function():
     # Test creating a TypedPointer from components
     ptr = Pointer(make_graph())
