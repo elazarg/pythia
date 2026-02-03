@@ -345,6 +345,265 @@ def build_args_typed_dict(
     return ts.typed_dict(rows)
 
 
+def bind_method(
+    location: LocationObject,
+    method_type: ts.TypeExpr,
+    self_objects: pythia.dom_concrete.Set[Object],
+    new_tp: TypedPointer,
+) -> tuple[bool, bool]:
+    """Bind self to a method, creating a bound method object.
+
+    Sets up the "self" pointer from the location to the receiver objects.
+
+    Args:
+        location: The location object representing this binding site
+        method_type: The type of the method being bound
+        self_objects: The set of receiver objects to bind as "self"
+        new_tp: The TypedPointer to update with the binding
+
+    Returns:
+        Tuple of (any_new, all_new) indicating whether binding creates new objects
+    """
+    if ts.is_bound_method(method_type):
+        new_tp.pointers[location, tac.Var("self")] = self_objects
+        return (True, True)
+    return (False, False)
+
+
+def create_result_objects(
+    location: LocationObject,
+    applied: ts.Overloaded,
+    side_effect: ts.SideEffect,
+    return_type: ts.TypeExpr,
+    func_objects: pythia.dom_concrete.Set[Object],
+    arg_objects: tuple[pythia.dom_concrete.Set[Object], ...],
+    prev_tp: TypedPointer,
+    new_tp: TypedPointer,
+    is_tuple_constructor: bool = False,
+) -> pythia.dom_concrete.Set[Object]:
+    """Create result objects based on @new, @alias, @accessor annotations.
+
+    Handles the various ways a function call can produce result objects:
+    - @new: Allocates a new object at this location
+    - @alias: Creates a new object that shares fields with self
+    - @accessor: Returns existing objects from self's container
+    - points_to_args: The result points to the argument objects
+    - Immutable: Returns a canonical immutable object
+
+    Args:
+        location: The location object representing this call site
+        applied: The applied (partially resolved) function type
+        side_effect: The side effect specification from the function type
+        return_type: The return type of the function
+        func_objects: Objects representing the function being called
+        arg_objects: Objects representing the call arguments
+        prev_tp: The previous TypedPointer state (read-only)
+        new_tp: The TypedPointer to update with new pointers
+        is_tuple_constructor: Whether this is a tuple constructor call
+
+    Returns:
+        Set of objects representing the result
+    """
+    pointed_objects = pythia.dom_concrete.Set[Object]()
+    if side_effect.points_to_args:
+        pointed_objects = pythia.dom_concrete.Set[Object].union_all(arg_objects)
+
+    objects = pythia.dom_concrete.Set[Object]()
+    creates_new = applied.any_new() or side_effect.alias
+
+    if creates_new:
+        objects = objects | pythia.dom_concrete.Set[Object].singleton(location)
+
+        if side_effect.points_to_args:
+            if is_tuple_constructor and not new_tp.pointers[location, tac.Var("*")]:
+                # Tuple: use indexed fields (0, 1, 2, ...) instead of *
+                for i, arg in enumerate(arg_objects):
+                    new_tp.pointers[location, tac.Var(f"{i}")] = arg
+            else:
+                new_tp.pointers.update(location, tac.Var("*"), pointed_objects)
+
+        # Transitive @new: create objects for declared fields (only if truly new, not alias)
+        if applied.any_new():
+            declared_fields = ts.get_declared_fields(return_type)
+            for field_name, field_type in declared_fields:
+                field_obj = LocationObject((*location.location, field_name))
+                new_tp.pointers[location, tac.Var(field_name)] = (
+                    pythia.dom_concrete.Set[Object].singleton(field_obj)
+                )
+                new_tp.types[field_obj] = field_type
+
+        # Handle @alias: copy field pointers from self to new object
+        if side_effect.alias:
+            func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
+            self_objects = prev_tp.pointers[func_obj, tac.Var("self")]
+            for field_name in side_effect.alias:
+                field_var = tac.Var(field_name)
+                for self_obj in self_objects.as_set():
+                    if (self_obj, field_var) in prev_tp.pointers:
+                        # Share the field pointer (aliasing!)
+                        existing = prev_tp.pointers[self_obj, field_var]
+                        new_tp.pointers[location, field_var] = existing
+
+    # Handle @accessor(self[index]) - return objects from self's * field
+    if side_effect.accessor:
+        func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
+        self_objects = prev_tp.pointers[func_obj, tac.Var("self")]
+        star_var = tac.Var("*")
+        accessor_objects = pythia.dom_concrete.Set[Object]()
+        for self_obj in self_objects.as_set():
+            pointed = prev_tp.pointers[self_obj, star_var]
+            if pointed:
+                accessor_objects = accessor_objects | pointed
+        if accessor_objects:
+            objects = accessor_objects
+            # Type already comes from return type annotation
+    elif ts.is_immutable(return_type):
+        objects = immutable(return_type)
+    else:
+        all_new = applied.all_new() or side_effect.alias
+        if not all_new:
+            if ts.is_immutable(return_type):
+                objects = objects | immutable(return_type)
+            else:
+                assert False
+
+    return objects
+
+
+def resolve_call_overload(
+    func_type: ts.TypeExpr,
+    arg_types: tuple[ts.TypeExpr, ...],
+    kwnames: tuple[str, ...] = (),
+) -> ts.Overloaded:
+    """Resolve function overloads based on argument types.
+
+    Handles constructor types (type[T]) and performs partial application
+    to select matching overloads.
+
+    Args:
+        func_type: The type of the function/callable being invoked
+        arg_types: Types of the positional arguments
+        kwnames: Names of keyword arguments (last len(kwnames) args are keywords)
+
+    Returns:
+        The resolved Overloaded type with matching signatures
+    """
+    # Handle constructor calls: type[T] -> T.__init__
+    if isinstance(func_type, ts.Instantiation) and func_type.generic == ts.TYPE:
+        func_type = ts.get_init_func(func_type)
+
+    assert isinstance(
+        func_type, ts.Overloaded
+    ), f"Expected Overloaded type, got {func_type}"
+
+    applied = ts.partial(
+        func_type, build_args_typed_dict(arg_types, kwnames), only_callable_empty=True
+    )
+    assert isinstance(
+        applied, ts.Overloaded
+    ), f"Expected Overloaded type, got {applied}"
+
+    return applied
+
+
+def apply_update_side_effects(
+    side_effect: ts.SideEffect,
+    func_objects: pythia.dom_concrete.Set[Object],
+    arg_objects: tuple[pythia.dom_concrete.Set[Object], ...],
+    prev_tp: TypedPointer,
+    new_tp: TypedPointer,
+) -> Dirty:
+    """Apply @update side effects, modifying self's type and pointers.
+
+    Handles the @update annotation which indicates that a method mutates
+    its receiver (self). This includes:
+    - Marking self and any aliased buffers as dirty
+    - Updating self's type to the new type
+    - Setting up element pointers from arguments to self's * field
+
+    Args:
+        side_effect: The side effect specification from the function type
+        func_objects: Objects representing the function being called
+        arg_objects: Objects representing the call arguments
+        prev_tp: The previous TypedPointer state (read-only)
+        new_tp: The TypedPointer to update with side effects
+
+    Returns:
+        Dirty map tracking which objects were modified
+    """
+    dirty = make_dirty()
+    if side_effect.update[0] is None:
+        return dirty
+
+    func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
+    if isinstance(func_obj, pythia.dom_concrete.Set):
+        raise RuntimeError(
+            f"Update with multiple function objects: {func_objects}"
+        )
+    self_objects = prev_tp.pointers[func_obj, tac.Var("self")]
+
+    # Mark self objects and their buffers as dirty (for view aliasing)
+    dirty_targets = self_objects
+    buffer_key = tac.Var("_buffer")
+    for self_obj in self_objects.as_set():
+        buffer_objs = prev_tp.pointers[self_obj, buffer_key]
+        if buffer_objs:  # Non-empty set
+            dirty_targets = dirty_targets | buffer_objs
+    dirty = make_dirty_from_keys(
+        dirty_targets, pythia.dom_concrete.Set[tac.Var].top()
+    )
+
+    self_obj = pythia.dom_concrete.Set[Object].squeeze(self_objects)
+    if isinstance(self_obj, pythia.dom_concrete.Set):
+        raise RuntimeError(
+            f"Update with multiple self objects: {self_objects}"
+        )
+
+    # Check for aliasing that would make the update unsound
+    aliasing_pointers = {
+        obj
+        for obj, fields in prev_tp.pointers.items()
+        for f, targets in fields.items()
+        if self_obj in targets
+        if f != tac.Var("*")  # Container element references are OK
+    } - {func_obj, LOCALS}
+    monomorophized = [
+        obj
+        for obj in aliasing_pointers
+        if ts.is_monomorphized(prev_tp.types[obj])
+    ]
+
+    if True or new_tp.types[self_obj] != side_effect.update[0]:
+        if monomorophized:
+            raise RuntimeError(
+                f"Update with aliased objects: {aliasing_pointers} (not: {func_obj, LOCALS})"
+            )
+        new_tp.types[self_obj] = side_effect.update[0]
+
+        # Set up element pointers from arguments
+        arg_indices_to_point = side_effect.update[1]
+        if arg_indices_to_point:
+            for i in arg_indices_to_point:
+                starred = False
+                if isinstance(i, ts.Star):
+                    assert len(i.items) == 1
+                    i = i.items[0]
+                    starred = True
+
+                if isinstance(i, ts.Literal) and isinstance(i.value, int):
+                    # TODO: minus one only for self. Should be fixed on binding
+                    v = i.value - 1
+                    assert v < len(arg_objects), f"{v} >= {len(arg_objects)}"
+                    targets = arg_objects[v]
+                    if starred:
+                        targets = prev_tp.pointers[targets, tac.Var("*")]
+                    new_tp.pointers.update(self_obj, tac.Var("*"), targets)
+                else:
+                    assert False, i
+
+    return dirty
+
+
 @dataclass
 class TypeMap:
     map: pythia.dom_concrete.Map[Object, ts.TypeExpr]
@@ -662,10 +921,11 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                         all_new = attr_type.all_new()
                         side_effect = ts.get_side_effect(attr_type)
                         attr_type = ts.get_return(attr_type)
-                    if ts.is_bound_method(attr_type):
-                        new_tp.pointers[location, tac.Var("self")] = var_objs
-                        any_new = True
-                        all_new = True
+                    bound_any, bound_all = bind_method(
+                        location, attr_type, var_objs, new_tp
+                    )
+                    any_new = any_new or bound_any
+                    all_new = all_new or bound_all
                 t = attr_type
 
                 # @alias creates a new object with shared fields
@@ -753,174 +1013,34 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     func_type = predefined(var)
                 else:
                     assert False, f"Expected Var or PredefinedFunction, got {var}"
-                if (
-                    isinstance(func_type, ts.Instantiation)
-                    and func_type.generic == ts.TYPE
-                ):
-                    func_type = ts.get_init_func(func_type)
-                assert isinstance(
-                    func_type, ts.Overloaded
-                ), f"Expected Overloaded type, got {func_type}"
+
                 arg_objects = tuple([prev_tp.pointers[LOCALS, var] for var in args])
                 arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
                 assert all(
                     arg for arg in arg_objects
                 ), f"Expected non-empty arg objects, got {arg_objects}"
-                applied = ts.partial(
-                    func_type, build_args_typed_dict(arg_types, kwnames), only_callable_empty=True
-                )
-                assert isinstance(
-                    applied, ts.Overloaded
-                ), f"Expected Overloaded type, got {applied}"
+
+                applied = resolve_call_overload(func_type, arg_types, kwnames)
 
                 side_effect = ts.get_side_effect(applied)
-                dirty = make_dirty()
-                if side_effect.update[0] is not None:
-                    func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
-                    if isinstance(func_obj, pythia.dom_concrete.Set):
-                        raise RuntimeError(
-                            f"Update with multiple function objects: {func_objects}"
-                        )
-                    self_objects = prev_tp.pointers[func_obj, tac.Var("self")]
-                    # Also mark buffer objects as dirty (for view aliasing)
-                    dirty_targets = self_objects
-                    buffer_key = tac.Var("_buffer")
-                    for self_obj in self_objects.as_set():
-                        buffer_objs = prev_tp.pointers[self_obj, buffer_key]
-                        if buffer_objs:  # Non-empty set
-                            dirty_targets = dirty_targets | buffer_objs
-                    dirty = make_dirty_from_keys(
-                        dirty_targets, pythia.dom_concrete.Set[tac.Var].top()
-                    )
-                    self_obj = pythia.dom_concrete.Set[Object].squeeze(self_objects)
-                    if isinstance(self_obj, pythia.dom_concrete.Set):
-                        raise RuntimeError(
-                            f"Update with multiple self objects: {self_objects}"
-                        )
-
-                    aliasing_pointers = {
-                        obj
-                        for obj, fields in prev_tp.pointers.items()
-                        for f, targets in fields.items()
-                        if self_obj in targets
-                        if f != tac.Var("*")  # Container element references are OK
-                    } - {func_obj, LOCALS}
-                    monomorophized = [
-                        obj
-                        for obj in aliasing_pointers
-                        if ts.is_monomorphized(prev_tp.types[obj])
-                    ]
-                    # Expected two objects: self argument and locals
-
-                    if True or new_tp.types[self_obj] != side_effect.update[0]:
-                        if monomorophized:
-                            raise RuntimeError(
-                                f"Update with aliased objects: {aliasing_pointers} (not: {func_obj, LOCALS})"
-                            )
-                        new_tp.types[self_obj] = side_effect.update[0]
-                        arg_indices_to_point = side_effect.update[1]
-                        if arg_indices_to_point:
-                            for i in arg_indices_to_point:
-                                starred = False
-                                if isinstance(i, ts.Star):
-                                    assert len(i.items) == 1
-                                    i = i.items[0]
-                                    starred = True
-
-                                if isinstance(i, ts.Literal) and isinstance(
-                                    i.value, int
-                                ):
-                                    # TODO: minus one only for self. Should be fixed on binding
-                                    v = i.value - 1
-                                    assert v < len(
-                                        arg_objects
-                                    ), f"{v} >= {len(arg_objects)}"
-                                    targets = arg_objects[v]
-                                    if starred:
-                                        targets = prev_tp.pointers[
-                                            targets, tac.Var("*")
-                                        ]
-                                    new_tp.pointers.update(
-                                        self_obj, tac.Var("*"), targets
-                                    )
-                                else:
-                                    assert False, i
+                dirty = apply_update_side_effects(
+                    side_effect, func_objects, arg_objects, prev_tp, new_tp
+                )
 
                 t = ts.get_return(applied)
                 assert t != ts.BOTTOM, f"Expected non-bottom return type for {locals()}"
 
-                pointed_objects = pythia.dom_concrete.Set[Object]()
-                if side_effect.points_to_args:
-                    pointed_objects = pythia.dom_concrete.Set[Object].union_all(
-                        arg_objects
-                    )
-
-                objects = pythia.dom_concrete.Set[Object]()
-                creates_new = applied.any_new() or side_effect.alias
-                if creates_new:
-                    objects = objects | pythia.dom_concrete.Set[Object].singleton(
-                        location
-                    )
-                    if side_effect.points_to_args:
-                        if (
-                            var == tac.PredefinedFunction.TUPLE
-                            and not new_tp.pointers[location, tac.Var("*")]
-                        ):
-                            for i, arg in enumerate(arg_objects):
-                                new_tp.pointers[location, tac.Var(f"{i}")] = arg
-                        else:
-                            new_tp.pointers.update(
-                                location, tac.Var("*"), pointed_objects
-                            )
-                    # Transitive @new: create objects for declared fields (only if truly new, not alias)
-                    if applied.any_new():
-                        declared_fields = ts.get_declared_fields(t)
-                        for field_name, field_type in declared_fields:
-                            field_obj = LocationObject((*location.location, field_name))
-                            new_tp.pointers[location, tac.Var(field_name)] = (
-                                pythia.dom_concrete.Set[Object].singleton(field_obj)
-                            )
-                            new_tp.types[field_obj] = field_type
-
-                    # Handle @alias: copy field pointers from self to new object
-                    if side_effect.alias:
-                        func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
-                        self_objects = prev_tp.pointers[func_obj, tac.Var("self")]
-                        for field_name in side_effect.alias:
-                            field_var = tac.Var(field_name)
-                            for self_obj in self_objects.as_set():
-                                if (self_obj, field_var) in prev_tp.pointers:
-                                    # Share the field pointer (aliasing!)
-                                    existing = prev_tp.pointers[self_obj, field_var]
-                                    new_tp.pointers[location, field_var] = existing
-
-                # Handle @accessor(self[index]) - return objects from self's * field
-                if side_effect.accessor:
-                    func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
-                    self_objects = prev_tp.pointers[func_obj, tac.Var("self")]
-                    star_var = tac.Var("*")
-                    accessor_objects = pythia.dom_concrete.Set[Object]()
-                    for self_obj in self_objects.as_set():
-                        pointed = prev_tp.pointers[self_obj, star_var]
-                        if pointed:
-                            accessor_objects = accessor_objects | pointed
-                    if accessor_objects:
-                        objects = accessor_objects
-                        # Type already comes from return type annotation
-                elif ts.is_immutable(t):
-                    objects = immutable(t)
-                else:
-                    all_new = applied.all_new() or side_effect.alias
-                    if not all_new:
-                        if ts.is_immutable(t):
-                            objects = objects | immutable(t)
-                        else:
-                            assert False
-                    else:
-                        pass
-                        # # TODO: actually "returns args"
-                        # if side_effect.points_to_args:
-                        #     objects = objects | pointed_objects
+                objects = create_result_objects(
+                    location,
+                    applied,
+                    side_effect,
+                    t,
+                    func_objects,
+                    arg_objects,
+                    prev_tp,
+                    new_tp,
+                    is_tuple_constructor=(var == tac.PredefinedFunction.TUPLE),
+                )
 
                 assert objects
                 return (objects, t, dirty)
