@@ -77,6 +77,17 @@ type Graph = pythia.dom_concrete.Map[Object, Fields]
 
 type Dirty = pythia.dom_concrete.Map[Object, pythia.dom_concrete.Set[tac.Var]]
 
+# Set of objects that represent bound methods (have "self" bound)
+type BoundMethods = pythia.dom_concrete.Set[Object]
+
+
+def make_bound_methods(
+    objects: typing.Optional[typing.Iterable[Object]] = None
+) -> BoundMethods:
+    if objects is None:
+        return pythia.dom_concrete.Set[Object]()
+    return pythia.dom_concrete.Set[Object](objects)
+
 
 def make_fields(
     d: typing.Optional[typing.Mapping[tac.Var, pythia.dom_concrete.Set[Object]]] = None
@@ -353,7 +364,8 @@ def bind_method(
 ) -> tuple[bool, bool]:
     """Bind self to a method, creating a bound method object.
 
-    Sets up the "self" pointer from the location to the receiver objects.
+    Sets up the "self" pointer from the location to the receiver objects
+    and marks the location as a bound method for explicit tracking.
 
     Args:
         location: The location object representing this binding site
@@ -366,6 +378,7 @@ def bind_method(
     """
     if ts.is_bound_method(method_type):
         new_tp.pointers[location, tac.Var("self")] = self_objects
+        new_tp.mark_bound_method(location)
         return (True, True)
     return (False, False)
 
@@ -725,8 +738,10 @@ class TypedPointer:
     pointers: Pointer
     types: TypeMap
     dirty: Dirty
+    bound_methods: BoundMethods
 
     def is_less_than(self: TypedPointer, other: TypedPointer) -> bool:
+        # Note: bound_methods doesn't affect lattice ordering - it's metadata
         return (
             self.pointers.is_less_than(other.pointers)
             and self.types.is_less_than(other.types)
@@ -740,11 +755,14 @@ class TypedPointer:
             deepcopy(self.pointers, memodict),
             deepcopy(self.types, memodict),
             deepcopy(self.dirty, memodict),
+            deepcopy(self.bound_methods, memodict),
         )
 
     @staticmethod
     def bottom() -> TypedPointer:
-        return TypedPointer(Pointer.bottom(), TypeMap.bottom(), make_dirty())
+        return TypedPointer(
+            Pointer.bottom(), TypeMap.bottom(), make_dirty(), make_bound_methods()
+        )
 
     @staticmethod
     def top() -> TypedPointer:
@@ -758,23 +776,38 @@ class TypedPointer:
             self.pointers.join(right.pointers),
             self.types.join(right.types),
             self.dirty.join(right.dirty),
+            self.bound_methods | right.bound_methods,
         )
 
+    def is_bound_method(self, obj: Object) -> bool:
+        """Check if an object represents a bound method."""
+        return obj in self.bound_methods
+
+    def mark_bound_method(self, obj: Object) -> None:
+        """Mark an object as a bound method."""
+        self.bound_methods = self.bound_methods | pythia.dom_concrete.Set[Object].singleton(obj)
+
     def __str__(self) -> str:
-        return (
+        result = (
             str(self.pointers)
             + "\n    Types: "
             + str(self.types)
             + "\n    Dirty: "
             + str(self.dirty)
         )
+        if self.bound_methods:
+            result += "\n    BoundMethods: " + str(self.bound_methods)
+        return result
 
     @staticmethod
     def initial(
         annotations: pythia.dom_concrete.Map[Param, ts.TypeExpr]
     ) -> TypedPointer:
         return typed_pointer(
-            Pointer.initial(annotations), TypeMap.initial(annotations), make_dirty()
+            Pointer.initial(annotations),
+            TypeMap.initial(annotations),
+            make_dirty(),
+            make_bound_methods(),
         )
 
     def collect_garbage(self, alive: Liveness) -> None:
@@ -791,6 +824,10 @@ class TypedPointer:
         self.pointers.keep_keys(reachable)
         self.types.keep_keys(reachable)
         self.dirty.keep_keys(reachable)
+        # Keep only reachable bound methods
+        self.bound_methods = pythia.dom_concrete.Set[Object](
+            obj for obj in self.bound_methods.as_set() if obj in reachable
+        )
 
     # def normalize_types(self) -> None:
     #     # BUGGY; changes stuff that shouldn't change
@@ -804,11 +841,18 @@ class TypedPointer:
     #     self.pointers = new_pointers
 
 
-def typed_pointer(pointers: Pointer, types: TypeMap, dirty: Dirty) -> TypedPointer:
+def typed_pointer(
+    pointers: Pointer,
+    types: TypeMap,
+    dirty: Dirty,
+    bound_methods: typing.Optional[BoundMethods] = None,
+) -> TypedPointer:
     # Normalization.
     if pointers.is_bottom() or types.is_bottom():
         return TypedPointer.bottom()
-    return TypedPointer(pointers, types, dirty)
+    if bound_methods is None:
+        bound_methods = make_bound_methods()
+    return TypedPointer(pointers, types, dirty, bound_methods)
 
 
 def parse_annotations(
