@@ -202,5 +202,6 @@ def analyze_and_transform(
         }
         for function_name, result in analysis_result.items()
     }
-    print("Dirty map:\n", dirty_map)
+    if print_invariants:
+        print("Dirty map:\n", dirty_map)
     return ast_transform.transform(filename, dirty_map)

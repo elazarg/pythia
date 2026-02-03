@@ -362,13 +362,12 @@ class TypeMap:
         key = pythia.dom_concrete.Set[Object].squeeze(key)
         match key:
             case pythia.dom_concrete.Set() as objects:
-                # Weak update; not a singleton
                 for k in self.map.keys():
                     if k in objects:
                         v = ts.join(self.map[k], value)
                         self.map[k] = v
-            case obj:
-                self.map[obj] = value
+            case k:
+                self.map[k] = ts.join(self.map[k], value)
 
     def keep_keys(self, keys: typing.Iterable[Object]) -> None:
         for obj in set(self):
@@ -957,10 +956,6 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         if isinstance(ins, tac.For):
             ins = ins.as_call()
 
-        print(f"Transfer {ins} at {location}")
-        print_debug(ins, tp)
-        print(f"Prev: {tp}")
-
         # FIX: this removes pointers and make it "bottom" instead of "top"
         for var in tac.gens(ins):
             if var in tp.pointers[LOCALS]:
@@ -982,10 +977,6 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 val = tp.pointers[LOCALS, var]
                 tp.pointers[LOCALS, tac.Var("return")] = val
 
-        print_debug(ins, tp)
-        print(f"Post: {tp}")
-        print()
-
         # tp.normalize_types()
         tp.collect_garbage(self.liveness[location])
 
@@ -993,14 +984,15 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         return tp
 
 
-def print_debug(ins: tac.Tac, tp: TypedPointer) -> None:
-    for var in tac.free_vars(ins):
-        if var in tp.pointers[LOCALS].keys():
-            p = tp.pointers[LOCALS, var]
-            t = tp.types[p]
-            print(f"  {var} = {p} : {t}")
-        else:
-            print(f"  {var} = <bottom>")
+# Kept for debugging - call with print_debug(ins, tp) to see variable states
+# def print_debug(ins: tac.Tac, tp: TypedPointer) -> None:
+#     for var in tac.free_vars(ins):
+#         if var in tp.pointers[LOCALS].keys():
+#             p = tp.pointers[LOCALS, var]
+#             t = tp.types[p]
+#             print(f"  {var} = {p} : {t}")
+#         else:
+#             print(f"  {var} = <bottom>")
 
 
 def find_reachable_from_vars(ptr: Pointer) -> set[Object]:

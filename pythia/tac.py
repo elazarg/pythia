@@ -517,7 +517,7 @@ def make_tac_cfg(f: typing.Any, simplify: bool = False) -> gu.Cfg[Tac]:
         sys.version_info[:2] in allowed
     ), f"Python version is {sys.version_info} but only {allowed} is supported"
     depths, ins_cfg = instruction_cfg.make_instruction_block_cfg(f)
-    gu.pretty_print_cfg(gu.simplify_cfg(ins_cfg))
+    # gu.pretty_print_cfg(gu.simplify_cfg(ins_cfg))
     trace_origin: dict[int, instruction_cfg.Instruction] = {}
 
     def instruction_block_to_tac_block(
@@ -541,7 +541,7 @@ def make_tac_cfg(f: typing.Any, simplify: bool = False) -> gu.Cfg[Tac]:
     tac_cfg.annotator = annotator
 
     tac_cfg = gu.simplify_cfg(tac_cfg)
-    gu.pretty_print_cfg(tac_cfg)
+    # gu.pretty_print_cfg(tac_cfg)
     if not simplify:
         tac_cfg = gu.refine_to_chain(tac_cfg)
     return tac_cfg
@@ -730,7 +730,7 @@ def make_tac_no_dels(
                 case ["GLOBAL"]:
                     return [Assign(lhs, make_global(val))]
                 case ["CLOSURE"]:
-                    print("Unknown: LOAD CLOSURE")
+                    # LOAD_CLOSURE for closures not fully supported
                     return [Assign(lhs, Const(None))]
                 case ["BUILD", "CLASS"]:
                     return [Assign(lhs, make_class(val))]
