@@ -132,6 +132,8 @@ class Pointer:
         return self.graph.items()
 
     def is_less_than(self, other: Pointer) -> bool:
+        # Only check keys in self because missing keys return empty set (BOTTOM),
+        # and empty.is_subset(x) is always True
         return all(
             self.graph[obj][field].is_subset(other.graph[obj][field])
             for obj in self.graph
@@ -333,7 +335,9 @@ class TypeMap:
             self.map = deepcopy(map)
 
     def is_less_than(self, other: TypeMap) -> bool:
-        # TODO: check
+        # Only need to check keys in self.map because:
+        # - Keys in other but not self: self[k]=BOTTOM, and is_subtype(BOTTOM, x) is always True
+        # - Keys in self but not other: other[k]=BOTTOM, correctly checked below
         return all(ts.is_subtype(self.map[obj], other.map[obj]) for obj in self.map)
 
     def __deepcopy__(self, memodict=None):
