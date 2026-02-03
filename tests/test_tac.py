@@ -310,9 +310,7 @@ def test_free_vars_expr():
 
     # Test MakeFunction
     func = MakeFunction(Var("code"), frozenset([X, Y]))
-    assert (
-        free_vars_expr(func) == set()
-    )  # Note: This might change if MakeFunction.free_vars is included
+    assert free_vars_expr(func) == {Var("code")}  # code is read by MakeFunction
 
 
 def test_free_vars():

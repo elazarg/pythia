@@ -315,7 +315,21 @@ def free_vars_expr(expr: Expr) -> set[Var]:
         case Import():
             return set()
         case MakeFunction():
-            return set()  # TODO: fix this
+            # Collect all Var fields that are used by the MakeFunction
+            result: set[Var] = {expr.code}
+            if expr.name is not None:
+                result.add(expr.name)
+            if expr.annotations is not None:
+                result.add(expr.annotations)
+            if expr.defaults is not None:
+                result.add(expr.defaults)
+            if expr.kwdefaults is not None:
+                result.add(expr.kwdefaults)
+            if expr.positional_only_defaults is not None:
+                result.add(expr.positional_only_defaults)
+            if expr.free_var_cells is not None:
+                result.add(expr.free_var_cells)
+            return result
         case PredefinedFunction():
             return set()
         case PredefinedScope():
