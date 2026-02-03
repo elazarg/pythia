@@ -1,4 +1,4 @@
-networkx==3.3.0
-pytest==8.2.1
+networkx==3.6.1
+pytest==9.0.2
 qemu.qmp==0.0.3
 black==24.4.2
