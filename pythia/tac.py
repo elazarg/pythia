@@ -680,6 +680,14 @@ def make_tac_no_dels(
                 Assign(fresh, Attribute(stackvar(stack_depth - val), opvar)),
                 Assign(None, Call(fresh, (stackvar(stack_depth),))),
             ]
+        case ["LIST", "EXTEND"] | ["SET", "UPDATE"]:
+            # LIST_EXTEND/SET_UPDATE: used for unpacking like [*x, 1, 2]
+            # Calls extend/update method on the container
+            opvar = Var("extend" if opname == "LIST_EXTEND" else "update")
+            return [
+                Assign(fresh, Attribute(stackvar(stack_depth - val), opvar)),
+                Assign(None, Call(fresh, (stackvar(stack_depth),))),
+            ]
         case ["MAP", "ADD"]:
             raise NotImplementedError(f"{opname}, {val}, {argrepr}")
         case (
