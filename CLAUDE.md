@@ -51,55 +51,29 @@ Pythia is a **static analysis framework for Python** that:
   - `pythia/dom_typed_pointer.py` - Added BoundCall analysis case, bound method tracking
   - `typeshed_mini/builtins.pyi` - Added max() overload with default parameter
 
-### Debug Print Statements
-**FIXED**: Removed in commit c30c9e9:
-- `dom_typed_pointer.py`: Removed print statements at lines 959-961, 985-986
-- `analysis.py`: Made dirty_map print conditional on `print_invariants` flag
-
 ## TODOs Found in Code
 
-1. ~~`tac.py:318` - `return set()  # TODO: fix this` in `free_vars_expr` for MakeFunction~~ **FIXED** (commit 1326c33)
-2. `dom_typed_pointer.py` - Multiple TODOs:
-   - ~~Line 334: `# TODO: check` in `is_less_than`~~ **VERIFIED CORRECT** (commit 6e80321) - only checking keys in self.map is correct because missing keys return BOTTOM
+1`dom_typed_pointer.py` - Multiple TODOs:
    - Line 989, 1062: `# TODO: class through type`
    - Line 1073: `# TODO: assert not direct_objs ??`
    - Line 1175: `# TODO: point from exact literal when possible`
    - Line 609: `# TODO: minus one only for self. Should be fixed on binding` - **Investigated**: This is a workaround for method binding not adjusting argument indices. The `-1` compensates for self being index 0 in type annotations but not in `arg_objects`. Proper fix would require changes to `bind_self_function` in `type_system.py`.
-3. `type_system.py` - Commented out TODOs about function compatibility
+2`type_system.py` - Commented out TODOs about function compatibility
 
 ## Potential Improvements
-
-### Completed
-- [x] Remove debug print statements from `dom_typed_pointer.py` and `analysis.py` (commit c30c9e9)
-- [x] Fix the `free_vars_expr` TODO for MakeFunction (commit 1326c33)
-- [x] Fix mutable default arguments in `__deepcopy__` methods (commit 7ed53d0)
-- [x] Document why `is_less_than` only checks self.map keys (commit 6e80321)
-- [x] Add test for `TypeMap.is_less_than` (commit d3d3d17)
-- [x] Add test for `Pointer.is_less_than` (commit f53e38a)
-- [x] **Keyword argument support** - Added kwnames field to Call, tracks KW_NAMES bytecode, passes keyword info to type analysis
-- [x] **Phase 1-3**: Refactored expr() into helper methods, unified operator result creation, added explicit bound method tracking
-- [x] **Phase 4**: Separated Call into BoundCall + Call (commit 946ff2c) - cleanly separates function resolution from execution
-- [x] **Phase 4b**: Cleanup - Added `BoundCallInfo` dataclass and `retrieve_bound_call_info()` helper to simplify Call case when handling bound callables
-- [x] **LIST_EXTEND/SET_UPDATE bytecode** (commit 42b47b7) - supports list/set unpacking syntax
 
 ### Code Quality
 - [ ] The `-1` offset for bound methods in `dom_typed_pointer.py:609` should be fixed at binding time in `type_system.py:bind_self_function`
 - [ ] `dom_typed_pointer.py:591` has `if True or ...` - a debugging artifact that disables an optimization. The original condition `new_tp.types[self_obj] != side_effect.update[0]` would skip updates when types match. Currently always updates (more conservative).
 
 ### Testing
-- [x] Added tests for `is_less_than` methods (TypeMap, Pointer) - verifies lattice ordering
 - [ ] Add property-based testing?
 - [ ] Test coverage for edge cases in type system
 
 ### Analysis Quality
 - [x] Ran analysis with `--print-invariants` - output shows Liveness, TypedPointer, Types, and Dirty maps at each program point
 - [ ] Missing bytecode instruction: `BUILD_CONST_KEY_MAP` (dict with const keys) - causes NotImplementedError
-- [x] ~~Missing bytecode instruction: `LIST_EXTEND`~~ **FIXED** (commit 42b47b7)
 - [ ] Type system doesn't know about some numpy functions (e.g., `np.random.rand`) - causes assertion error "Expected Overloaded type, got BOT"
-
-## Related Paper
-
-Located at `D:\workspace\Checkpointing-with-Static-Analysis`
 
 ### Key Insights from Paper Appendices
 
@@ -133,7 +107,7 @@ Interestingly, `Pointer.__setitem__` still uses strong updates (direct assignmen
 DirtyRoots(Σ, R) = { x ∈ Live | ∃o ∈ Reach({P[LOCALS][x]}, P). D[o] ≠ ∅ }
 ```
 
-**Assumptions** (Appendix 07):
+**Assumptions**:
 - No dynamic code evaluation (eval/exec)
 - Statically-resolvable calls
 - Explicit generic instantiations (e.g., `list[int]()`)
@@ -181,25 +155,8 @@ The `experiment/` folder contains empirical evaluation benchmarks comparing diff
 
 - **k_means**: K-means clustering algorithm on random data
 - **omp**: Original OMP (Orthogonal Matching Pursuit) implementation
-- **omp_claud**: Claude's version of OMP
 - **pivoter**: Graph pivoting algorithm for clique enumeration
 - **trivial**: Simple test case
 - **worst**: Worst-case scenario for analysis
 
 These experiments demonstrate the effectiveness of static analysis for reducing checkpoint size compared to naive approaches.
-
-## Session Log
-
-### Review Started
-- Read README.md - understood high-level purpose
-- Read tac.py - bytecode to TAC translation
-- Read analysis.py - abstract interpretation fixpoint algorithm
-- Read dom_typed_pointer.py - main typed pointer analysis
-- Read domains.py - abstract domain interfaces
-- All 250 tests pass
-
-### Deeper Understanding
-- Read ast_transform.py - how code is instrumented
-- Read persist.py - checkpoint/restore logic with pickle
-- Read examples/pivoter.py - real example with loop annotation
-- Compared instrumented.py vs naive.py - saw 7 vars -> 2 vars reduction!
