@@ -82,7 +82,7 @@ type BoundMethods = pythia.dom_concrete.Set[Object]
 
 
 def make_bound_methods(
-    objects: typing.Optional[typing.Iterable[Object]] = None
+        objects: typing.Optional[typing.Iterable[Object]] = None
 ) -> BoundMethods:
     if objects is None:
         return pythia.dom_concrete.Set[Object]()
@@ -90,7 +90,7 @@ def make_bound_methods(
 
 
 def make_fields(
-    d: typing.Optional[typing.Mapping[tac.Var, pythia.dom_concrete.Set[Object]]] = None
+        d: typing.Optional[typing.Mapping[tac.Var, pythia.dom_concrete.Set[Object]]] = None
 ) -> Fields:
     d = d or {}
     return pythia.dom_concrete.Map(default=pythia.dom_concrete.Set, d=d)
@@ -102,7 +102,7 @@ def make_graph(d: typing.Optional[typing.Mapping[Object, Fields]] = None) -> Gra
 
 
 def make_dirty(
-    d: typing.Optional[typing.Mapping[Object, typing.Iterable[tac.Var]]] = None
+        d: typing.Optional[typing.Mapping[Object, typing.Iterable[tac.Var]]] = None
 ) -> Dirty:
     d = d or {}
     return pythia.dom_concrete.Map(
@@ -112,7 +112,7 @@ def make_dirty(
 
 
 def make_dirty_from_keys(
-    keys: pythia.dom_concrete.Set[Object], field: pythia.dom_concrete.Set[tac.Var]
+        keys: pythia.dom_concrete.Set[Object], field: pythia.dom_concrete.Set[tac.Var]
 ) -> Dirty:
     return pythia.dom_concrete.Map(
         default=pythia.dom_concrete.Set, d={k: field for k in keys.as_set()}
@@ -124,7 +124,7 @@ def make_bottom():
 
 
 def make_type_map(
-    d: typing.Optional[typing.Mapping[Object, ts.TypeExpr]] = None
+        d: typing.Optional[typing.Mapping[Object, ts.TypeExpr]] = None
 ) -> pythia.dom_concrete.Map[Object, ts.TypeExpr]:
     d = d or {}
     return pythia.dom_concrete.Map(default=make_bottom, d=d)
@@ -184,17 +184,20 @@ class Pointer:
         return Pointer(pointers)
 
     @typing.overload
-    def __getitem__(self, key: Object) -> Fields: ...
+    def __getitem__(self, key: Object) -> Fields:
+        ...
 
     @typing.overload
     def __getitem__(
-        self, key: tuple[Object, tac.Var]
-    ) -> pythia.dom_concrete.Set[Object]: ...
+            self, key: tuple[Object, tac.Var]
+    ) -> pythia.dom_concrete.Set[Object]:
+        ...
 
     @typing.overload
     def __getitem__(
-        self, key: tuple[pythia.dom_concrete.Set[Object], tac.Var]
-    ) -> pythia.dom_concrete.Set[Object]: ...
+            self, key: tuple[pythia.dom_concrete.Set[Object], tac.Var]
+    ) -> pythia.dom_concrete.Set[Object]:
+        ...
 
     def __getitem__(self, key):
         match key:
@@ -213,26 +216,29 @@ class Pointer:
                 raise ValueError(f"Invalid key {key!r}: {type(key)}")
 
     @typing.overload
-    def __setitem__(self, key: Object, value: Fields) -> None: ...
+    def __setitem__(self, key: Object, value: Fields) -> None:
+        ...
 
     @typing.overload
     def __setitem__(
-        self, key: tuple[Object, tac.Var], value: pythia.dom_concrete.Set[Object]
-    ) -> None: ...
+            self, key: tuple[Object, tac.Var], value: pythia.dom_concrete.Set[Object]
+    ) -> None:
+        ...
 
     @typing.overload
     def __setitem__(
-        self,
-        key: tuple[pythia.dom_concrete.Set[Object], tac.Var],
-        value: pythia.dom_concrete.Set[Object],
-    ) -> None: ...
+            self,
+            key: tuple[pythia.dom_concrete.Set[Object], tac.Var],
+            value: pythia.dom_concrete.Set[Object],
+    ) -> None:
+        ...
 
     def __setitem__(self, key, value):
         match key, value:
-            case (
-                Param() | Immutable() | Scope() | LocationObject() as obj,
-                tac.Var() as var,
-            ), pythia.dom_concrete.Set() as values:
+            case ( \
+                     Param() | Immutable() | Scope() | LocationObject() as obj, \
+                     tac.Var() as var, \
+                 ), pythia.dom_concrete.Set() as values:
                 if obj not in self.graph:
                     self.graph[obj] = make_fields({var: values})
                 else:
@@ -242,10 +248,10 @@ class Pointer:
                 pythia.dom_concrete.Map() as fields,
             ):
                 self.graph[obj] = fields
-            case (
-                pythia.dom_concrete.Set() as objects,
-                tac.Var() as var,
-            ), pythia.dom_concrete.Set() as values:
+            case ( \
+                     pythia.dom_concrete.Set() as objects, \
+                     tac.Var() as var, \
+                 ), pythia.dom_concrete.Set() as values:
                 for obj in self.graph.keys():
                     if obj in objects:
                         self.graph[obj][var] = values
@@ -253,12 +259,22 @@ class Pointer:
                 raise ValueError(f"Invalid key {key} or value {value}")
 
     def update(
-        self, obj: Object, var: tac.Var, values: pythia.dom_concrete.Set[Object]
+            self, obj: Object, var: tac.Var, values: pythia.dom_concrete.Set[Object]
     ) -> None:
         if obj not in self.graph:
             self.graph[obj] = make_fields({var: values})
         else:
             self.graph[obj][var] = values
+
+    def weak_update(
+            self, obj: Object, var: tac.Var, values: pythia.dom_concrete.Set[Object]
+    ) -> None:
+        if obj not in self.graph:
+            self.graph[obj] = make_fields({var: values})
+        else:
+            self.graph[obj][var] = pythia.dom_concrete.Set.join(
+                self.graph[obj][var], values
+            )
 
     def keep_keys(self, keys: typing.Iterable[Object]) -> None:
         for obj in set(self):
@@ -268,8 +284,8 @@ class Pointer:
     def __str__(self) -> str:
         join = (
             lambda target_obj: "{"
-            + ", ".join(sorted([str(x) for x in target_obj.as_set()]))
-            + "}"
+                               + ", ".join(sorted([str(x) for x in target_obj.as_set()]))
+                               + "}"
         )
         return ", ".join(
             sorted(
@@ -337,8 +353,8 @@ def predefined(name: tac.PredefinedFunction) -> ts.TypeExpr:
 
 
 def build_args_typed_dict(
-    arg_types: tuple[ts.TypeExpr, ...],
-    kwnames: tuple[str, ...] = ()
+        arg_types: tuple[ts.TypeExpr, ...],
+        kwnames: tuple[str, ...] = ()
 ) -> ts.TypedDict:
     """Build a TypedDict representing function arguments with keyword support.
 
@@ -365,9 +381,9 @@ class BoundCallInfo:
 
 
 def retrieve_bound_call_info(
-    func_obj: Object,
-    func_type: ts.TypeExpr,
-    prev_tp: TypedPointer,
+        func_obj: Object,
+        func_type: ts.TypeExpr,
+        prev_tp: TypedPointer,
 ) -> BoundCallInfo:
     """Retrieve pre-computed call info from a BoundCall object.
 
@@ -405,10 +421,10 @@ def retrieve_bound_call_info(
 
 
 def bind_method(
-    location: LocationObject,
-    method_type: ts.TypeExpr,
-    self_objects: pythia.dom_concrete.Set[Object],
-    new_tp: TypedPointer,
+        location: LocationObject,
+        method_type: ts.TypeExpr,
+        self_objects: pythia.dom_concrete.Set[Object],
+        new_tp: TypedPointer,
 ) -> tuple[bool, bool]:
     """Bind self to a method, creating a bound method object.
 
@@ -432,15 +448,15 @@ def bind_method(
 
 
 def create_result_objects(
-    location: LocationObject,
-    applied: ts.Overloaded,
-    side_effect: ts.SideEffect,
-    return_type: ts.TypeExpr,
-    func_objects: pythia.dom_concrete.Set[Object],
-    arg_objects: tuple[pythia.dom_concrete.Set[Object], ...],
-    prev_tp: TypedPointer,
-    new_tp: TypedPointer,
-    is_tuple_constructor: bool = False,
+        location: LocationObject,
+        applied: ts.Overloaded,
+        side_effect: ts.SideEffect,
+        return_type: ts.TypeExpr,
+        func_objects: pythia.dom_concrete.Set[Object],
+        arg_objects: tuple[pythia.dom_concrete.Set[Object], ...],
+        prev_tp: TypedPointer,
+        new_tp: TypedPointer,
+        is_tuple_constructor: bool = False,
 ) -> pythia.dom_concrete.Set[Object]:
     """Create result objects based on @new, @alias, @accessor annotations.
 
@@ -481,7 +497,7 @@ def create_result_objects(
                 for i, arg in enumerate(arg_objects):
                     new_tp.pointers[location, tac.Var(f"{i}")] = arg
             else:
-                new_tp.pointers.update(location, tac.Var("*"), pointed_objects)
+                new_tp.pointers.weak_update(location, tac.Var("*"), pointed_objects)
 
         # Transitive @new: create objects for declared fields (only if truly new, not alias)
         if applied.any_new():
@@ -532,9 +548,9 @@ def create_result_objects(
 
 
 def resolve_call_overload(
-    func_type: ts.TypeExpr,
-    arg_types: tuple[ts.TypeExpr, ...],
-    kwnames: tuple[str, ...] = (),
+        func_type: ts.TypeExpr,
+        arg_types: tuple[ts.TypeExpr, ...],
+        kwnames: tuple[str, ...] = (),
 ) -> ts.Overloaded:
     """Resolve function overloads based on argument types.
 
@@ -568,11 +584,11 @@ def resolve_call_overload(
 
 
 def apply_update_side_effects(
-    side_effect: ts.SideEffect,
-    func_objects: pythia.dom_concrete.Set[Object],
-    arg_objects: tuple[pythia.dom_concrete.Set[Object], ...],
-    prev_tp: TypedPointer,
-    new_tp: TypedPointer,
+        side_effect: ts.SideEffect,
+        func_objects: pythia.dom_concrete.Set[Object],
+        arg_objects: tuple[pythia.dom_concrete.Set[Object], ...],
+        prev_tp: TypedPointer,
+        new_tp: TypedPointer,
 ) -> Dirty:
     """Apply @update side effects, modifying self's type and pointers.
 
@@ -623,13 +639,13 @@ def apply_update_side_effects(
     # Check for aliasing that would make the update unsound
     # Exclude bound methods from aliasing check - they're internal tracking objects
     aliasing_pointers = {
-        obj
-        for obj, fields in prev_tp.pointers.items()
-        for f, targets in fields.items()
-        if self_obj in targets
-        if f != tac.Var("*")  # Container element references are OK
-        if not prev_tp.is_bound_method(obj)  # Bound methods are internal
-    } - {func_obj, LOCALS}
+                            obj
+                            for obj, fields in prev_tp.pointers.items()
+                            for f, targets in fields.items()
+                            if self_obj in targets
+                            if f != tac.Var("*")  # Container element references are OK
+                            if not prev_tp.is_bound_method(obj)  # Bound methods are internal
+                        } - {func_obj, LOCALS}
     monomorophized = [
         obj
         for obj in aliasing_pointers
@@ -660,7 +676,7 @@ def apply_update_side_effects(
                     targets = arg_objects[v]
                     if starred:
                         targets = prev_tp.pointers[targets, tac.Var("*")]
-                    new_tp.pointers.update(self_obj, tac.Var("*"), targets)
+                    new_tp.pointers.weak_update(self_obj, tac.Var("*"), targets)
                 else:
                     assert False, i
 
@@ -668,9 +684,9 @@ def apply_update_side_effects(
 
 
 def create_operator_result_objects(
-    location: LocationObject,
-    applied: ts.Overloaded,
-    return_type: ts.TypeExpr,
+        location: LocationObject,
+        applied: ts.Overloaded,
+        return_type: ts.TypeExpr,
 ) -> pythia.dom_concrete.Set[Object]:
     """Create result objects for operator expressions (Binary, Unary).
 
@@ -745,7 +761,7 @@ class TypeMap:
                 return self.map[obj]
 
     def __setitem__(
-        self, key: Object | pythia.dom_concrete.Set[Object], value: ts.TypeExpr
+            self, key: Object | pythia.dom_concrete.Set[Object], value: ts.TypeExpr
     ) -> None:
         key = pythia.dom_concrete.Set[Object].squeeze(key)
         match key:
@@ -793,9 +809,9 @@ class TypedPointer:
     def is_less_than(self: TypedPointer, other: TypedPointer) -> bool:
         # Note: bound_methods doesn't affect lattice ordering - it's metadata
         return (
-            self.pointers.is_less_than(other.pointers)
-            and self.types.is_less_than(other.types)
-            and self.dirty.is_less_than(other.dirty)
+                self.pointers.is_less_than(other.pointers)
+                and self.types.is_less_than(other.types)
+                and self.dirty.is_less_than(other.dirty)
         )
 
     def __deepcopy__(self, memodict=None):
@@ -839,11 +855,11 @@ class TypedPointer:
 
     def __str__(self) -> str:
         result = (
-            str(self.pointers)
-            + "\n    Types: "
-            + str(self.types)
-            + "\n    Dirty: "
-            + str(self.dirty)
+                str(self.pointers)
+                + "\n    Types: "
+                + str(self.types)
+                + "\n    Dirty: "
+                + str(self.dirty)
         )
         if self.bound_methods:
             result += "\n    BoundMethods: " + str(self.bound_methods)
@@ -851,7 +867,7 @@ class TypedPointer:
 
     @staticmethod
     def initial(
-        annotations: pythia.dom_concrete.Map[Param, ts.TypeExpr]
+            annotations: pythia.dom_concrete.Map[Param, ts.TypeExpr]
     ) -> TypedPointer:
         return typed_pointer(
             Pointer.initial(annotations),
@@ -892,10 +908,10 @@ class TypedPointer:
 
 
 def typed_pointer(
-    pointers: Pointer,
-    types: TypeMap,
-    dirty: Dirty,
-    bound_methods: typing.Optional[BoundMethods] = None,
+        pointers: Pointer,
+        types: TypeMap,
+        dirty: Dirty,
+        bound_methods: typing.Optional[BoundMethods] = None,
 ) -> TypedPointer:
     # Normalization.
     if pointers.is_bottom() or types.is_bottom():
@@ -906,14 +922,14 @@ def typed_pointer(
 
 
 def parse_annotations(
-    this_function: str, this_module: ts.Module
+        this_function: str, this_module: ts.Module
 ) -> pythia.dom_concrete.Map[Param, ts.TypeExpr]:
     this_signature = ts.subscr(this_module, ts.literal(this_function))
     assert isinstance(
         this_signature, ts.Overloaded
     ), f"Expected overloaded type, got {this_signature}"
     assert (
-        len(this_signature.items) == 1
+            len(this_signature.items) == 1
     ), f"Expected single signature, got {this_signature}"
     [this_signature] = this_signature.items
     annotations: dict[Param, ts.TypeExpr] = {
@@ -936,11 +952,11 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         return "TypedPointer"
 
     def __init__(
-        self,
-        liveness: dict[Location, MapDomain[tac.Var, Liveness]],
-        this_function: str,
-        this_module: ts.Module,
-        for_locations: frozenset[Location],
+            self,
+            liveness: dict[Location, MapDomain[tac.Var, Liveness]],
+            this_function: str,
+            this_module: ts.Module,
+            for_locations: frozenset[Location],
     ) -> None:
         super().__init__()
         self.annotations = parse_annotations(this_function, this_module)
@@ -986,7 +1002,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 mod = ts.Ref(mod.name)
             match mod, res:
                 case ts.Ref(name=modname), ts.Instantiation(
-                    ts.Ref("builtins.type"), (ts.Class(),)
+                    ts.Ref("builtins.type"), (ts.Class(), )
                 ):
                     arg = ts.Ref(f"{modname}.{attr.name}")
                     return replace(res, type_args=(arg,))
@@ -1000,11 +1016,11 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             raise
 
     def expr(
-        self,
-        prev_tp: TypedPointer,
-        expr: tac.Expr,
-        location: LocationObject,
-        new_tp: TypedPointer,
+            self,
+            prev_tp: TypedPointer,
+            expr: tac.Expr,
+            location: LocationObject,
+            new_tp: TypedPointer,
     ) -> tuple[pythia.dom_concrete.Set[Object], ts.TypeExpr, Dirty]:
         objects: pythia.dom_concrete.Set[Object]
         dirty: Dirty
@@ -1030,7 +1046,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 if ref is not None:
                     t = ts.resolve_static_ref(ref)
                 match t:
-                    case ts.Instantiation(ts.Ref("builtins.type"), (ts.Class(),)) as t:
+                    case ts.Instantiation(ts.Ref("builtins.type"), (ts.Class(), )) as t:
                         t = replace(t, type_args=((ref,)))
                     case ts.Class():
                         t = ts.get_return(t)
@@ -1087,15 +1103,13 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             case tac.Subscript(var=tac.Var() as var, index=tac.Var() as index):
                 var_objs = prev_tp.pointers[LOCALS, var]
                 index_objs = prev_tp.pointers[LOCALS, index]
-                index_type = prev_tp.types[index_objs]
-                var_type = prev_tp.types[var_objs]
-                selftype = self.resolve(var_type)
-                index = self.resolve(index_type)
-                t = ts.subscr(selftype, index)
+                index_type = self.resolve(prev_tp.types[index_objs])
+                selftype = self.resolve(prev_tp.types[var_objs])
+                t = ts.subscr(selftype, index_type)
                 any_new = all_new = False
                 is_accessor = False
                 if isinstance(t, ts.Overloaded) and any(
-                    item.is_property for item in t.items
+                        item.is_property for item in t.items
                 ):
                     assert all(f.is_property for f in t.items)
                     any_new = t.any_new()
@@ -1105,7 +1119,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                         item.side_effect.accessor for item in t.items
                     )
                     t = ts.get_return(t)
-                assert t != ts.BOTTOM, f"Subscript {var}[{index}] is BOTTOM"
+                assert t != ts.BOTTOM, f"Subscript {var}[{index_type}] is BOTTOM"
                 direct_objs = prev_tp.pointers[var_objs, tac.Var("*")]
                 # TODO: class through type
 
@@ -1203,9 +1217,9 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     # Check if calling a bound callable (from BoundCall)
                     func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
                     is_bound_call = (
-                        not isinstance(func_obj, pythia.dom_concrete.Set)
-                        and prev_tp.is_bound_method(func_obj)
-                        and not args  # Bound calls have empty args
+                            not isinstance(func_obj, pythia.dom_concrete.Set)
+                            and prev_tp.is_bound_method(func_obj)
+                            and not args  # Bound calls have empty args
                     )
 
                     if is_bound_call:
@@ -1299,11 +1313,11 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 raise NotImplementedError(expr)
 
     def signature(
-        self,
-        tp: TypedPointer,
-        signature: tac.Signature,
-        pointed: pythia.dom_concrete.Set[Object],
-        t: ts.TypeExpr,
+            self,
+            tp: TypedPointer,
+            signature: tac.Signature,
+            pointed: pythia.dom_concrete.Set[Object],
+            t: ts.TypeExpr,
     ) -> None:
         match signature:
             case None:
@@ -1357,7 +1371,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 assert False, f"unexpected signature {signature}"
 
     def transfer(
-        self, prev_tp: TypedPointer, ins: tac.Tac, location: Location
+            self, prev_tp: TypedPointer, ins: tac.Tac, location: Location
     ) -> TypedPointer:
         tp = deepcopy(prev_tp)
 
@@ -1419,10 +1433,10 @@ def find_reachable_from_vars(ptr: Pointer) -> set[Object]:
 
 
 def find_reachable(
-    ptr: Pointer,
-    alive: set[tac.Var],
-    params: set[tac.Var],
-    sources: typing.Optional[typing.Iterable[Object]] = None,
+        ptr: Pointer,
+        alive: set[tac.Var],
+        params: set[tac.Var],
+        sources: typing.Optional[typing.Iterable[Object]] = None,
 ) -> typing.Iterator[LocationObject]:
     worklist = set(sources) if sources is not None else {LOCALS}
     while worklist:
