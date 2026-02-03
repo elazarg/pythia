@@ -235,6 +235,7 @@ class SideEffect:
     bound_method: bool = False
     update: tuple[typing.Optional[TypeExpr], tuple[int, ...]] = (None, ())
     points_to_args: bool = False
+    alias: tuple[str, ...] = ()  # Field names to copy from self (e.g., ("_buffer",))
 
 
 @dataclass(frozen=True, slots=True)
@@ -562,6 +563,7 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
                 bound_method=s1.bound_method | s2.bound_method,
                 update=(join(s1.update[0], s2.update[0]), s1.update[1]),
                 points_to_args=s1.points_to_args | s2.points_to_args,
+                alias=s1.alias + tuple(f for f in s2.alias if f not in s1.alias),
             )
         case x, y:
             return union([x, y])
@@ -1108,6 +1110,37 @@ def get_init_func(callable: TypeExpr) -> TypeExpr:
             )
             return res
     assert False, f"{callable!r}"
+
+
+def get_declared_fields(t: TypeExpr) -> list[tuple[str, TypeExpr]]:
+    """Return declared instance fields (non-method attributes with type annotations).
+
+    For types with field declarations like `_buffer: object`, returns [('_buffer', object_type)].
+    Used to create transitive objects when @new creates instances.
+    """
+    match t:
+        case Class(class_dict=class_dict):
+            result = []
+            for row in class_dict.row_items():
+                # Fields have string names and non-method types
+                if row.index.name is not None:
+                    # Skip methods (FunctionType, Overloaded)
+                    if not isinstance(row.type, (FunctionType, Overloaded)):
+                        result.append((row.index.name, row.type))
+            return result
+        case Ref(name):
+            resolved = resolve_static_ref(t)
+            if resolved != t:
+                return get_declared_fields(resolved)
+            return []
+        case Instantiation(generic, type_args):
+            # For type[Class], get fields from the Class
+            if isinstance(generic, Ref) and generic.name == "builtins.type":
+                if type_args and isinstance(type_args[0], Class):
+                    return get_declared_fields(type_args[0])
+            return get_declared_fields(generic)
+        case _:
+            return []
 
 
 def do_bind(f: FunctionType, binding: Binding) -> FunctionType:
@@ -1857,6 +1890,18 @@ class TypeCollector:
                 if isinstance(decorator, ast.Call)
                 and isinstance(decorator.func, ast.Name)
             }
+            # Parse @alias[self._buffer] decorators
+            alias_fields: tuple[str, ...] = ()
+            for decorator in fdef.decorator_list:
+                if (
+                    isinstance(decorator, ast.Subscript)
+                    and isinstance(decorator.value, ast.Name)
+                    and decorator.value.id == "alias"
+                    and isinstance(decorator.slice, ast.Attribute)
+                    and isinstance(decorator.slice.value, ast.Name)
+                    and decorator.slice.value.id == "self"
+                ):
+                    alias_fields = alias_fields + (decorator.slice.attr,)
             update = call_decorators.get("update")
             if update is not None:
                 assert isinstance(update, ast.Call)
@@ -1875,6 +1920,7 @@ class TypeCollector:
                 new="new" in name_decorators and not is_immutable(returns),
                 update=(update_type, update_args),
                 points_to_args="points_to_args" in name_decorators,
+                alias=alias_fields,
             )
             is_property = "property" in name_decorators
 
@@ -2001,6 +2047,12 @@ def is_bound_method(t: TypeExpr) -> bool:
 
 
 def get_side_effect(applied: Overloaded) -> SideEffect:
+    # Aggregate alias fields from all overloads
+    all_alias: tuple[str, ...] = ()
+    for x in applied.items:
+        for field in x.side_effect.alias:
+            if field not in all_alias:
+                all_alias = all_alias + (field,)
     return SideEffect(
         new=any(x.side_effect.new for x in applied.items),
         update=(
@@ -2009,6 +2061,7 @@ def get_side_effect(applied: Overloaded) -> SideEffect:
         ),
         bound_method=any(is_bound_method(x) for x in applied.items),
         points_to_args=any(x.side_effect.points_to_args for x in applied.items),
+        alias=all_alias,
     )
 
 

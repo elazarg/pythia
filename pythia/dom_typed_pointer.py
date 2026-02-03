@@ -61,9 +61,13 @@ class LocationObject:
     location: Location
 
     def __repr__(self) -> str:
-        label, index = self.location
-        label += index
-        return f"@location {label}"
+        if len(self.location) == 2:
+            label, index = self.location
+            return f"@location {label + index}"
+        else:
+            # Field objects have (label, index, field_name)
+            label, index, field_name = self.location
+            return f"@location {label + index}.{field_name}"
 
 
 type Object = typing.Union[LocationObject, Param, Immutable, Scope]
@@ -647,29 +651,45 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 return (immutable(t), t, make_dirty())
             case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
                 var_objs = prev_tp.pointers[LOCALS, var]
-                t = self.attribute(prev_tp.types[var_objs], field)
+                attr_type = self.attribute(prev_tp.types[var_objs], field)
                 any_new = all_new = False
-                assert not isinstance(t, ts.FunctionType)
-                if isinstance(t, ts.Overloaded):
-                    if any(item.is_property for item in t.items):
-                        assert all(f.is_property for f in t.items)
-                        any_new = t.any_new()
-                        all_new = t.all_new()
-                        t = ts.get_return(t)
-                    if ts.is_bound_method(t):
+                side_effect = ts.SideEffect(new=False)
+                assert not isinstance(attr_type, ts.FunctionType)
+                if isinstance(attr_type, ts.Overloaded):
+                    if any(item.is_property for item in attr_type.items):
+                        assert all(f.is_property for f in attr_type.items)
+                        any_new = attr_type.any_new()
+                        all_new = attr_type.all_new()
+                        side_effect = ts.get_side_effect(attr_type)
+                        attr_type = ts.get_return(attr_type)
+                    if ts.is_bound_method(attr_type):
                         new_tp.pointers[location, tac.Var("self")] = var_objs
                         any_new = True
                         all_new = True
+                t = attr_type
+
+                # @alias creates a new object with shared fields
+                creates_new = any_new or side_effect.alias
+                all_creates_new = all_new or side_effect.alias
 
                 if ts.is_immutable(t):
                     objects = immutable(t)
                 else:
                     objects = prev_tp.pointers[var_objs, field]
-                    if any_new:
+                    if creates_new:
                         objects = objects | pythia.dom_concrete.Set[Object].singleton(
                             location
                         )
-                    if not all_new:
+                        # Handle @alias: copy field pointers from self to new object
+                        if side_effect.alias:
+                            for field_name in side_effect.alias:
+                                field_var = tac.Var(field_name)
+                                for var_obj in var_objs.as_set():
+                                    existing = prev_tp.pointers[var_obj, field_var]
+                                    if existing:  # Non-empty set
+                                        # Share the field pointer (aliasing!)
+                                        new_tp.pointers[location, field_var] = existing
+                    if not all_creates_new:
                         if ts.is_immutable(t):
                             objects = objects | immutable(t)
                         else:
@@ -754,8 +774,15 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                             f"Update with multiple function objects: {func_objects}"
                         )
                     self_objects = prev_tp.pointers[func_obj, tac.Var("self")]
+                    # Also mark buffer objects as dirty (for view aliasing)
+                    dirty_targets = self_objects
+                    buffer_key = tac.Var("_buffer")
+                    for self_obj in self_objects.as_set():
+                        buffer_objs = prev_tp.pointers[self_obj, buffer_key]
+                        if buffer_objs:  # Non-empty set
+                            dirty_targets = dirty_targets | buffer_objs
                     dirty = make_dirty_from_keys(
-                        self_objects, pythia.dom_concrete.Set[tac.Var].top()
+                        dirty_targets, pythia.dom_concrete.Set[tac.Var].top()
                     )
                     self_obj = pythia.dom_concrete.Set[Object].squeeze(self_objects)
                     if isinstance(self_obj, pythia.dom_concrete.Set):
@@ -820,7 +847,8 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     )
 
                 objects = pythia.dom_concrete.Set[Object]()
-                if applied.any_new():
+                creates_new = applied.any_new() or side_effect.alias
+                if creates_new:
                     objects = objects | pythia.dom_concrete.Set[Object].singleton(
                         location
                     )
@@ -835,11 +863,33 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                             new_tp.pointers.update(
                                 location, tac.Var("*"), pointed_objects
                             )
+                    # Transitive @new: create objects for declared fields (only if truly new, not alias)
+                    if applied.any_new():
+                        declared_fields = ts.get_declared_fields(t)
+                        for field_name, field_type in declared_fields:
+                            field_obj = LocationObject((*location.location, field_name))
+                            new_tp.pointers[location, tac.Var(field_name)] = (
+                                pythia.dom_concrete.Set[Object].singleton(field_obj)
+                            )
+                            new_tp.types[field_obj] = field_type
+
+                    # Handle @alias: copy field pointers from self to new object
+                    if side_effect.alias:
+                        func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
+                        self_objects = prev_tp.pointers[func_obj, tac.Var("self")]
+                        for field_name in side_effect.alias:
+                            field_var = tac.Var(field_name)
+                            for self_obj in self_objects.as_set():
+                                if (self_obj, field_var) in prev_tp.pointers:
+                                    # Share the field pointer (aliasing!)
+                                    existing = prev_tp.pointers[self_obj, field_var]
+                                    new_tp.pointers[location, field_var] = existing
 
                 if ts.is_immutable(t):
                     objects = immutable(t)
                 else:
-                    if not applied.all_new():
+                    all_new = applied.all_new() or side_effect.alias
+                    if not all_new:
                         if ts.is_immutable(t):
                             objects = objects | immutable(t)
                         else:
