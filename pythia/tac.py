@@ -408,10 +408,6 @@ def free_vars(tac: Tac) -> set[Var]:
             return set(tac.variables)
         case Unsupported():
             return set()
-        case PredefinedFunction():
-            return set()
-        case PredefinedScope():
-            return set()
         case _:
             raise NotImplementedError(f"{tac}")
 
@@ -788,21 +784,21 @@ def make_tac_no_dels(
                 case ["METHOD"]:
                     # removed in python3.12
                     return [Assign(lhs, Attribute(stackvar(stack_depth), Var(val)))]
-                case ["FAST"] | ["NAME"] | ["FAST", "CHECK"]:
-                    return [Assign(lhs, Var(val))]
                 case ["FAST", "AND", "CLEAR"]:
                     return [Assign(lhs, Var(val), or_null=True)]
                 case ["DEREF"]:
                     return [Assign(lhs, make_nonlocal(val))]
-                case ["FROM", "DICT", "OR", "DEREF"]:
-                    assert False, "added in python3.12"
                 case ["GLOBAL"]:
                     return [Assign(lhs, make_global(val))]
+                case ["FROM", "DICT", "OR", "DEREF"]:
+                    assert False, "added in python3.12"
                 case ["CLOSURE"]:
                     # LOAD_CLOSURE for closures not fully supported
                     return [Assign(lhs, Const(None))]
                 case ["BUILD", "CLASS"]:
                     return [Assign(lhs, make_class(val))]
+                case ["FAST"] | ["NAME"] | ["FAST", "CHECK"]:
+                    return [Assign(lhs, Var(val))]
                 case _:
                     assert False, ops
         case ["STORE", "FAST" | "NAME"]:

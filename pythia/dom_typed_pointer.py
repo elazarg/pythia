@@ -356,6 +356,54 @@ def build_args_typed_dict(
     return ts.typed_dict(rows)
 
 
+@dataclass
+class BoundCallInfo:
+    """Information stored by BoundCall for Call to retrieve."""
+    applied: ts.Overloaded  # Resolved function type
+    func_objects: pythia.dom_concrete.Set[Object]  # Original function
+    arg_objects: tuple[pythia.dom_concrete.Set[Object], ...]  # Arguments
+
+
+def retrieve_bound_call_info(
+    func_obj: Object,
+    func_type: ts.TypeExpr,
+    prev_tp: TypedPointer,
+) -> BoundCallInfo:
+    """Retrieve pre-computed call info from a BoundCall object.
+
+    Args:
+        func_obj: The bound callable object (from BoundCall)
+        func_type: The type stored on the bound callable (already resolved)
+        prev_tp: The TypedPointer state to read from
+
+    Returns:
+        BoundCallInfo with resolved type, function objects, and arguments
+    """
+    # Retrieve stored arguments
+    arg_objects_list: list[pythia.dom_concrete.Set[Object]] = []
+    i = 0
+    while True:
+        arg_objs = prev_tp.pointers[func_obj, tac.Var(f"_arg{i}")]
+        if not arg_objs:
+            break
+        arg_objects_list.append(arg_objs)
+        i += 1
+
+    # Retrieve original function objects for side effects
+    func_objects = prev_tp.pointers[func_obj, tac.Var("_func")]
+    if not func_objects:
+        func_objects = pythia.dom_concrete.Set[Object]()
+
+    # func_type is the already-resolved Overloaded type
+    assert isinstance(func_type, ts.Overloaded), f"Expected Overloaded, got {func_type}"
+
+    return BoundCallInfo(
+        applied=func_type,
+        func_objects=func_objects,
+        arg_objects=tuple(arg_objects_list),
+    )
+
+
 def bind_method(
     location: LocationObject,
     method_type: ts.TypeExpr,
@@ -1084,8 +1132,25 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
 
                 return (objects, t, make_dirty())
             case tac.BoundCall(var, tuple() as args, tuple() as kwnames):
-                # BoundCall: resolve function, collect arguments, perform overload resolution
-                # The result is a "bound callable" that Call can execute
+                # BoundCall: prepare a callable for later execution.
+                #
+                # BoundCall performs the "pure" preparation phase:
+                # - Function/method lookup
+                # - Argument collection
+                # - Overload resolution
+                #
+                # Stores on the bound callable object (location):
+                # - _arg0, _arg1, ... : Argument object sets
+                # - _func : Original function objects (for side effects)
+                # - self : Receiver object (if method call)
+                # - Type slot : The resolved Overloaded type
+                #
+                # Call retrieves this info via retrieve_bound_call_info() and:
+                # - Applies side effects (mutations to receiver/args)
+                # - Creates result objects (with Call's location)
+                # - Computes dirty tracking
+                #
+                # This separation matches the paper's Bind/Call distinction.
 
                 # Step 1: Function lookup
                 if isinstance(var, tac.Var):
@@ -1144,25 +1209,13 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                     )
 
                     if is_bound_call:
-                        # Retrieve stored arguments from BoundCall
-                        arg_objects_list: list[pythia.dom_concrete.Set[Object]] = []
-                        i = 0
-                        while True:
-                            arg_key = tac.Var(f"_arg{i}")
-                            arg_objs = prev_tp.pointers[func_obj, arg_key]
-                            if not arg_objs:
-                                break
-                            arg_objects_list.append(arg_objs)
-                            i += 1
-                        arg_objects = tuple(arg_objects_list)
-                        applied = func_type  # Already resolved by BoundCall
-
-                        # Retrieve original function objects for side effects
-                        stored_func = prev_tp.pointers[func_obj, tac.Var("_func")]
-                        if stored_func:
-                            func_objects = stored_func
+                        # Use helper to retrieve pre-computed info
+                        info = retrieve_bound_call_info(func_obj, func_type, prev_tp)
+                        applied = info.applied
+                        arg_objects = info.arg_objects
+                        func_objects = info.func_objects
                     else:
-                        # Legacy direct call path
+                        # Direct call path (legacy or LIST_APPEND pattern)
                         arg_objects = tuple(
                             [prev_tp.pointers[LOCALS, v] for v in args]
                         )

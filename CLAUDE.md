@@ -79,6 +79,7 @@ Pythia is a **static analysis framework for Python** that:
 - [x] **Keyword argument support** - Added kwnames field to Call, tracks KW_NAMES bytecode, passes keyword info to type analysis
 - [x] **Phase 1-3**: Refactored expr() into helper methods, unified operator result creation, added explicit bound method tracking
 - [x] **Phase 4**: Separated Call into BoundCall + Call (commit 946ff2c) - cleanly separates function resolution from execution
+- [x] **Phase 4b**: Cleanup - Added `BoundCallInfo` dataclass and `retrieve_bound_call_info()` helper to simplify Call case when handling bound callables
 - [x] **LIST_EXTEND/SET_UPDATE bytecode** (commit 42b47b7) - supports list/set unpacking syntax
 
 ### Code Quality
