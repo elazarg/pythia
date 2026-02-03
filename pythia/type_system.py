@@ -236,6 +236,7 @@ class SideEffect:
     update: tuple[typing.Optional[TypeExpr], tuple[int, ...]] = (None, ())
     points_to_args: bool = False
     alias: tuple[str, ...] = ()  # Field names to copy from self (e.g., ("_buffer",))
+    accessor: bool = False  # Returns objects from self's * field (e.g., __getitem__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1902,6 +1903,19 @@ class TypeCollector:
                     and decorator.slice.value.id == "self"
                 ):
                     alias_fields = alias_fields + (decorator.slice.attr,)
+            # Parse @accessor(self[index]) decorator - returns objects from self's * field
+            is_accessor = False
+            for decorator in fdef.decorator_list:
+                if (
+                    isinstance(decorator, ast.Call)
+                    and isinstance(decorator.func, ast.Name)
+                    and decorator.func.id == "accessor"
+                    and len(decorator.args) == 1
+                    and isinstance(decorator.args[0], ast.Subscript)
+                    and isinstance(decorator.args[0].value, ast.Name)
+                    and decorator.args[0].value.id == "self"
+                ):
+                    is_accessor = True
             update = call_decorators.get("update")
             if update is not None:
                 assert isinstance(update, ast.Call)
@@ -1921,6 +1935,7 @@ class TypeCollector:
                 update=(update_type, update_args),
                 points_to_args="points_to_args" in name_decorators,
                 alias=alias_fields,
+                accessor=is_accessor,
             )
             is_property = "property" in name_decorators
 
@@ -2062,6 +2077,7 @@ def get_side_effect(applied: Overloaded) -> SideEffect:
         bound_method=any(is_bound_method(x) for x in applied.items),
         points_to_args=any(x.side_effect.points_to_args for x in applied.items),
         alias=all_alias,
+        accessor=any(x.side_effect.accessor for x in applied.items),
     )
 
 

@@ -705,18 +705,26 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 index = self.resolve(index_type)
                 t = ts.subscr(selftype, index)
                 any_new = all_new = False
+                is_accessor = False
                 if isinstance(t, ts.Overloaded) and any(
                     item.is_property for item in t.items
                 ):
                     assert all(f.is_property for f in t.items)
                     any_new = t.any_new()
                     all_new = t.all_new()
+                    # Check if __getitem__ has @accessor annotation
+                    is_accessor = any(
+                        item.side_effect.accessor for item in t.items
+                    )
                     t = ts.get_return(t)
                 assert t != ts.BOTTOM, f"Subscript {var}[{index}] is BOTTOM"
                 direct_objs = prev_tp.pointers[var_objs, tac.Var("*")]
                 # TODO: class through type
 
-                if ts.is_immutable(t):
+                # Handle @accessor: return objects from container's * field
+                if is_accessor and direct_objs:
+                    objects = direct_objs
+                elif ts.is_immutable(t):
                     objects = immutable(t)
                 else:
                     objects = direct_objs
@@ -795,6 +803,7 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                         for obj, fields in prev_tp.pointers.items()
                         for f, targets in fields.items()
                         if self_obj in targets
+                        if f != tac.Var("*")  # Container element references are OK
                     } - {func_obj, LOCALS}
                     monomorophized = [
                         obj
@@ -885,7 +894,20 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                                     existing = prev_tp.pointers[self_obj, field_var]
                                     new_tp.pointers[location, field_var] = existing
 
-                if ts.is_immutable(t):
+                # Handle @accessor(self[index]) - return objects from self's * field
+                if side_effect.accessor:
+                    func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
+                    self_objects = prev_tp.pointers[func_obj, tac.Var("self")]
+                    star_var = tac.Var("*")
+                    accessor_objects = pythia.dom_concrete.Set[Object]()
+                    for self_obj in self_objects.as_set():
+                        pointed = prev_tp.pointers[self_obj, star_var]
+                        if pointed:
+                            accessor_objects = accessor_objects | pointed
+                    if accessor_objects:
+                        objects = accessor_objects
+                        # Type already comes from return type annotation
+                elif ts.is_immutable(t):
                     objects = immutable(t)
                 else:
                     all_new = applied.all_new() or side_effect.alias
