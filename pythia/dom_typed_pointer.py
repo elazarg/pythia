@@ -1021,6 +1021,356 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
                 return ts.subscr(self.builtins, ts.literal(attr.name))
             raise
 
+    def _expr_const(
+            self,
+            expr: tac.Const,
+    ) -> tuple[pythia.dom_concrete.Set[Object], ts.TypeExpr, Dirty]:
+        """Handle constant expressions."""
+        t = ts.literal(expr.value)
+        return (immutable(t), t, make_dirty())
+
+    def _expr_var(
+            self,
+            prev_tp: TypedPointer,
+            expr: tac.Var,
+    ) -> tuple[pythia.dom_concrete.Set[Object], ts.TypeExpr, Dirty]:
+        """Handle variable expressions."""
+        objs = prev_tp.pointers[LOCALS, expr]
+        types = prev_tp.types[objs]
+        return (objs, types, make_dirty())
+
+    def _expr_attribute_globals(
+            self,
+            prev_tp: TypedPointer,
+            field: tac.Var,
+    ) -> tuple[pythia.dom_concrete.Set[Object], ts.TypeExpr, Dirty]:
+        """Handle global attribute access."""
+        global_objs = prev_tp.pointers[GLOBALS, field]
+        assert not global_objs
+        t = ts.subscr(self.this_module, ts.literal(field.name))
+        ref = None
+        if t == ts.BOTTOM:
+            ref = ts.Ref(f"builtins.{field}")
+        if isinstance(t, ts.Ref):
+            ref = t
+        if ref is not None:
+            t = ts.resolve_static_ref(ref)
+        match t:
+            case ts.Instantiation(ts.Ref("builtins.type"), (ts.Class(), )) as t:
+                t = replace(t, type_args=((ref,)))
+            case ts.Class():
+                t = ts.get_return(t)
+        # TODO: class through type
+        return (immutable(t), t, make_dirty())
+
+    def _expr_attribute_var(
+            self,
+            prev_tp: TypedPointer,
+            var: tac.Var,
+            field: tac.Var,
+            location: LocationObject,
+            new_tp: TypedPointer,
+    ) -> tuple[pythia.dom_concrete.Set[Object], ts.TypeExpr, Dirty]:
+        """Handle attribute access on a variable."""
+        var_objs = prev_tp.pointers[LOCALS, var]
+        attr_type = self.attribute(prev_tp.types[var_objs], field)
+        any_new = all_new = False
+        side_effect = ts.SideEffect(new=False)
+        assert not isinstance(attr_type, ts.FunctionType)
+        if isinstance(attr_type, ts.Overloaded):
+            if any(item.is_property for item in attr_type.items):
+                assert all(f.is_property for f in attr_type.items)
+                any_new = attr_type.any_new()
+                all_new = attr_type.all_new()
+                side_effect = ts.get_side_effect(attr_type)
+                attr_type = ts.get_return(attr_type)
+            bound_any, bound_all = bind_method(
+                location, attr_type, var_objs, new_tp
+            )
+            any_new = any_new or bound_any
+            all_new = all_new or bound_all
+        t = attr_type
+
+        # @alias creates a new object with shared fields
+        creates_new = any_new or side_effect.alias
+        all_creates_new = all_new or side_effect.alias
+
+        if ts.is_immutable(t):
+            objects = immutable(t)
+        else:
+            objects = prev_tp.pointers[var_objs, field]
+            if creates_new:
+                objects = objects | pythia.dom_concrete.Set[Object].singleton(
+                    location
+                )
+                # Handle @alias: copy field pointers from self to new object
+                if side_effect.alias:
+                    for field_name in side_effect.alias:
+                        field_var = tac.Var(field_name)
+                        for var_obj in var_objs.as_set():
+                            existing = prev_tp.pointers[var_obj, field_var]
+                            if existing:  # Non-empty set
+                                # Share the field pointer (aliasing!)
+                                new_tp.pointers[location, field_var] = existing
+            if not all_creates_new:
+                if ts.is_immutable(t):
+                    objects = objects | immutable(t)
+                else:
+                    assert False
+
+        return (objects, t, make_dirty())
+
+    def _expr_subscript(
+            self,
+            prev_tp: TypedPointer,
+            var: tac.Var,
+            index: tac.Var,
+            location: LocationObject,
+    ) -> tuple[pythia.dom_concrete.Set[Object], ts.TypeExpr, Dirty]:
+        """Handle subscript expressions."""
+        var_objs = prev_tp.pointers[LOCALS, var]
+        index_objs = prev_tp.pointers[LOCALS, index]
+        index_type = self.resolve(prev_tp.types[index_objs])
+        selftype = self.resolve(prev_tp.types[var_objs])
+        t = ts.subscr(selftype, index_type)
+        any_new = all_new = False
+        is_accessor = False
+        if isinstance(t, ts.Overloaded) and any(
+                item.is_property for item in t.items
+        ):
+            assert all(f.is_property for f in t.items)
+            any_new = t.any_new()
+            all_new = t.all_new()
+            # Check if __getitem__ has @accessor annotation
+            is_accessor = any(
+                item.side_effect.accessor for item in t.items
+            )
+            t = ts.get_return(t)
+        assert t != ts.BOTTOM, f"Subscript {var}[{index_type}] is BOTTOM"
+        direct_objs = prev_tp.pointers[var_objs, tac.Var("*")]
+        # TODO: class through type
+
+        # Handle @accessor: return objects from container's * field
+        if is_accessor and direct_objs:
+            objects = direct_objs
+        elif ts.is_immutable(t):
+            objects = immutable(t)
+        else:
+            objects = direct_objs
+            if any_new:
+                if all_new:
+                    # TODO: assert not direct_objs ??
+                    objects = pythia.dom_concrete.Set[Object].singleton(
+                        location
+                    )
+                else:
+                    objects = objects | pythia.dom_concrete.Set[
+                        Object
+                    ].singleton(location)
+            if not all_new:
+                if ts.is_immutable(t):
+                    objects = objects | immutable(t)
+
+        return (objects, t, make_dirty())
+
+    def _expr_bound_call(
+            self,
+            prev_tp: TypedPointer,
+            var: tac.Var | tac.PredefinedFunction,
+            args: tuple[tac.Var, ...],
+            kwnames: tuple[str, ...],
+            location: LocationObject,
+            new_tp: TypedPointer,
+    ) -> tuple[pythia.dom_concrete.Set[Object], ts.TypeExpr, Dirty]:
+        """Handle BoundCall expressions - prepare a callable for later execution.
+
+        BoundCall performs the "pure" preparation phase:
+        - Function/method lookup
+        - Argument collection
+        - Overload resolution
+
+        Stores on the bound callable object (location):
+        - _arg0, _arg1, ... : Argument object sets
+        - _func : Original function objects (for side effects)
+        - self : Receiver object (if method call)
+        - Type slot : The resolved Overloaded type
+
+        Call retrieves this info via retrieve_bound_call_info() and:
+        - Applies side effects (mutations to receiver/args)
+        - Creates result objects (with Call's location)
+        - Computes dirty tracking
+
+        This separation matches the paper's Bind/Call distinction.
+        """
+        # Step 1: Function lookup
+        if isinstance(var, tac.Var):
+            func_objects = prev_tp.pointers[LOCALS, var]
+            func_type = prev_tp.types[func_objects]
+        elif isinstance(var, tac.PredefinedFunction):
+            func_objects = pythia.dom_concrete.Set[Object]()
+            func_type = predefined(var)
+        else:
+            assert False, f"Expected Var or PredefinedFunction, got {var}"
+
+        # Step 2: Argument collection
+        arg_objects = tuple([prev_tp.pointers[LOCALS, v] for v in args])
+        arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
+        assert all(
+            arg for arg in arg_objects
+        ), f"Expected non-empty arg objects, got {arg_objects}"
+
+        # Step 3: Overload resolution
+        applied = resolve_call_overload(func_type, arg_types, kwnames)
+
+        # Step 4: Create bound callable object
+        bound_objects = pythia.dom_concrete.Set[Object].singleton(location)
+
+        # Copy self pointer if function is a bound method
+        if func_objects:
+            func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
+            if not isinstance(func_obj, pythia.dom_concrete.Set):
+                self_objs = prev_tp.pointers[func_obj, tac.Var("self")]
+                if self_objs:
+                    new_tp.pointers[location, tac.Var("self")] = self_objs
+
+        # Store arg objects for Call to retrieve
+        for i, arg_obj in enumerate(arg_objects):
+            new_tp.pointers[location, tac.Var(f"_arg{i}")] = arg_obj
+
+        # Store the original function objects for side effect handling
+        if func_objects:
+            new_tp.pointers[location, tac.Var("_func")] = func_objects
+
+        # Mark as bound callable
+        new_tp.mark_bound_method(location)
+
+        return (bound_objects, applied, make_dirty())
+
+    def _expr_call(
+            self,
+            prev_tp: TypedPointer,
+            var: tac.Var | tac.PredefinedFunction,
+            args: tuple[tac.Var, ...],
+            kwnames: tuple[str, ...],
+            location: LocationObject,
+            new_tp: TypedPointer,
+    ) -> tuple[pythia.dom_concrete.Set[Object], ts.TypeExpr, Dirty]:
+        """Handle Call expressions - execute a callable and produce results."""
+        if isinstance(var, tac.Var):
+            func_objects = prev_tp.pointers[LOCALS, var]
+            func_type = prev_tp.types[func_objects]
+
+            # Check if calling a bound callable (from BoundCall)
+            func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
+            is_bound_call = (
+                    not isinstance(func_obj, pythia.dom_concrete.Set)
+                    and prev_tp.is_bound_method(func_obj)
+                    and not args  # Bound calls have empty args
+            )
+
+            if is_bound_call:
+                # Use helper to retrieve pre-computed info
+                info = retrieve_bound_call_info(func_obj, func_type, prev_tp)
+                applied = info.applied
+                arg_objects = info.arg_objects
+                func_objects = info.func_objects
+            else:
+                # Direct call path (legacy or LIST_APPEND pattern)
+                arg_objects = tuple(
+                    [prev_tp.pointers[LOCALS, v] for v in args]
+                )
+                arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
+                assert all(
+                    arg for arg in arg_objects
+                ), f"Expected non-empty arg objects, got {arg_objects}"
+                applied = resolve_call_overload(func_type, arg_types, kwnames)
+        elif isinstance(var, tac.PredefinedFunction):
+            # TODO: point from exact literal when possible
+            func_objects = pythia.dom_concrete.Set[Object]()
+            func_type = predefined(var)
+            arg_objects = tuple([prev_tp.pointers[LOCALS, v] for v in args])
+            arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
+            assert all(
+                arg for arg in arg_objects
+            ), f"Expected non-empty arg objects, got {arg_objects}"
+            applied = resolve_call_overload(func_type, arg_types, kwnames)
+        else:
+            assert False, f"Expected Var or PredefinedFunction, got {var}"
+
+        side_effect = ts.get_side_effect(applied)
+        dirty = apply_update_side_effects(
+            side_effect, func_objects, arg_objects, prev_tp, new_tp
+        )
+
+        t = ts.get_return(applied)
+        assert t != ts.BOTTOM, f"Expected non-bottom return type for {locals()}"
+
+        objects = create_result_objects(
+            location,
+            applied,
+            side_effect,
+            t,
+            func_objects,
+            arg_objects,
+            prev_tp,
+            new_tp,
+            is_tuple_constructor=(var == tac.PredefinedFunction.TUPLE),
+        )
+
+        assert objects
+        return (objects, t, dirty)
+
+    def _expr_unary(
+            self,
+            prev_tp: TypedPointer,
+            var: tac.Var,
+            op: tac.UnOp,
+            location: LocationObject,
+    ) -> tuple[pythia.dom_concrete.Set[Object], ts.TypeExpr, Dirty]:
+        """Handle unary expressions."""
+        value_objects = prev_tp.pointers[LOCALS, var]
+        assert value_objects, f"Expected objects for {var}"
+        arg_type = prev_tp.types[value_objects]
+        applied = ts.get_unop(arg_type, unop_to_str(op))
+        assert isinstance(
+            applied, ts.Overloaded
+        ), f"Expected overloaded type, got {applied}"
+
+        side_effect = ts.get_side_effect(applied)
+        dirty = make_dirty()
+        if side_effect.update[0] is not None:
+            dirty = make_dirty_from_keys(
+                value_objects, pythia.dom_concrete.Set[tac.Var].top()
+            )
+
+        t = ts.get_return(applied)
+        objects = create_operator_result_objects(location, applied, t)
+
+        return (objects, t, dirty)
+
+    def _expr_binary(
+            self,
+            prev_tp: TypedPointer,
+            left: tac.Var,
+            right: tac.Var,
+            op: str,
+            location: LocationObject,
+    ) -> tuple[pythia.dom_concrete.Set[Object], ts.TypeExpr, Dirty]:
+        """Handle binary expressions."""
+        left_objects = prev_tp.pointers[LOCALS, left]
+        right_objects = prev_tp.pointers[LOCALS, right]
+        left_type = prev_tp.types[left_objects]
+        right_type = prev_tp.types[right_objects]
+        applied = ts.partial_binop(left_type, right_type, op)
+        assert isinstance(
+            applied, ts.Overloaded
+        ), f"Expected overloaded type, got {applied}"
+
+        t = ts.get_return(applied)
+        objects = create_operator_result_objects(location, applied, t)
+
+        return (objects, t, make_dirty())
+
     def expr(
             self,
             prev_tp: TypedPointer,
@@ -1028,293 +1378,26 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
             location: LocationObject,
             new_tp: TypedPointer,
     ) -> tuple[pythia.dom_concrete.Set[Object], ts.TypeExpr, Dirty]:
-        objects: pythia.dom_concrete.Set[Object]
-        dirty: Dirty
+        """Dispatch to the appropriate expression handler based on expression type."""
         match expr:
-            case tac.Const(value):
-                t = ts.literal(value)
-                return (immutable(t), t, make_dirty())
-            case tac.Var() as var:
-                objs = prev_tp.pointers[LOCALS, var]
-                types = prev_tp.types[objs]
-                return (objs, types, make_dirty())
-            case tac.Attribute(
-                var=tac.PredefinedScope.GLOBALS, field=tac.Var() as field
-            ):
-                global_objs = prev_tp.pointers[GLOBALS, field]
-                assert not global_objs
-                t = ts.subscr(self.this_module, ts.literal(field.name))
-                ref = None
-                if t == ts.BOTTOM:
-                    ref = ts.Ref(f"builtins.{field}")
-                if isinstance(t, ts.Ref):
-                    ref = t
-                if ref is not None:
-                    t = ts.resolve_static_ref(ref)
-                match t:
-                    case ts.Instantiation(ts.Ref("builtins.type"), (ts.Class(), )) as t:
-                        t = replace(t, type_args=((ref,)))
-                    case ts.Class():
-                        t = ts.get_return(t)
-                # TODO: class through type
-                return (immutable(t), t, make_dirty())
+            case tac.Const():
+                return self._expr_const(expr)
+            case tac.Var():
+                return self._expr_var(prev_tp, expr)
+            case tac.Attribute(var=tac.PredefinedScope.GLOBALS, field=tac.Var() as field):
+                return self._expr_attribute_globals(prev_tp, field)
             case tac.Attribute(var=tac.Var() as var, field=tac.Var() as field):
-                var_objs = prev_tp.pointers[LOCALS, var]
-                attr_type = self.attribute(prev_tp.types[var_objs], field)
-                any_new = all_new = False
-                side_effect = ts.SideEffect(new=False)
-                assert not isinstance(attr_type, ts.FunctionType)
-                if isinstance(attr_type, ts.Overloaded):
-                    if any(item.is_property for item in attr_type.items):
-                        assert all(f.is_property for f in attr_type.items)
-                        any_new = attr_type.any_new()
-                        all_new = attr_type.all_new()
-                        side_effect = ts.get_side_effect(attr_type)
-                        attr_type = ts.get_return(attr_type)
-                    bound_any, bound_all = bind_method(
-                        location, attr_type, var_objs, new_tp
-                    )
-                    any_new = any_new or bound_any
-                    all_new = all_new or bound_all
-                t = attr_type
-
-                # @alias creates a new object with shared fields
-                creates_new = any_new or side_effect.alias
-                all_creates_new = all_new or side_effect.alias
-
-                if ts.is_immutable(t):
-                    objects = immutable(t)
-                else:
-                    objects = prev_tp.pointers[var_objs, field]
-                    if creates_new:
-                        objects = objects | pythia.dom_concrete.Set[Object].singleton(
-                            location
-                        )
-                        # Handle @alias: copy field pointers from self to new object
-                        if side_effect.alias:
-                            for field_name in side_effect.alias:
-                                field_var = tac.Var(field_name)
-                                for var_obj in var_objs.as_set():
-                                    existing = prev_tp.pointers[var_obj, field_var]
-                                    if existing:  # Non-empty set
-                                        # Share the field pointer (aliasing!)
-                                        new_tp.pointers[location, field_var] = existing
-                    if not all_creates_new:
-                        if ts.is_immutable(t):
-                            objects = objects | immutable(t)
-                        else:
-                            assert False
-
-                return (objects, t, make_dirty())
+                return self._expr_attribute_var(prev_tp, var, field, location, new_tp)
             case tac.Subscript(var=tac.Var() as var, index=tac.Var() as index):
-                var_objs = prev_tp.pointers[LOCALS, var]
-                index_objs = prev_tp.pointers[LOCALS, index]
-                index_type = self.resolve(prev_tp.types[index_objs])
-                selftype = self.resolve(prev_tp.types[var_objs])
-                t = ts.subscr(selftype, index_type)
-                any_new = all_new = False
-                is_accessor = False
-                if isinstance(t, ts.Overloaded) and any(
-                        item.is_property for item in t.items
-                ):
-                    assert all(f.is_property for f in t.items)
-                    any_new = t.any_new()
-                    all_new = t.all_new()
-                    # Check if __getitem__ has @accessor annotation
-                    is_accessor = any(
-                        item.side_effect.accessor for item in t.items
-                    )
-                    t = ts.get_return(t)
-                assert t != ts.BOTTOM, f"Subscript {var}[{index_type}] is BOTTOM"
-                direct_objs = prev_tp.pointers[var_objs, tac.Var("*")]
-                # TODO: class through type
-
-                # Handle @accessor: return objects from container's * field
-                if is_accessor and direct_objs:
-                    objects = direct_objs
-                elif ts.is_immutable(t):
-                    objects = immutable(t)
-                else:
-                    objects = direct_objs
-                    if any_new:
-                        if all_new:
-                            # TODO: assert not direct_objs ??
-                            objects = pythia.dom_concrete.Set[Object].singleton(
-                                location
-                            )
-                        else:
-                            objects = objects | pythia.dom_concrete.Set[
-                                Object
-                            ].singleton(location)
-                    if not all_new:
-                        if ts.is_immutable(t):
-                            objects = objects | immutable(t)
-
-                return (objects, t, make_dirty())
+                return self._expr_subscript(prev_tp, var, index, location)
             case tac.BoundCall(var, tuple() as args, tuple() as kwnames):
-                # BoundCall: prepare a callable for later execution.
-                #
-                # BoundCall performs the "pure" preparation phase:
-                # - Function/method lookup
-                # - Argument collection
-                # - Overload resolution
-                #
-                # Stores on the bound callable object (location):
-                # - _arg0, _arg1, ... : Argument object sets
-                # - _func : Original function objects (for side effects)
-                # - self : Receiver object (if method call)
-                # - Type slot : The resolved Overloaded type
-                #
-                # Call retrieves this info via retrieve_bound_call_info() and:
-                # - Applies side effects (mutations to receiver/args)
-                # - Creates result objects (with Call's location)
-                # - Computes dirty tracking
-                #
-                # This separation matches the paper's Bind/Call distinction.
-
-                # Step 1: Function lookup
-                if isinstance(var, tac.Var):
-                    func_objects = prev_tp.pointers[LOCALS, var]
-                    func_type = prev_tp.types[func_objects]
-                elif isinstance(var, tac.PredefinedFunction):
-                    func_objects = pythia.dom_concrete.Set[Object]()
-                    func_type = predefined(var)
-                else:
-                    assert False, f"Expected Var or PredefinedFunction, got {var}"
-
-                # Step 2: Argument collection
-                arg_objects = tuple([prev_tp.pointers[LOCALS, v] for v in args])
-                arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
-                assert all(
-                    arg for arg in arg_objects
-                ), f"Expected non-empty arg objects, got {arg_objects}"
-
-                # Step 3: Overload resolution
-                applied = resolve_call_overload(func_type, arg_types, kwnames)
-
-                # Step 4: Create bound callable object
-                bound_objects = pythia.dom_concrete.Set[Object].singleton(location)
-
-                # Copy self pointer if function is a bound method
-                if func_objects:
-                    func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
-                    if not isinstance(func_obj, pythia.dom_concrete.Set):
-                        self_objs = prev_tp.pointers[func_obj, tac.Var("self")]
-                        if self_objs:
-                            new_tp.pointers[location, tac.Var("self")] = self_objs
-
-                # Store arg objects for Call to retrieve
-                for i, arg_obj in enumerate(arg_objects):
-                    new_tp.pointers[location, tac.Var(f"_arg{i}")] = arg_obj
-
-                # Store the original function objects for side effect handling
-                if func_objects:
-                    new_tp.pointers[location, tac.Var("_func")] = func_objects
-
-                # Mark as bound callable
-                new_tp.mark_bound_method(location)
-
-                return (bound_objects, applied, make_dirty())
+                return self._expr_bound_call(prev_tp, var, args, kwnames, location, new_tp)
             case tac.Call(var, tuple() as args, tuple() as kwnames):
-                if isinstance(var, tac.Var):
-                    func_objects = prev_tp.pointers[LOCALS, var]
-                    func_type = prev_tp.types[func_objects]
-
-                    # Check if calling a bound callable (from BoundCall)
-                    func_obj = pythia.dom_concrete.Set[Object].squeeze(func_objects)
-                    is_bound_call = (
-                            not isinstance(func_obj, pythia.dom_concrete.Set)
-                            and prev_tp.is_bound_method(func_obj)
-                            and not args  # Bound calls have empty args
-                    )
-
-                    if is_bound_call:
-                        # Use helper to retrieve pre-computed info
-                        info = retrieve_bound_call_info(func_obj, func_type, prev_tp)
-                        applied = info.applied
-                        arg_objects = info.arg_objects
-                        func_objects = info.func_objects
-                    else:
-                        # Direct call path (legacy or LIST_APPEND pattern)
-                        arg_objects = tuple(
-                            [prev_tp.pointers[LOCALS, v] for v in args]
-                        )
-                        arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
-                        assert all(
-                            arg for arg in arg_objects
-                        ), f"Expected non-empty arg objects, got {arg_objects}"
-                        applied = resolve_call_overload(func_type, arg_types, kwnames)
-                elif isinstance(var, tac.PredefinedFunction):
-                    # TODO: point from exact literal when possible
-                    func_objects = pythia.dom_concrete.Set[Object]()
-                    func_type = predefined(var)
-                    arg_objects = tuple([prev_tp.pointers[LOCALS, v] for v in args])
-                    arg_types = tuple([prev_tp.types[obj] for obj in arg_objects])
-                    assert all(
-                        arg for arg in arg_objects
-                    ), f"Expected non-empty arg objects, got {arg_objects}"
-                    applied = resolve_call_overload(func_type, arg_types, kwnames)
-                else:
-                    assert False, f"Expected Var or PredefinedFunction, got {var}"
-
-                side_effect = ts.get_side_effect(applied)
-                dirty = apply_update_side_effects(
-                    side_effect, func_objects, arg_objects, prev_tp, new_tp
-                )
-
-                t = ts.get_return(applied)
-                assert t != ts.BOTTOM, f"Expected non-bottom return type for {locals()}"
-
-                objects = create_result_objects(
-                    location,
-                    applied,
-                    side_effect,
-                    t,
-                    func_objects,
-                    arg_objects,
-                    prev_tp,
-                    new_tp,
-                    is_tuple_constructor=(var == tac.PredefinedFunction.TUPLE),
-                )
-
-                assert objects
-                return (objects, t, dirty)
+                return self._expr_call(prev_tp, var, args, kwnames, location, new_tp)
             case tac.Unary(var=tac.Var() as var, op=tac.UnOp() as op):
-                value_objects = prev_tp.pointers[LOCALS, var]
-                assert value_objects, f"Expected objects for {var}"
-                arg_type = prev_tp.types[value_objects]
-                applied = ts.get_unop(arg_type, unop_to_str(op))
-                assert isinstance(
-                    applied, ts.Overloaded
-                ), f"Expected overloaded type, got {applied}"
-
-                side_effect = ts.get_side_effect(applied)
-                dirty = make_dirty()
-                if side_effect.update[0] is not None:
-                    dirty = make_dirty_from_keys(
-                        value_objects, pythia.dom_concrete.Set[tac.Var].top()
-                    )
-
-                t = ts.get_return(applied)
-                objects = create_operator_result_objects(location, applied, t)
-
-                return (objects, t, dirty)
-            case tac.Binary(
-                left=tac.Var() as left, right=tac.Var() as right, op=str() as op
-            ):
-                left_objects = prev_tp.pointers[LOCALS, left]
-                right_objects = prev_tp.pointers[LOCALS, right]
-                left_type = prev_tp.types[left_objects]
-                right_type = prev_tp.types[right_objects]
-                applied = ts.partial_binop(left_type, right_type, op)
-                assert isinstance(
-                    applied, ts.Overloaded
-                ), f"Expected overloaded type, got {applied}"
-
-                t = ts.get_return(applied)
-                objects = create_operator_result_objects(location, applied, t)
-
-                return (objects, t, make_dirty())
+                return self._expr_unary(prev_tp, var, op, location)
+            case tac.Binary(left=tac.Var() as left, right=tac.Var() as right, op=str() as op):
+                return self._expr_binary(prev_tp, left, right, op, location)
             case _:
                 raise NotImplementedError(expr)
 

@@ -610,6 +610,141 @@ def test_meet():
     assert ts.meet(row1, row2) == TOP
 
 
+def test_side_effect_equality():
+    """Verify frozen dataclass equality works correctly for SideEffect."""
+    # Same SideEffect should be equal
+    s1 = ts.SideEffect(new=True, bound_method=False)
+    s2 = ts.SideEffect(new=True, bound_method=False)
+    assert s1 == s2
+
+    # Different SideEffects should not be equal
+    s3 = ts.SideEffect(new=False, bound_method=False)
+    assert s1 != s3
+
+    # Test with update field
+    s4 = ts.SideEffect(new=True, update=(INT, (1,)))
+    s5 = ts.SideEffect(new=True, update=(INT, (1,)))
+    assert s4 == s5
+
+    s6 = ts.SideEffect(new=True, update=(FLOAT, (1,)))
+    assert s4 != s6
+
+    # Test with alias field
+    s7 = ts.SideEffect(new=True, alias=("_buffer",))
+    s8 = ts.SideEffect(new=True, alias=("_buffer",))
+    assert s7 == s8
+
+    s9 = ts.SideEffect(new=True, alias=("_other",))
+    assert s7 != s9
+
+
+def test_side_effect_join_basic():
+    """Join two SideEffects with different new/bound_method flags."""
+    # Test OR semantics for boolean fields
+    s1 = ts.SideEffect(new=True, bound_method=False, points_to_args=False)
+    s2 = ts.SideEffect(new=False, bound_method=True, points_to_args=True)
+
+    result = ts.join(s1, s2)
+    assert isinstance(result, ts.SideEffect)
+    assert result.new == True  # True | False = True
+    assert result.bound_method == True  # False | True = True
+    assert result.points_to_args == True  # False | True = True
+
+    # Test with both False
+    s3 = ts.SideEffect(new=False, bound_method=False)
+    s4 = ts.SideEffect(new=False, bound_method=False)
+    result = ts.join(s3, s4)
+    assert result.new == False
+    assert result.bound_method == False
+
+
+def test_side_effect_join_alias():
+    """Join with overlapping/non-overlapping alias tuples."""
+    # Non-overlapping aliases: union
+    s1 = ts.SideEffect(new=False, alias=("_buffer",))
+    s2 = ts.SideEffect(new=False, alias=("_data",))
+    result = ts.join(s1, s2)
+    assert "_buffer" in result.alias
+    assert "_data" in result.alias
+    assert len(result.alias) == 2
+
+    # Overlapping aliases: no duplicates
+    s3 = ts.SideEffect(new=False, alias=("_buffer", "_data"))
+    s4 = ts.SideEffect(new=False, alias=("_buffer", "_other"))
+    result = ts.join(s3, s4)
+    assert result.alias.count("_buffer") == 1
+    assert "_data" in result.alias
+    assert "_other" in result.alias
+
+    # Empty aliases
+    s5 = ts.SideEffect(new=False, alias=())
+    s6 = ts.SideEffect(new=False, alias=("_field",))
+    result = ts.join(s5, s6)
+    assert result.alias == ("_field",)
+
+
+def test_side_effect_join_update():
+    """Join with different update type expressions."""
+    # Both have same update args tuple
+    s1 = ts.SideEffect(new=False, update=(INT, (1,)))
+    s2 = ts.SideEffect(new=False, update=(FLOAT, (1,)))
+
+    result = ts.join(s1, s2)
+    assert isinstance(result, ts.SideEffect)
+    # Types should be joined
+    assert result.update[0] == ts.join(INT, FLOAT)
+    # Arg indices should remain the same
+    assert result.update[1] == (1,)
+
+    # One has None update
+    s3 = ts.SideEffect(new=False, update=(None, ()))
+    s4 = ts.SideEffect(new=False, update=(INT, ()))
+    result = ts.join(s3, s4)
+    # join(None, INT) via join function - None isn't a TypeExpr, should be handled
+    assert result.update[1] == ()
+
+
+def test_side_effect_meet_basic():
+    """Test the meet() implementation for SideEffect."""
+    # Test AND semantics for boolean fields
+    s1 = ts.SideEffect(new=True, bound_method=True, points_to_args=True)
+    s2 = ts.SideEffect(new=True, bound_method=False, points_to_args=True)
+
+    result = ts.meet(s1, s2)
+    assert isinstance(result, ts.SideEffect)
+    assert result.new == True  # True & True = True
+    assert result.bound_method == False  # True & False = False
+    assert result.points_to_args == True  # True & True = True
+
+    # Test with both False - should stay False
+    s3 = ts.SideEffect(new=False, bound_method=False)
+    s4 = ts.SideEffect(new=True, bound_method=True)
+    result = ts.meet(s3, s4)
+    assert result.new == False  # False & True = False
+    assert result.bound_method == False  # False & True = False
+
+
+def test_side_effect_meet_alias():
+    """Test meet for alias tuples (should be intersection)."""
+    # Overlapping aliases: intersection
+    s1 = ts.SideEffect(new=False, alias=("_buffer", "_data"))
+    s2 = ts.SideEffect(new=False, alias=("_buffer", "_other"))
+    result = ts.meet(s1, s2)
+    assert result.alias == ("_buffer",)  # Only the common field
+
+    # Non-overlapping aliases: empty
+    s3 = ts.SideEffect(new=False, alias=("_field1",))
+    s4 = ts.SideEffect(new=False, alias=("_field2",))
+    result = ts.meet(s3, s4)
+    assert result.alias == ()
+
+    # One empty: result is empty
+    s5 = ts.SideEffect(new=False, alias=())
+    s6 = ts.SideEffect(new=False, alias=("_field",))
+    result = ts.meet(s5, s6)
+    assert result.alias == ()
+
+
 def test_access_type_operations():
     """Test Access type handling in join, meet, and squeeze operations."""
     # Create Access types with TypeVars (used in generic contexts)

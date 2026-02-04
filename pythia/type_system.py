@@ -651,6 +651,15 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             #         return replace(f1, params=new_params,
             #                        return_type=meet(f1.return_type, f2.return_type))
             return overload([f1, f2])
+        case (SideEffect() as s1, SideEffect() as s2):
+            assert s1.update[1] == s2.update[1]
+            return SideEffect(
+                new=s1.new & s2.new,
+                bound_method=s1.bound_method & s2.bound_method,
+                update=(meet(s1.update[0], s2.update[0]), s1.update[1]),
+                points_to_args=s1.points_to_args & s2.points_to_args,
+                alias=tuple(f for f in s1.alias if f in s2.alias),
+            )
         case (Access(items1, arg1), Access(items2, arg2)):
             return Access(meet(items1, items2), meet(arg1, arg2))
         case (t1, t2):
