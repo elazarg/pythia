@@ -42,14 +42,21 @@ Pythia is a **static analysis framework for Python** that:
 
 ## Current State
 
-- Python 3.12 required (also supports 3.13)
+- Python 3.12, 3.13, and 3.14 supported
 - All 259 tests pass
-- Branch: `claude-playground` (based on `master`)
-- Key changes from master:
+- Branch: `master`
+- Key features:
   - **Phase 4: BoundCall + Call separation** - Separates function resolution from call execution
   - `pythia/tac.py` - Added BoundCall expression type, LIST_EXTEND/SET_UPDATE bytecode support
   - `pythia/dom_typed_pointer.py` - Added BoundCall analysis case, bound method tracking
   - `typeshed_mini/builtins.pyi` - Added max() overload with default parameter
+
+### Recent Improvements
+
+- **Bytecode support**: BUILD_CONST_KEY_MAP, BUILD_MAP (dict literals), UNPACK_EX (starred unpacking), CALL_KW (Python 3.13)
+- **Type system**: Complete Access type handling in squeeze/join/meet/is_immutable
+- **Code cleanup**: Fixed "builtings" typo, removed unreachable code, consolidated version checks
+- **Documentation**: Documented debugging artifact in dom_typed_pointer.py
 
 ## TODOs Found in Code
 
@@ -64,7 +71,7 @@ Pythia is a **static analysis framework for Python** that:
 
 ### Code Quality
 - [ ] The `-1` offset for bound methods in `dom_typed_pointer.py:609` should be fixed at binding time in `type_system.py:bind_self_function`
-- [ ] `dom_typed_pointer.py:591` has `if True or ...` - a debugging artifact that disables an optimization. The original condition `new_tp.types[self_obj] != side_effect.update[0]` would skip updates when types match. Currently always updates (more conservative).
+- [x] `dom_typed_pointer.py:657` has `if True or ...` - documented as debugging artifact that disables optimization
 
 ### Testing
 - [ ] Add property-based testing?
@@ -72,7 +79,9 @@ Pythia is a **static analysis framework for Python** that:
 
 ### Analysis Quality
 - [x] Ran analysis with `--print-invariants` - output shows Liveness, TypedPointer, Types, and Dirty maps at each program point
-- [ ] Missing bytecode instruction: `BUILD_CONST_KEY_MAP` (dict with const keys) - causes NotImplementedError
+- [x] BUILD_CONST_KEY_MAP and BUILD_MAP bytecode instructions implemented
+- [x] UNPACK_EX bytecode instruction implemented (starred unpacking)
+- [x] CALL_KW bytecode instruction implemented (Python 3.13)
 - [ ] Type system doesn't know about some numpy functions (e.g., `np.random.rand`) - causes assertion error "Expected Overloaded type, got BOT"
 
 ### Key Insights from Paper Appendices
