@@ -610,6 +610,48 @@ def test_meet():
     assert ts.meet(row1, row2) == TOP
 
 
+def test_access_type_operations():
+    """Test Access type handling in join, meet, and squeeze operations."""
+    # Create Access types with TypeVars (used in generic contexts)
+    tv1 = ts.TypeVar("T")
+    tv2 = ts.TypeVar("U")
+    access1 = ts.Access(tv1, ts.literal(0))
+    access2 = ts.Access(tv2, ts.literal(0))
+
+    # Test join of two Access types with same arg
+    result = ts.join(access1, access2)
+    assert isinstance(result, ts.Access)
+    # The items should be joined (results in Union of T and U)
+    assert result.arg == ts.literal(0)
+
+    # Test join of Access types with different args
+    access3 = ts.Access(tv1, ts.literal(1))
+    result = ts.join(access1, access3)
+    assert isinstance(result, ts.Access)
+
+    # Test meet of two Access types with compatible inner types
+    # Use types that meet() can handle (like INT and INT)
+    access_int1 = ts.Access(INT, ts.literal(0))
+    access_int2 = ts.Access(INT, ts.literal(0))
+    result = ts.meet(access_int1, access_int2)
+    assert isinstance(result, ts.Access)
+    assert result.items == INT
+    assert result.arg == ts.literal(0)
+
+    # Test squeeze of Access type
+    inner_union = ts.union([INT, FLOAT])
+    access_union = ts.Access(inner_union, ts.literal(0))
+    squeezed = ts.squeeze(access_union)
+    assert isinstance(squeezed, ts.Access)
+
+    # Test is_immutable for Access
+    immutable_access = ts.Access(INT, INT)
+    assert ts.is_immutable(immutable_access) == True
+
+    mutable_access = ts.Access(LIST, INT)
+    assert ts.is_immutable(mutable_access) == False
+
+
 def test_join_all():
     # Test with empty list
     assert ts.join_all([]) == BOTTOM
