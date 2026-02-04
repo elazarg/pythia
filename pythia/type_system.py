@@ -410,10 +410,6 @@ def bind_typevars(t: TypeExpr, context: dict[TypeVar, TypeExpr]) -> TypeExpr:
             ):
                 return choices.items[actual_arg.value]
             return Access(choices, actual_arg)
-        case SideEffect() as s:
-            if s.update[0] is None:
-                return s
-            return replace(s, update=(bind_typevars(s.update[0], context), s.update[1]))
     raise NotImplementedError(f"{t!r}, {type(t)}")
 
 
@@ -539,8 +535,8 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             if index1 == index2:
                 return Row(index1, join(t1, t2))
             return BOTTOM
-        case (Row(_, t1), (Instantiation(Ref("builtings.list"), type_args))) | (
-            Instantiation(Ref("builtings.list"), type_args),
+        case (Row(_, t1), (Instantiation(Ref("builtins.list"), type_args))) | (
+            Instantiation(Ref("builtins.list"), type_args),
             Row(_, t1),
         ):
             return Instantiation(LIST, tuple(join(t1, t) for t in type_args))
@@ -820,7 +816,6 @@ def unify_argument(
             return unify_argument(type_params, instantiate_static_ref(param), arg)
         case param, arg:
             return None
-            raise NotImplementedError(f"{param!r}, {arg!r}")
     assert False
 
 

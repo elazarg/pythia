@@ -564,7 +564,7 @@ def make_class(name: str) -> Attribute:
 
 
 def make_tac_cfg(f: typing.Any, simplify: bool = False) -> gu.Cfg[Tac]:
-    allowed = {(3, 12), (3, 13)}
+    allowed = {(3, 12), (3, 13), (3, 14)}
     assert (
         sys.version_info[:2] in allowed
     ), f"Python version is {sys.version_info} but only {allowed} is supported"
@@ -885,12 +885,7 @@ def make_tac_no_dels(
         case ["CALL"]:
             assert isinstance(val, int)
             argc = val & 0xFF
-            if sys.version_info[:2] == (3, 12):
-                func = stack_depth - argc
-            elif sys.version_info[:2] == (3, 13):
-                func = stack_depth - argc
-            else:
-                assert False, sys.version_info
+            func = stack_depth - argc
             args = tuple([stackvar(stack_depth - i) for i in reversed(range(argc))])
             # Get kwnames from pending state if available
             kwnames: tuple[str, ...] = ()
