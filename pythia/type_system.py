@@ -328,6 +328,8 @@ def squeeze(t: TypeExpr) -> TypeExpr:
             generic=squeeze(t.generic),
         )
         return res
+    if isinstance(t, Access):
+        return Access(squeeze(t.items), squeeze(t.arg))
     return t
 
 
@@ -562,6 +564,8 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
                 points_to_args=s1.points_to_args | s2.points_to_args,
                 alias=s1.alias + tuple(f for f in s2.alias if f not in s1.alias),
             )
+        case (Access(items1, arg1), Access(items2, arg2)):
+            return Access(join(items1, items2), join(arg1, arg2))
         case x, y:
             return union([x, y])
     raise NotImplementedError(f"{t1!r}, {t2!r}")
@@ -647,6 +651,8 @@ def meet(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
             #         return replace(f1, params=new_params,
             #                        return_type=meet(f1.return_type, f2.return_type))
             return overload([f1, f2])
+        case (Access(items1, arg1), Access(items2, arg2)):
+            return Access(meet(items1, items2), meet(arg1, arg2))
         case (t1, t2):
             raise NotImplementedError(f"{t1!r}, {t2!r}")
     raise AssertionError
@@ -1797,6 +1803,8 @@ def is_immutable(value: TypeExpr) -> bool:
             if name[0].isupper():
                 return name == "NoneType"
             return True
+        case Access(items, arg):
+            return is_immutable(items) and is_immutable(arg)
         case _:
             return False
 
