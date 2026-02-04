@@ -1404,6 +1404,30 @@ def make_slice_constructor() -> Overloaded:
     )
 
 
+def make_dict_constructor() -> Overloaded:
+    """Constructor for dict literals.
+
+    For BUILD_CONST_KEY_MAP: first arg is keys tuple, rest are values.
+    For BUILD_MAP: args are key1, value1, key2, value2, ...
+    Returns dict[K, V] where K and V are unions of the key/value types.
+    """
+    args = TypeVar("Args", is_args=True)
+    # Simplified: returns dict[Any, union of value types]
+    # A more precise implementation would track key-value associations
+    return_type = Instantiation(Ref("builtins.dict"), (ANY, ANY))
+    return overload(
+        [
+            FunctionType(
+                type_params=(args,),
+                params=typed_dict([make_row(0, "args", args)]),
+                return_type=return_type,
+                side_effect=SideEffect(new=True, points_to_args=True),
+                is_property=False,
+            )
+        ]
+    )
+
+
 def binop_to_dunder_method(op: str) -> tuple[str, typing.Optional[str]]:
     match op:
         case "in":

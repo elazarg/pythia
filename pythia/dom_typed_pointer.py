@@ -349,6 +349,8 @@ def predefined(name: tac.PredefinedFunction) -> ts.TypeExpr:
             return ts.make_tuple_constructor()
         case tac.PredefinedFunction.SLICE:
             return ts.make_slice_constructor()
+        case tac.PredefinedFunction.MAP:
+            return ts.make_dict_constructor()
     assert False, name
 
 

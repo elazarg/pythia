@@ -40,6 +40,7 @@ class PredefinedFunction(enum.Enum):
     SLICE = 3
     NOT = 4
     STRING = 5
+    MAP = 6
 
     def __str__(self) -> str:
         return self.name
@@ -867,6 +868,40 @@ def make_tac_no_dels(
             return [
                 Assign(fresh, Call(PredefinedFunction.SLICE, (start, end))),
                 Assign(Subscript(container, fresh), value),
+            ]
+        case ["BUILD", "CONST", "KEY", "MAP"]:
+            # BUILD_CONST_KEY_MAP(count): builds dict from const keys tuple and count values
+            # Stack: [..., value1, value2, ..., valueN, keys_tuple]
+            # keys_tuple is at TOS, values are below it
+            assert isinstance(val, int)
+            count = val
+            keys_var = stackvar(stack_depth)  # keys tuple at TOS
+            values = tuple(
+                stackvar(i + 1)
+                for i in range(stack_depth - count - 1, stack_depth - 1)
+            )
+            # Pass keys first, then values: MAP(keys, val1, val2, ...)
+            return [
+                Assign(
+                    lhs,
+                    Call(PredefinedFunction.MAP, (keys_var,) + values),
+                )
+            ]
+        case ["BUILD", "MAP"]:
+            # BUILD_MAP(count): builds dict from count*2 items (key, value pairs)
+            # Stack: [..., key1, value1, key2, value2, ...]
+            assert isinstance(val, int)
+            count = val
+            # Collect all key-value pairs from stack
+            items = tuple(
+                stackvar(i + 1)
+                for i in range(stack_depth - count * 2, stack_depth)
+            )
+            return [
+                Assign(
+                    lhs,
+                    Call(PredefinedFunction.MAP, items),
+                )
             ]
         case ["BUILD", op]:
             assert isinstance(val, int)
