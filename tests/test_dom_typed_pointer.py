@@ -16,8 +16,10 @@ from pythia.dom_typed_pointer import (
     LOCALS,
     GLOBALS,
     immutable,
+    find_dirty_roots,
 )
 from pythia.dom_concrete import Set, Map
+from pythia.dom_liveness import Liveness
 from pythia.graph_utils import Location
 from pythia.tac import Var
 import pythia.type_system as ts
@@ -411,3 +413,105 @@ def test_typed_pointer_join():
     assert result.types[obj1] == ts.INT
     assert result.types[obj2] == ts.FLOAT
     assert result.dirty[obj1] == Set([x])
+
+
+def test_find_dirty_roots_empty_dirty():
+    """No dirty objects means no dirty roots."""
+    ptr = Pointer(make_graph())
+    x = Var("x")
+    obj = Immutable(1)
+    ptr[LOCALS, x] = Set([obj])
+
+    types = TypeMap(make_type_map())
+    dirty = make_dirty()  # No dirty fields
+    tp = typed_pointer(ptr, types, dirty)
+
+    liveness: Liveness = Set([x])
+    result = list(find_dirty_roots(tp, liveness))
+    assert result == []
+
+
+def test_find_dirty_roots_direct_local_dirty():
+    """Variable directly marked as dirty in LOCALS.dirty."""
+    ptr = Pointer(make_graph())
+    x = Var("x")
+    obj = Immutable(1)
+    ptr[LOCALS, x] = Set([obj])
+
+    types = TypeMap(make_type_map())
+    dirty = make_dirty({LOCALS: [x]})  # x is directly dirty on LOCALS
+    tp = typed_pointer(ptr, types, dirty)
+
+    liveness: Liveness = Set([x])
+    result = list(find_dirty_roots(tp, liveness))
+    assert result == ["x"]
+
+
+def test_find_dirty_roots_excludes_stack_vars():
+    """Stack variables (is_stackvar=True) should not be in dirty roots."""
+    ptr = Pointer(make_graph())
+    stack_var = Var("$stack0", is_stackvar=True)
+    obj = Immutable(1)
+    ptr[LOCALS, stack_var] = Set([obj])
+
+    types = TypeMap(make_type_map())
+    dirty = make_dirty({LOCALS: [stack_var]})
+    tp = typed_pointer(ptr, types, dirty)
+
+    liveness: Liveness = Set([stack_var])
+    result = list(find_dirty_roots(tp, liveness))
+    assert result == []
+
+
+def test_find_dirty_roots_excludes_non_live():
+    """Variables not in liveness set should not be in dirty roots."""
+    ptr = Pointer(make_graph())
+    x = Var("x")
+    y = Var("y")
+    obj = Immutable(1)
+    ptr[LOCALS, x] = Set([obj])
+    ptr[LOCALS, y] = Set([obj])
+
+    types = TypeMap(make_type_map())
+    dirty = make_dirty({LOCALS: [x, y]})  # Both x and y are dirty
+    tp = typed_pointer(ptr, types, dirty)
+
+    liveness: Liveness = Set([x])  # Only x is live
+    result = list(find_dirty_roots(tp, liveness))
+    assert result == ["x"]
+
+
+def test_find_dirty_roots_reachable_dirty():
+    """Variable pointing to chain of objects where one is dirty."""
+    ptr = Pointer(make_graph())
+    x = Var("x")
+    field = Var("field")
+    loc_obj = LocationObject((1, 0))  # Object at location (1, 0)
+    inner_loc = LocationObject((2, 0))  # Inner object
+    ptr[LOCALS, x] = Set([loc_obj])
+    ptr[loc_obj, field] = Set([inner_loc])
+
+    types = TypeMap(make_type_map())
+    dirty = make_dirty({inner_loc: [field]})  # Inner object has dirty field
+    tp = typed_pointer(ptr, types, dirty)
+
+    liveness: Liveness = Set([x])
+    result = list(find_dirty_roots(tp, liveness))
+    assert result == ["x"]
+
+
+def test_find_dirty_roots_excludes_return():
+    """The 'return' variable should never be in dirty roots."""
+    ptr = Pointer(make_graph())
+    return_var = Var("return")
+    loc_obj = LocationObject((1, 0))
+    field = Var("field")
+    ptr[LOCALS, return_var] = Set([loc_obj])
+
+    types = TypeMap(make_type_map())
+    dirty = make_dirty({loc_obj: [field]})  # Object reachable from return is dirty
+    tp = typed_pointer(ptr, types, dirty)
+
+    liveness: Liveness = Set([return_var])
+    result = list(find_dirty_roots(tp, liveness))
+    assert result == []

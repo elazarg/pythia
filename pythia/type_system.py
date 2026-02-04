@@ -1455,8 +1455,6 @@ def binop_to_dunder_method(op: str) -> tuple[str, typing.Optional[str]]:
             return "__mul__", "__rmul__"
         case "/":
             return "__truediv__", "__rtruediv__"
-        case "/":
-            return "__truediv__", "__rtruediv__"
         case "//":
             return "__floordiv__", "__rfloordiv__"
         case "%":

@@ -38,10 +38,13 @@ class Immutable:
         return f"@type {self.hash}"
 
 
-def immutable(t: ts.TypeExpr, cache={}) -> pythia.dom_concrete.Set[Object]:
-    if t not in cache:
-        cache[t] = Immutable(len(cache))
-    return pythia.dom_concrete.Set[Object].singleton(cache[t])
+_immutable_cache: dict[ts.TypeExpr, Immutable] = {}
+
+
+def immutable(t: ts.TypeExpr) -> pythia.dom_concrete.Set[Object]:
+    if t not in _immutable_cache:
+        _immutable_cache[t] = Immutable(len(_immutable_cache))
+    return pythia.dom_concrete.Set[Object].singleton(_immutable_cache[t])
 
 
 @dataclass(frozen=True)

@@ -1011,3 +1011,65 @@ def test_partial():
     assert isinstance(result, ts.Overloaded)
     # We can use get_return to get the return value
     assert ts.get_return(result) == FLOAT
+
+
+def test_binop_to_dunder_method_arithmetic():
+    """Test arithmetic operator mappings (+, -, *, /, //, %, **, @)."""
+    assert ts.binop_to_dunder_method("+") == ("__add__", "__radd__")
+    assert ts.binop_to_dunder_method("-") == ("__sub__", "__rsub__")
+    assert ts.binop_to_dunder_method("*") == ("__mul__", "__rmul__")
+    assert ts.binop_to_dunder_method("/") == ("__truediv__", "__rtruediv__")
+    assert ts.binop_to_dunder_method("//") == ("__floordiv__", "__rfloordiv__")
+    assert ts.binop_to_dunder_method("%") == ("__mod__", "__rmod__")
+    assert ts.binop_to_dunder_method("**") == ("__pow__", "__rpow__")
+    assert ts.binop_to_dunder_method("@") == ("__matmul__", "__rmatmul__")
+
+
+def test_binop_to_dunder_method_comparison():
+    """Test comparison operators (==, !=, <, <=, >, >=) - no reverse methods."""
+    assert ts.binop_to_dunder_method("==") == ("__eq__", None)
+    assert ts.binop_to_dunder_method("!=") == ("__ne__", None)
+    assert ts.binop_to_dunder_method("<") == ("__lt__", None)
+    assert ts.binop_to_dunder_method("<=") == ("__le__", None)
+    assert ts.binop_to_dunder_method(">") == ("__gt__", None)
+    assert ts.binop_to_dunder_method(">=") == ("__ge__", None)
+
+
+def test_binop_to_dunder_method_bitwise():
+    """Test bitwise operators (<<, >>, &, |, ^)."""
+    assert ts.binop_to_dunder_method("<<") == ("__lshift__", "__rlshift__")
+    assert ts.binop_to_dunder_method(">>") == ("__rshift__", "__rrshift__")
+    assert ts.binop_to_dunder_method("&") == ("__and__", "__rand__")
+    assert ts.binop_to_dunder_method("|") == ("__or__", "__ror__")
+    assert ts.binop_to_dunder_method("^") == ("__xor__", "__rxor__")
+
+
+def test_binop_to_dunder_method_containment():
+    """Test 'in' operator -> __contains__."""
+    assert ts.binop_to_dunder_method("in") == ("__contains__", None)
+
+
+def test_binop_to_dunder_method_unknown_raises():
+    """Unknown operators should raise NotImplementedError."""
+    import pytest
+    with pytest.raises(NotImplementedError):
+        ts.binop_to_dunder_method("??")
+
+
+def test_unop_to_dunder_method():
+    """Test all unary operators (-, +, ~, bool, not, iter, next, yield iter)."""
+    assert ts.unop_to_dunder_method("-") == "__neg__"
+    assert ts.unop_to_dunder_method("+") == "__pos__"
+    assert ts.unop_to_dunder_method("~") == "__invert__"
+    assert ts.unop_to_dunder_method("bool") == "__bool__"
+    assert ts.unop_to_dunder_method("not") == "__bool__"
+    assert ts.unop_to_dunder_method("iter") == "__iter__"
+    assert ts.unop_to_dunder_method("yield iter") == "__iter__"
+    assert ts.unop_to_dunder_method("next") == "__next__"
+
+
+def test_unop_to_dunder_method_unknown_raises():
+    """Unknown unary operators should raise NotImplementedError."""
+    import pytest
+    with pytest.raises(NotImplementedError):
+        ts.unop_to_dunder_method("unknown_op")
