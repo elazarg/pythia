@@ -87,7 +87,7 @@ def test_join_literals():
     assert ts.join(t1, t2) == joined
 
 
-def test_overload():
+def test_overload_call_resolution():
     f1 = make_function(STR, make_rows(INT))
     f2 = make_function(FLOAT, make_rows(FLOAT))
     arg = INT
@@ -518,7 +518,7 @@ def test_typed_dict():
     assert ts.typed_dict([row1, row2]) == ts.TypedDict(frozenset([row1, row2]))
 
 
-def test_overload():
+def test_overload_construction():
     # Test with empty list
     assert ts.overload([]) == ts.Overloaded(())
 

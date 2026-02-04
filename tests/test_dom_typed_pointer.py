@@ -11,17 +11,17 @@ from pythia.dom_typed_pointer import (
     make_type_map,
     Pointer,
     TypeMap,
-    TypedPointer,
     typed_pointer,
     LOCALS,
-    GLOBALS,
     immutable,
     find_dirty_roots,
+    unop_to_str,
+    predefined,
+    build_args_typed_dict,
 )
 from pythia.dom_concrete import Set, Map
 from pythia.dom_liveness import Liveness
-from pythia.graph_utils import Location
-from pythia.tac import Var
+from pythia.tac import Var, UnOp, PredefinedFunction
 import pythia.type_system as ts
 
 
@@ -515,3 +515,82 @@ def test_find_dirty_roots_excludes_return():
     liveness: Liveness = Set([return_var])
     result = list(find_dirty_roots(tp, liveness))
     assert result == []
+
+
+def test_unop_to_str():
+    """Test all UnOp enum values map to the correct strings."""
+    assert unop_to_str(UnOp.BOOL) == "bool"
+    assert unop_to_str(UnOp.NEG) == "-"
+    assert unop_to_str(UnOp.NOT) == "not"
+    assert unop_to_str(UnOp.INVERT) == "~"
+    assert unop_to_str(UnOp.POS) == "+"
+    assert unop_to_str(UnOp.ITER) == "iter"
+    assert unop_to_str(UnOp.NEXT) == "next"
+    assert unop_to_str(UnOp.YIELD_ITER) == "yield iter"
+
+
+def test_predefined_list():
+    """Test that PredefinedFunction.LIST returns a list constructor."""
+    result = predefined(PredefinedFunction.LIST)
+    assert isinstance(result, ts.Overloaded)
+
+
+def test_predefined_set():
+    """Test that PredefinedFunction.SET returns a set constructor."""
+    result = predefined(PredefinedFunction.SET)
+    assert isinstance(result, ts.Overloaded)
+
+
+def test_predefined_tuple():
+    """Test that PredefinedFunction.TUPLE returns a tuple constructor."""
+    result = predefined(PredefinedFunction.TUPLE)
+    assert isinstance(result, ts.Overloaded)
+
+
+def test_predefined_slice():
+    """Test that PredefinedFunction.SLICE returns a slice constructor."""
+    result = predefined(PredefinedFunction.SLICE)
+    assert isinstance(result, ts.Overloaded)
+
+
+def test_predefined_map():
+    """Test that PredefinedFunction.MAP returns a dict constructor."""
+    result = predefined(PredefinedFunction.MAP)
+    assert isinstance(result, ts.Overloaded)
+
+
+def test_build_args_typed_dict_positional_only():
+    """Test build_args_typed_dict with only positional arguments."""
+    result = build_args_typed_dict((ts.INT, ts.FLOAT))
+    expected = ts.typed_dict([
+        ts.make_row(0, None, ts.INT),
+        ts.make_row(1, None, ts.FLOAT),
+    ])
+    assert result == expected
+
+
+def test_build_args_typed_dict_empty():
+    """Test build_args_typed_dict with no arguments."""
+    result = build_args_typed_dict(())
+    assert result == ts.typed_dict([])
+
+
+def test_build_args_typed_dict_with_keywords():
+    """Test build_args_typed_dict with keyword arguments."""
+    result = build_args_typed_dict((ts.INT, ts.FLOAT, ts.STR), kwnames=("y", "z"))
+    expected = ts.typed_dict([
+        ts.make_row(0, None, ts.INT),
+        ts.make_row(None, "y", ts.FLOAT),
+        ts.make_row(None, "z", ts.STR),
+    ])
+    assert result == expected
+
+
+def test_build_args_typed_dict_all_keywords():
+    """Test build_args_typed_dict where all arguments are keyword."""
+    result = build_args_typed_dict((ts.INT, ts.FLOAT), kwnames=("x", "y"))
+    expected = ts.typed_dict([
+        ts.make_row(None, "x", ts.INT),
+        ts.make_row(None, "y", ts.FLOAT),
+    ])
+    assert result == expected
