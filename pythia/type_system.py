@@ -525,6 +525,15 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
         case (Ref() as ref, other) | (other, Ref() as ref):  # type: ignore
             if instantiate_static_ref(ref) == other:
                 return ref
+            # Bare generic Ref subsumes Instantiation of the same class
+            if isinstance(other, Instantiation):
+                generic = other.generic
+                if isinstance(generic, Ref):
+                    generic = instantiate_static_ref(generic)
+                ref_class = instantiate_static_ref(ref)
+                if isinstance(ref_class, Class) and isinstance(generic, Class):
+                    if ref_class.name == generic.name and ref_class.type_params:
+                        return ref
             return union([ref, other])
         case (
             Instantiation(generic1, type_args1),
@@ -705,6 +714,8 @@ def unify_argument(
     if param == TOP:
         return {}
     match param, arg:
+        case TypeVar() as param, arg:
+            return {param: arg}
         case (Ref("typing.Any"), _) | (_, Ref("typing.Any")):
             return {}
         case Union(items), arg:
@@ -715,7 +726,8 @@ def unify_argument(
             ]
             if not res:
                 return None
-            return {k: join_all(t.get(k, BOTTOM) for t in res) for k in type_params}
+            present_keys = {k for t in res for k in t}
+            return {k: join_all(t.get(k, BOTTOM) for t in res) for k in type_params if k in present_keys}
         case param, TypedDict(items):
             res = [
                 unified
@@ -724,13 +736,25 @@ def unify_argument(
             ]
             if not res:
                 return None
-            return {k: join_all(t.get(k, BOTTOM) for t in res) for k in type_params}
-        case TypeVar() as param, arg:
-            return {param: arg}
+            present_keys = {k for t in res for k in t}
+            return {k: join_all(t.get(k, BOTTOM) for t in res) for k in type_params if k in present_keys}
         case Class() as param, Instantiation(Class() as arg, arg_args):
             if param.name == arg.name:
                 return {k: v for k, v in zip(param.type_params, arg_args)}
             return None
+        case Instantiation() as param, Class() as arg if arg.type_params:
+            generic = param.generic
+            if isinstance(generic, Ref):
+                generic = instantiate_static_ref(generic)
+            if not isinstance(generic, Class) or generic.name != arg.name:
+                return None
+            # Bare generic class: unify type args against ANY (unknown type params)
+            ps = typed_dict([make_row(i, None, p) for i, p in enumerate(param.type_args)])
+            args_td = typed_dict([make_row(i, None, ANY) for i in range(len(arg.type_params))])
+            mid_context = unify(type_params, ps, args_td)
+            if mid_context is None:
+                return None
+            return mid_context.bound_typevars
         case Instantiation() as param, Instantiation() as arg:
             if param.generic != arg.generic:
                 param_class = instantiate_static_ref(param.generic)
@@ -771,7 +795,8 @@ def unify_argument(
                 [make_row(i, None, p) for i, p in enumerate(arg.type_args)]
             )
             mid_context = unify(type_params, ps, args)
-            assert mid_context is not None
+            if mid_context is None:
+                return None
             return mid_context.bound_typevars
         case Instantiation() as param, Literal(tuple() as value, ref):
             if param.generic != ref:

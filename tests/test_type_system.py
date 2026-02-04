@@ -291,31 +291,49 @@ def test_getitem_list():
     assert x == INT
 
 
+ARRAY_FLOAT = ts.Instantiation(ARRAY, (FLOAT,))
+ARRAY_ANY = ts.Instantiation(ARRAY, (ANY,))
+
+
 def test_getitem_numpy():
     x = ts.subscr_get_property(ARRAY, ts.literal(None))
     assert x == ts.BOTTOM
 
+    # Bare ndarray with scalar index returns Any (default type param)
     x = ts.subscr_get_property(ARRAY, ts.literal(0))
-    assert x == ARRAY
+    assert x == ANY
 
     x = ts.subscr_get_property(ARRAY, ARRAY)
-    assert x == ARRAY
+    assert x == ARRAY_ANY
 
     x = ts.subscr_get_property(ARRAY, ts.Ref("builtins.slice"))
-    assert x == ARRAY
+    assert x == ARRAY_ANY
+
+
+def test_getitem_numpy_generic():
+    """ndarray[float] scalar indexing returns float."""
+    x = ts.subscr_get_property(ARRAY_FLOAT, ts.literal(0))
+    assert x == FLOAT
+
+    # Array indexing preserves type parameter
+    x = ts.subscr_get_property(ARRAY_FLOAT, ts.Ref("builtins.slice"))
+    assert x == ARRAY_FLOAT
+
+    x = ts.subscr_get_property(ARRAY_FLOAT, ARRAY)
+    assert x == ARRAY_FLOAT
 
 
 def test_operator_numpy():
-    x = binop(ARRAY, ARRAY, "+")
-    assert x == ARRAY
+    x = binop(ARRAY_FLOAT, ARRAY_FLOAT, "+")
+    assert x == ARRAY_FLOAT
 
 
 def test_right_operator_numpy():
-    x = binop(FLOAT, ARRAY, "+")
-    assert x == ARRAY
+    x = binop(FLOAT, ARRAY_FLOAT, "+")
+    assert x == ARRAY_FLOAT
 
-    x = binop(FLOAT, ARRAY, "*")
-    assert x == ARRAY
+    x = binop(FLOAT, ARRAY_FLOAT, "*")
+    assert x == ARRAY_FLOAT
 
 
 def test_set_empty_constructor():
