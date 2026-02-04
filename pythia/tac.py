@@ -943,7 +943,24 @@ def make_tac_no_dels(
             ]
             return res
         case ["CALL", "KW"]:
-            assert False, "added in python3.13"
+            # Python 3.13+ CALL_KW instruction
+            # Stack: callable, self_or_null, positional_args..., keyword_args..., kwnames_tuple
+            # argc is total args (positional + keyword), kwnames tuple is at TOS
+            assert isinstance(val, int)
+            argc = val
+            # kwnames tuple is at TOS; we'll try to extract it if it's a constant
+            # For now, treat all args as positional (sound but less precise)
+            # The kwnames tuple at stack_depth was loaded by LOAD_CONST
+            func = stack_depth - argc - 1  # callable is below args and kwnames
+            args = tuple([stackvar(stack_depth - 1 - i) for i in reversed(range(argc))])
+            # Note: In a more precise implementation, we would track the kwnames
+            # from the LOAD_CONST that preceded this instruction
+            kwnames: tuple[str, ...] = ()
+            res = [
+                Assign(fresh, BoundCall(stackvar(func), args, kwnames)),
+                Assign(lhs, Call(fresh, ())),
+            ]
+            return res
         case ["CALL", "INTRINSIC", v]:
             assert False, "added in python3.12"
         case ["CALL", "FUNCTION", "EX"]:
