@@ -4,13 +4,8 @@ import numpy as np
 import argparse
 
 
-def append_int(a: np.ndarray, n: int) -> np.ndarray:
-    return np.append(a, n)
-
-
-def get_float(array: np.ndarray, idx: int) -> float:
-    res = array[idx]
-    return res
+def get_scalar[T](array: np.ndarray[T], idx: int) -> T:
+    return array[idx]
 
 
 def log(idx: int, k: int) -> None:
@@ -43,8 +38,8 @@ def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
                     total = 0.0
                     xj = X[j, :]
                     for i in range(len(xj)):
-                        x = get_float(xj, i)
-                        t = get_float(theta, i)
+                        x = get_scalar(xj, i)
+                        t = get_scalar(theta, i)
                         total += x * t
                     prediction[j] = total
             grad = np.dot(features.T, target - prediction)
@@ -52,15 +47,15 @@ def run(features: np.ndarray, target: np.ndarray, k: int) -> np.ndarray:
             if len(points) == 0:
                 break
             a = points[0]
-            m = get_float(grad, a)
+            m = get_scalar(grad, a)
             for i in range(len(points)):
                 p = points[i]
-                n = get_float(grad, p)
+                n = get_scalar(grad, p)
                 if n > m:
                     a = p
                     m = n
             if m >= 0:
-                S = np.unique(append_int(S, a))
+                S = np.unique(np.append(S, a))
             else:
                 break
             client.commit()

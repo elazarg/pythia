@@ -462,6 +462,8 @@ def join(t1: TypeExpr, t2: TypeExpr) -> TypeExpr:
         return t1
     if t1 == TOP or t2 == TOP:
         return TOP
+    if t1 == ANY or t2 == ANY:
+        return ANY
     match t1, t2:
         case Union(items1), Union(items2):
             return squeeze(Union(items1 | items2))
@@ -948,6 +950,8 @@ def match_row(row: Row, arg: Literal | Ref) -> bool:
 
 
 def access(t: TypeExpr, arg: TypeExpr) -> Overloaded | Module:
+    if t == ANY:
+        return TOP
     match t, arg:
         case Class(class_dict=class_dict) | Module(class_dict=class_dict), Literal(
             str() as value
@@ -1581,6 +1585,8 @@ def partial_binop(left: TypeExpr, right: TypeExpr, op: str) -> TypeExpr:
     binop_func = get_binop(left, right, op)
     if binop_func == BOTTOM:
         # assume there is an implementation.
+        return TOP
+    if binop_func == TOP:
         return TOP
     result = split_by_args(binop_func, positional(right))
     assert isinstance(result, Overloaded), f"{result!r}"

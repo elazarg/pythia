@@ -1335,6 +1335,8 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         assert value_objects, f"Expected objects for {var}"
         arg_type = prev_tp.types[value_objects]
         applied = ts.get_unop(arg_type, unop_to_str(op))
+        if applied == ts.TOP:
+            return (immutable(ts.ANY), ts.ANY, make_dirty())
         assert isinstance(
             applied, ts.Overloaded
         ), f"Expected overloaded type, got {applied}"
@@ -1365,6 +1367,8 @@ class TypedPointerLattice(InstructionLattice[TypedPointer]):
         left_type = prev_tp.types[left_objects]
         right_type = prev_tp.types[right_objects]
         applied = ts.partial_binop(left_type, right_type, op)
+        if applied == ts.TOP:
+            return (immutable(ts.ANY), ts.ANY, make_dirty())
         assert isinstance(
             applied, ts.Overloaded
         ), f"Expected overloaded type, got {applied}"
