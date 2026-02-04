@@ -37,7 +37,7 @@ Pythia is a **static analysis framework for Python** that:
 
 ### Test Coverage
 
-- 259 tests, all passing
+- 293 tests, all passing
 - Tests in `tests/` directory
 
 ## Current State
@@ -57,6 +57,9 @@ Pythia is a **static analysis framework for Python** that:
 - **Type system**: Complete Access type handling in squeeze/join/meet/is_immutable
 - **Code cleanup**: Fixed "builtings" typo, removed unreachable code, consolidated version checks
 - **Documentation**: Documented debugging artifact in dom_typed_pointer.py
+- **Code quality**: Fixed mutable default argument in `immutable()`, removed duplicate "/" case in `binop_to_dunder_method`
+- **Test bug fix**: Fixed duplicate `test_overload` function name (second was shadowing first, so overload call resolution test never ran)
+- **Test coverage**: Added tests for dunder method mappings, `find_dirty_roots()`, `unop_to_str`, `predefined`, `build_args_typed_dict`
 
 ## TODOs Found in Code
 
@@ -71,17 +74,12 @@ Pythia is a **static analysis framework for Python** that:
 
 ### Code Quality
 - [ ] The `-1` offset for bound methods in `dom_typed_pointer.py:609` should be fixed at binding time in `type_system.py:bind_self_function`
-- [x] `dom_typed_pointer.py:657` has `if True or ...` - documented as debugging artifact that disables optimization
 
 ### Testing
 - [ ] Add property-based testing?
 - [ ] Test coverage for edge cases in type system
 
 ### Analysis Quality
-- [x] Ran analysis with `--print-invariants` - output shows Liveness, TypedPointer, Types, and Dirty maps at each program point
-- [x] BUILD_CONST_KEY_MAP and BUILD_MAP bytecode instructions implemented
-- [x] UNPACK_EX bytecode instruction implemented (starred unpacking)
-- [x] CALL_KW bytecode instruction implemented (Python 3.13)
 - [ ] Type system doesn't know about some numpy functions (e.g., `np.random.rand`) - causes assertion error "Expected Overloaded type, got BOT"
 
 ### Key Insights from Paper Appendices
