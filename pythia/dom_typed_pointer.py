@@ -654,6 +654,10 @@ def apply_update_side_effects(
         if ts.is_monomorphized(prev_tp.types[obj])
     ]
 
+    # NOTE: 'True or' is a debugging artifact that disables an optimization.
+    # The original condition would skip updates when types already match.
+    # Currently always updates (more conservative but sound). To restore
+    # the optimization, remove 'True or' from the condition.
     if True or new_tp.types[self_obj] != side_effect.update[0]:
         if monomorophized:
             raise RuntimeError(
