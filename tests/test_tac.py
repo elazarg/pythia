@@ -443,3 +443,78 @@ def test_free_vars_bound_call():
     # With kwnames (kwnames are strings, not Vars, so no extra free vars)
     bound = BoundCall(func, (A, B), ("x",))
     assert free_vars_expr(bound) == {func, A, B}
+
+
+def test_build_const_key_map():
+    """Test that BUILD_CONST_KEY_MAP bytecode is correctly translated to TAC."""
+    from pythia.tac import make_tac_cfg
+
+    def dict_literal():
+        return {'a': 1, 'b': 2}
+
+    cfg = make_tac_cfg(dict_literal)
+
+    # Find MAP call in the CFG
+    map_calls = []
+    for label in cfg.labels:
+        block = cfg[label]
+        for ins in block:
+            if isinstance(ins, Assign) and isinstance(ins.expr, Call):
+                if ins.expr.function == PredefinedFunction.MAP:
+                    map_calls.append(ins.expr)
+
+    assert len(map_calls) >= 1, f"Expected at least one MAP call, got: {map_calls}"
+
+
+def test_build_map():
+    """Test that BUILD_MAP bytecode is correctly translated to TAC."""
+    from pythia.tac import make_tac_cfg
+
+    # This uses BUILD_MAP when keys are not all constants
+    def dict_with_dynamic_keys(k):
+        return {k: 1, 'b': 2}
+
+    cfg = make_tac_cfg(dict_with_dynamic_keys)
+
+    # Find MAP call in the CFG
+    map_calls = []
+    for label in cfg.labels:
+        block = cfg[label]
+        for ins in block:
+            if isinstance(ins, Assign) and isinstance(ins.expr, Call):
+                if ins.expr.function == PredefinedFunction.MAP:
+                    map_calls.append(ins.expr)
+
+    assert len(map_calls) >= 1, f"Expected at least one MAP call, got: {map_calls}"
+
+
+def test_unpack_ex():
+    """Test that UNPACK_EX bytecode is correctly translated to TAC."""
+    from pythia.tac import make_tac_cfg
+
+    def starred_unpack():
+        lst = [1, 2, 3, 4, 5]
+        a, *b, c = lst
+        return a, b, c
+
+    cfg = make_tac_cfg(starred_unpack)
+
+    # Find tuple unpacking assignments in the CFG
+    # UNPACK_EX generates an Assign with a tuple lhs
+    unpack_assigns = []
+    for label in cfg.labels:
+        block = cfg[label]
+        for ins in block:
+            if isinstance(ins, Assign) and isinstance(ins.lhs, tuple):
+                unpack_assigns.append(ins)
+
+    # Should have at least one tuple unpacking (for the starred unpack)
+    assert len(unpack_assigns) >= 1, f"Expected at least one tuple unpacking, got: {unpack_assigns}"
+
+    # The starred unpack should produce 3 items (a, *b, c)
+    for assign in unpack_assigns:
+        if len(assign.lhs) == 3:
+            # Found the starred unpack
+            break
+    else:
+        assert False, f"Expected a 3-element tuple unpacking, got: {[len(a.lhs) for a in unpack_assigns]}"
