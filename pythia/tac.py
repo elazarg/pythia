@@ -834,7 +834,16 @@ def make_tac_no_dels(
             seq = tuple(stackvar(stack_depth + i) for i in reversed(range(val)))
             return [Assign(seq, stackvar(stack_depth))]
         case ["UNPACK", "EX"]:
-            raise NotImplementedError(f"{opname}, {val}, {argrepr}")
+            # UNPACK_EX: extended unpacking for a, *b, c = iterable
+            # val encodes: before_star = val & 0xFF, after_star = val >> 8
+            # Total items pushed = before_star + 1 (starred list) + after_star
+            assert isinstance(val, int)
+            before_star = val & 0xFF
+            after_star = val >> 8
+            total_items = before_star + 1 + after_star
+            # Items are pushed in reverse order (TOS gets last item)
+            seq = tuple(stackvar(stack_depth + i) for i in reversed(range(total_items)))
+            return [Assign(seq, stackvar(stack_depth))]
         case ["IMPORT", "NAME"]:
             assert isinstance(val, str)
             return [Assign(lhs, Import(Var(val)))]
