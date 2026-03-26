@@ -9,7 +9,7 @@ from pythia.domains import InstructionLattice
 from pythia import graph_utils as gu
 from pythia import type_system as ts
 from pythia import tac
-from pythia import disassemble, ast_transform
+from pythia import disassemble, ast_transform, validate
 from pythia.domains import InvariantMap
 from pythia.dom_typed_pointer import TypedPointerLattice, find_dirty_roots
 from pythia.dom_liveness import LivenessVarLattice
@@ -166,6 +166,7 @@ def analyze_function(
     analysis_result: dict[str, AnalysisResult] = {}
     for function_name, f in functions.items():
         cfg = tac.make_tac_cfg(f, simplify=simplify)
+        validate.validate(cfg, function_name, parsed_file.imports)
         for_annotations = parsed_file.annotated_for[function_name]
         for_locations = gu.find_loops(
             cfg,
