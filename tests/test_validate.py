@@ -62,8 +62,7 @@ class TestUnsupportedBytecodes:
 class TestRejectedBuiltins:
     @pytest.mark.parametrize(
         "name",
-        ["eval", "exec", "compile", "setattr", "delattr",
-         "globals", "locals", "vars", "__import__", "breakpoint"],
+        ["eval", "exec", "compile", "__import__", "breakpoint"],
     )
     def test_rejected_builtin(self, name: str) -> None:
         expr = tac.Attribute(tac.PredefinedScope.GLOBALS, _v(name))
@@ -79,6 +78,22 @@ class TestRejectedBuiltins:
         cfg = _make_cfg([tac.Assign(_sv(0), expr)])
         [v] = validate.check_function(cfg)
         assert "arbitrary code" in v.message
+
+
+class TestNotYetSupportedBuiltins:
+    @pytest.mark.parametrize(
+        "name",
+        ["setattr", "getattr", "delattr", "hasattr",
+         "globals", "locals", "vars"],
+    )
+    def test_not_yet_supported(self, name: str) -> None:
+        expr = tac.Attribute(tac.PredefinedScope.GLOBALS, _v(name))
+        cfg = _make_cfg([tac.Assign(_sv(0), expr)])
+        violations = validate.check_function(cfg)
+        assert len(violations) == 1
+        assert violations[0].category == "not_yet_supported"
+        assert violations[0].severity == validate.Severity.ERROR
+        assert "stub" in violations[0].message
 
 
 # ---------------------------------------------------------------------------

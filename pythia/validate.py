@@ -31,12 +31,16 @@ operations on types it knows about.  Here is what you can write:
                       *args/**kwargs forwarding (f(*a, **kw)),
                       closures that WRITE to enclosing variables.
 
-  Rejected builtins   eval, exec, compile,
-                      setattr, delattr,
-                      globals, locals, vars.
+  Rejected builtins   eval, exec, compile.
 
   Rejected access     obj.__dict__, obj.__class__, obj.__bases__
                       and other internal-state dunders.
+
+  Not yet supported   setattr, getattr, delattr — equivalent to
+                      ordinary attribute access when the name is a
+                      constant string.  Need stubs.
+                      globals(), locals() — safe for reading,
+                      not for mutation.  Need stubs.
 
 Type requirements
 -----------------
@@ -110,13 +114,24 @@ REJECTED_BUILTINS = frozenset(
         "eval",  # executes arbitrary code
         "exec",  # executes arbitrary code
         "compile",  # creates code objects
-        "setattr",  # sets an attribute chosen at runtime
-        "delattr",  # deletes an attribute chosen at runtime
-        "globals",  # returns the live global namespace as a dict
-        "locals",  # returns the live local namespace as a dict
-        "vars",  # returns an object's live namespace as a dict
         "__import__",  # imports a module chosen at runtime
         "breakpoint",  # enters the debugger
+    }
+)
+
+# Builtins that the analysis could support under assumptions (e.g.
+# constant attribute name for setattr, read-only use for globals)
+# but that don't have stubs yet.  Currently rejected; remove from
+# this set when stubs are added.
+NOT_YET_SUPPORTED_BUILTINS = frozenset(
+    {
+        "setattr",  # supportable: equivalent to obj.field = val with constant name
+        "getattr",  # supportable: equivalent to obj.field with constant name
+        "delattr",  # supportable: equivalent to del obj.field with constant name
+        "hasattr",  # supportable: pure function returning bool
+        "globals",  # supportable: safe for reading, not mutation
+        "locals",  # supportable: safe for reading (snapshot in CPython 3.x)
+        "vars",  # supportable: safe for reading
     }
 )
 
@@ -223,6 +238,19 @@ def _check_expr(
             )
 
         case tac.Attribute(
+            var=tac.PredefinedScope.GLOBALS, field=tac.Var(name=name)
+        ) if name in NOT_YET_SUPPORTED_BUILTINS:
+            violations.append(
+                Violation(
+                    location,
+                    "not_yet_supported",
+                    f"{name}() is not yet supported — "
+                    f"needs a stub in typeshed_mini/builtins.pyi",
+                    Severity.ERROR,
+                )
+            )
+
+        case tac.Attribute(
             var=tac.Var(), field=tac.Var(name=name)
         ) if name in REJECTED_FIELDS:
             violations.append(
@@ -323,11 +351,6 @@ def _why_rejected_builtin(name: str) -> str:
         "eval": "it executes arbitrary code",
         "exec": "it executes arbitrary code",
         "compile": "it creates code objects at runtime",
-        "setattr": "it sets an attribute chosen at runtime",
-        "delattr": "it deletes an attribute chosen at runtime",
-        "globals": "it exposes the live namespace as a mutable dict",
-        "locals": "it exposes the live namespace as a mutable dict",
-        "vars": "it exposes the live namespace as a mutable dict",
         "__import__": "it imports a module chosen at runtime",
         "breakpoint": "it enters the debugger",
     }

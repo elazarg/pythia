@@ -1,29 +1,82 @@
 # Python dynamicity vs. Pythia's heap analysis
 
-Pythia analyses a restricted subset of Python. This document records
-which dynamic features the analysis handles, which it rejects, and
-which would silently produce wrong results.
+## Supported subset
 
-The supported subset is defined in `pythia/validate.py` (see its
-module docstring for the programmer-facing description). The
-validation pass runs after TAC translation and before analysis.
+The analysis works on ordinary Python functions that use standard
+operations on types it knows about.
+
+**Types:** `int`, `float`, `bool`, `str`, `None`, `list`, `tuple`,
+`set`, `dict`, `slice`, numpy arrays and scalars, and any type you
+add to `typeshed_mini/`.
+
+**Expressions:** arithmetic, comparisons, boolean logic, attribute
+access (`obj.field`), item access (`obj[key]`, slicing), function
+and method calls, container literals, unpacking (`a, b = x` and
+`a, *b = x`).
+
+**Statements:** assignment, `del`, `return`, `raise`, `if`/`elif`/
+`else`, `for`, `while`, `import` (of modules with stubs), function
+definitions, closures that read enclosing variables.
+
+**Not supported:** `yield`/generators, `async`/`await`,
+`try`/`except`/`finally`, `with` (context managers),
+`*args`/`**kwargs` forwarding, closures that write to enclosing
+variables.
+
+**Rejected builtins:** `eval`, `exec`, `compile`.
+
+**Rejected field access:** `obj.__dict__`, `obj.__class__`,
+`obj.__bases__`, and other internal-state dunders.
+
+**Not yet supported (need stubs):** `setattr`/`getattr`/`delattr`
+(equivalent to `obj.field` access when the name is a constant
+string), `globals()`/`locals()` (safe for reading, not mutation).
+
+### Type requirements
+
+Every type your function touches must have a stub in
+`typeshed_mini/`. If a type is missing, the analysis will fail with
+an assertion error when it tries to resolve a method or attribute.
+
+Currently stubbed: `builtins`, `collections`, `numpy`, `typing`.
+To add support for a new library, add a `.pyi` file to
+`typeshed_mini/`.
+
+### Effect annotations
+
+Function stubs must declare their heap effects (`@new`, `@update`,
+`@alias`, `@accessor`). A function without effect annotations is
+assumed to have no side effects. If that is wrong, the analysis
+will miss mutations and report incorrect dirty sets.
+
+### Enforcement
+
+A validation pass (`pythia/validate.py`) runs after TAC translation
+and before analysis. It rejects unsupported features with clear
+error messages and warns about suspicious imports.
+
+Features not covered by the validation pass (descriptor
+interception, metaclasses, monkey patching from outside the
+function) are the user's responsibility — the analysis assumes
+stubs accurately describe the types in use.
 
 
-## How features are handled
-
-Each feature falls into one of five categories:
-
-- **Precise**: modeled correctly with useful precision.
-- **Sound**: over-approximates (may mark too much dirty) but never
-  misses a real mutation.
-- **Rejected**: validation pass stops analysis with a clear message.
-- **Detected**: analysis crashes with an assertion or
-  `NotImplementedError`.  The error is traceable but not friendly.
-- **Silent break**: analysis completes but may miss real mutations.
-  This is the dangerous category.
+---
 
 
-## A. Runtime code creation
+## Detailed feature assessment
+
+The rest of this document records, for each category of Python
+dynamicity, how the analysis handles it. Each feature is one of:
+
+- **Precise** — modeled correctly.
+- **Sound** — over-approximates but never misses a mutation.
+- **Rejected** — validation pass stops with a clear message.
+- **Detected** — crashes with an assertion (traceable but not friendly).
+- **Silent break** — completes but may miss mutations.
+
+
+### A. Runtime code creation
 
 | Feature | Status |
 |---------|--------|
@@ -32,16 +85,16 @@ Each feature falls into one of five categories:
 | Indirect execution via parameters | **Silent break** — the call's effects are whatever the stub says. |
 
 
-## B. Namespace / scope mutation
+### B. Namespace / scope mutation
 
 | Feature | Status |
 |---------|--------|
-| `globals()`, `locals()`, `vars()` | **Rejected** — unstubbable builtins. |
+| `globals()`, `locals()`, `vars()` | **Not yet supported** — needs stubs. Supportable: reading is safe; mutation of the returned dict is not. |
 | `sys._getframe`, frame access | **Detected** — `sys` has no stub. |
 | Dict mutation connected to namespace | **Silent break** — tracked as dict mutation, not as rebinding. |
 
 
-## C. Function / closure mutation
+### C. Function / closure mutation
 
 | Feature | Status |
 |---------|--------|
@@ -53,7 +106,7 @@ Each feature falls into one of five categories:
 | Decorators replacing identity | **Detected** — decorator return type must be in stubs. |
 
 
-## D. Monkey patching
+### D. Monkey patching
 
 | Feature | Status |
 |---------|--------|
@@ -62,17 +115,16 @@ Each feature falls into one of five categories:
 | Patching before the analyzed function runs | **Silent break** — same reason. |
 
 
-## E. Object state / attribute-layout mutation
+### E. Object state / attribute-layout mutation
 
 | Feature | Status |
 |---------|--------|
-| `setattr`, `delattr` | **Rejected** — unstubbable builtins. |
-| `getattr` | **Detected** — no stub. |
+| `setattr`, `getattr`, `delattr` | **Not yet supported** — needs stubs. Supportable: equivalent to `obj.field` access when the attribute name is a constant string. |
 | `obj.__dict__` | **Rejected** — object internal. |
 | `__slots__` interactions | **Silent break** — not modeled. |
 
 
-## F. Attribute-access interception
+### F. Attribute-access interception
 
 | Feature | Status |
 |---------|--------|
@@ -82,7 +134,7 @@ Each feature falls into one of five categories:
 | `classmethod`, `staticmethod` | Handled if stub declares them correctly; otherwise **silent break**. |
 
 
-## G. Callable / construction interception
+### G. Callable / construction interception
 
 | Feature | Status |
 |---------|--------|
@@ -92,7 +144,7 @@ Each feature falls into one of five categories:
 | Object factories returning cached objects | **Silent break** — `@new` assumes fresh allocation. |
 
 
-## H. Protocol dispatch (dunders behind syntax)
+### H. Protocol dispatch (dunders behind syntax)
 
 | Feature | Status |
 |---------|--------|
@@ -107,7 +159,7 @@ Each feature falls into one of five categories:
 | User types without stubs | **Detected** — assertion on missing type. |
 
 
-## I. Class / type metaprogramming
+### I. Class / type metaprogramming
 
 | Feature | Status |
 |---------|--------|
@@ -118,7 +170,7 @@ Each feature falls into one of five categories:
 | `__mro_entries__`, ABC registration | **Silent break** — not modeled. |
 
 
-## J. Module / import-system mutation
+### J. Module / import-system mutation
 
 | Feature | Status |
 |---------|--------|
@@ -130,7 +182,7 @@ Each feature falls into one of five categories:
 | `sys.modules`, module `__getattr__` | **Silent break** — not modeled. |
 
 
-## K. Serialization
+### K. Serialization
 
 | Feature | Status |
 |---------|--------|
@@ -138,7 +190,7 @@ Each feature falls into one of five categories:
 | `__reduce__`, `__getstate__`, `__setstate__` | **Silent break** — never invoked by analysis. |
 
 
-## L. Finalization / GC
+### L. Finalization / GC
 
 | Feature | Status |
 |---------|--------|
@@ -147,7 +199,7 @@ Each feature falls into one of five categories:
 | Generator/coroutine cleanup | **Silent break** — no state machine. |
 
 
-## M. Async scheduling
+### M. Async scheduling
 
 | Feature | Status |
 |---------|--------|
@@ -155,7 +207,7 @@ Each feature falls into one of five categories:
 | Callback registration | **Silent break** — scheduling semantics not modeled. |
 
 
-## N. Threads / signals
+### N. Threads / signals
 
 | Feature | Status |
 |---------|--------|
@@ -163,7 +215,7 @@ Each feature falls into one of five categories:
 | Concurrent mutation | **Silent break** — single-threaded assumption. |
 
 
-## O. Interpreter hooks
+### O. Interpreter hooks
 
 | Feature | Status |
 |---------|--------|
@@ -171,7 +223,7 @@ Each feature falls into one of five categories:
 | `breakpoint` | **Rejected** — unstubbable builtin. |
 
 
-## P. Builtins mutation
+### P. Builtins mutation
 
 | Feature | Status |
 |---------|--------|
@@ -179,7 +231,7 @@ Each feature falls into one of five categories:
 | Rebinding builtins in global scope | **Silent break** — stubs are authoritative. |
 
 
-## Q. Native code
+### Q. Native code
 
 | Feature | Status |
 |---------|--------|
@@ -188,7 +240,7 @@ Each feature falls into one of five categories:
 | Unstubbed extension modules | **Detected** — resolves to BOTTOM. |
 
 
-## R. Implementation-dependent behavior
+### R. Implementation-dependent behavior
 
 All **silent break**. The analysis operates on CPython 3.12-3.14
 bytecode and does not model interpreter-specific behavior.
